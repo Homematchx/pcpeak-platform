@@ -1,0 +1,307 @@
+DALLAS COUNTY, TEXAS COURTS PORTAL
+Register / Sign In  
+1
+
+Smart Search
+
+ 
+2
+
+Search Results
+
+ 
+3
+
+Details
+
+Case Information
+
+
+
+TX-25-00093 | DALLAS COUNTY et al vs. LETICIA C. MAJALCA et al
+
+
+
+Case Number
+TX-25-00093
+
+Court
+298th District Court
+
+Judicial Officer
+GINSBERG, CARL
+
+File Date
+01/22/2025
+
+Case Type
+TAX DELINQUENCY
+
+Case Status
+CLOSED
+
+Party
+
+PLAINTIFF
+DALLAS COUNTY
+
+ 
+
+Active Attorneys
+
+
+Lead Attorney
+ATKINS, ASHLY STEELE
+
+Retained
+
+PLAINTIFF
+DALLAS INDEPENDENT SCHOOL DISTRICT
+
+ 
+
+Active Attorneys
+
+
+Lead Attorney
+ATKINS, ASHLY STEELE
+
+Retained
+
+PLAINTIFF
+CITY OF DALLAS
+
+ 
+
+Active Attorneys
+
+
+Lead Attorney
+ATKINS, ASHLY STEELE
+
+Retained
+
+PLAINTIFF
+PARKLAND HOSPITAL DISTRICT
+
+ 
+
+Active Attorneys
+
+
+Lead Attorney
+ATKINS, ASHLY STEELE
+
+Retained
+
+PLAINTIFF
+DALLAS COLLEGE
+
+ 
+
+Active Attorneys
+
+
+Lead Attorney
+ATKINS, ASHLY STEELE
+
+Retained
+
+PLAINTIFF
+DALLAS COUNTY SCHOOL EQUALIZATION FUND
+
+ 
+
+Active Attorneys
+
+
+Lead Attorney
+ATKINS, ASHLY STEELE
+
+Retained
+
+DEFENDANT
+MAJALCA, LETICIA C.
+
+ 
+
+DEFENDANT
+ARIZOLA, LUIS
+
+ 
+Disposition Events
+
+10/21/2025 Judgment
+
+View Document NON-SUIT/DISMISSAL BY PLAINTIFF / PETITIONER
+
+Judicial Officer
+MOLBERG, KEN
+
+Judgment Type
+NON-SUIT/DISMISSAL BY PLAINTIFF / PETITIONER
+
+Judgment
+
+Total Judgment: of $0.00
+
+Awarded To: DALLAS COUNTY
+
+Awarded Against: MAJALCA, LETICIA C.
+
+
+
+Events and Hearings
+
+
+
+01/22/2025 NEW CASE FILED (OCA) - CIVIL
+
+01/22/2025 ORIGINAL PETITION 
+
+View Document ORIGINAL PETITION
+
+Comment
+- REAL PROPERTY
+
+01/23/2025 NOTICE OF TRIAL 
+
+View Document Non Jury Trial
+
+Comment
+LINEBARGER
+
+01/23/2025 REQUEST FOR SERVICE 
+
+View Document REQUEST FOR SERVICE
+
+Comment
+ISSUE CITATIONS -2
+
+01/24/2025 ISSUE CITATION 
+
+View Document LETICIA C MAJALCA - CITATION
+
+View Document LUIS ARIZOLA - CITATION
+
+01/24/2025 CITATION
+
+Served
+03/26/2025
+
+Anticipated Server
+PRIVATE PROCESS SERVER
+
+Anticipated Method
+
+
+Return Unserved
+04/11/2025
+
+Anticipated Server
+PRIVATE PROCESS SERVER
+
+Anticipated Method
+
+
+Comment
+2 TJRCS
+
+02/10/2025 AFFIDAVIT 
+
+View Document FOR COST OF ABSTRACT
+
+Comment
+FOR COST OF ABSTRACT
+
+04/11/2025 RETURN OF SERVICE 
+
+View Document UNEXECUTED CITATION - LETICIA C. MAJALCA
+
+Comment
+UNEXECUTED CITATION - LETICIA C. MAJALCA
+
+04/23/2025 RETURN OF SERVICE 
+
+View Document LUIS ARIZOLA EXECUTED CITATION
+
+Comment
+EXECUTED CITATION -LUIS ARIZOLA
+
+10/16/2025 MOTION - DISMISS 
+
+View Document MOTION DISMISSAL
+
+10/16/2025 PROPOSED ORDER/JUDGMENT 
+
+View Document PROPOSED ORDER DISMISSAL FINAL
+
+Comment
+ORDER DISMISSAL FINAL
+
+10/20/2025 Non Jury Trial 
+
+View Document Non Jury Trial
+
+Judicial Officer
+GINSBERG, CARL
+
+Hearing Time
+10:05 AM
+
+Cancel Reason
+CASE CLOSED
+
+Financial
+
+
+
+MAJALCA, LETICIA C.
+
+Total Financial Assessment
+$366.00
+Total Payments and Credits
+$366.00
+
+1/22/2025	Transaction Assessment			$350.00
+1/24/2025	Transaction Assessment			$16.00
+3/26/2025	PAYMENT (CASE FEES)	Receipt # 20935-2025-DCLK	ARIZOLA, LUIS	($876.00)
+Documents
+
+
+
+View Document ORIGINAL PETITION
+
+View Document Non Jury Trial
+
+View Document LETICIA C MAJALCA - CITATION
+
+View Document LUIS ARIZOLA - CITATION
+
+View Document REQUEST FOR SERVICE
+
+View Document FOR COST OF ABSTRACT
+
+View Document UNEXECUTED CITATION - LETICIA C. MAJALCA
+
+View Document LUIS ARIZOLA EXECUTED CITATION
+
+View Document MOTION DISMISSAL
+
+View Document PROPOSED ORDER DISMISSAL FINAL
+
+View Document NON-SUIT/DISMISSAL BY PLAINTIFF / PETITIONER
+
+Print
+
+Case Information
+Party
+Disposition Events
+Events and Hearings
+Financial
+Documents
+Back to top
+© 2026 Tyler Technologies, Inc. | All Rights Reserved
+
+
+Version: 2017.1.63.0
