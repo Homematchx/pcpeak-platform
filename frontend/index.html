@@ -1,0 +1,1508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tax Foreclosure Intelligence — PC Peak Development</title>
+<style>
+@import url("https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap");
+:root{--bg:#f4f2ed;--surface:#fff;--surface2:#f0ede6;--surface3:#e8e4db;--border:rgba(0,0,0,.10);--border2:rgba(0,0,0,.18);--text:#1c1b18;--text2:#5c5a54;--text3:#9a9790;--accent:#1e3a5f;--accent2:#2a5a9c;--amber:#a06010;--amber-bg:#fdf6e8;--amber-bd:#e8c060;--green:#1e5c30;--green-bg:#eaf4ec;--green-bd:#6ec890;--red:#7a1e1e;--red-bg:#fdeaea;--red-bd:#e08080;--blue:#1a3f6e;--blue-bg:#e8f0fa;--blue-bd:#7aaae0;--purple:#3c1e7a;--purple-bg:#f0eafa;--purple-bd:#a090d0;--r:10px;--rs:6px;--FD:"DM Serif Display",Georgia,serif;--FB:"Instrument Sans",system-ui,sans-serif;--FM:"DM Mono",monospace}
+*{box-sizing:border-box;margin:0;padding:0}html{font-size:15px}
+body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
+/* HEADER */
+.hdr{background:var(--accent);padding:0 32px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+.hdr-brand{display:flex;align-items:center;gap:12px}
+.hdr-logo{width:30px;height:30px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+.hdr-name{font-family:var(--FD);font-size:17px;color:#fff}
+.hdr-sub{font-size:11px;color:rgba(255,255,255,.55);letter-spacing:.04em;text-transform:uppercase}
+.hdr-pill{font-size:11px;font-weight:500;padding:4px 12px;border-radius:20px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.85)}
+.hdr-ct{font-size:12px;font-family:var(--FM);color:rgba(255,255,255,.7)}
+/* LAYOUT */
+.app{display:grid;grid-template-columns:380px 1fr;height:calc(100vh - 58px);overflow:hidden}
+.sb{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+.main{overflow-y:auto;padding:28px 32px;display:flex;flex-direction:column;gap:20px}
+/* SIDEBAR */
+.sbs{padding:20px;border-bottom:1px solid var(--border)}
+.sbs:last-child{border-bottom:none}
+.sbl{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+/* INPUT TOGGLE */
+.itog{display:flex;background:var(--surface2);border-radius:var(--rs);padding:3px;margin-bottom:14px;gap:2px}
+.tbtn{flex:1;font-family:var(--FB);font-size:12px;font-weight:500;padding:7px 6px;border:none;background:transparent;color:var(--text3);cursor:pointer;border-radius:5px;transition:all .15s;text-align:center;white-space:nowrap}
+.tbtn.on{background:var(--surface);color:var(--accent);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+/* UPLOAD */
+.uzn{border:1.5px dashed var(--border2);border-radius:var(--r);padding:22px 16px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2);position:relative}
+.uzn:hover,.uzn.dov{border-color:var(--accent2);background:var(--blue-bg)}
+.uzn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.uzi{font-size:24px;margin-bottom:6px;opacity:.5}
+.uzt{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:3px}
+.uzs{font-size:11px;color:var(--text3);line-height:1.5}
+.uzchips{display:flex;gap:6px;justify-content:center;margin-top:8px;flex-wrap:wrap}
+.uzchip{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--surface3);color:var(--text3);font-family:var(--FM)}
+/* PASTE */
+.pa{width:100%;font-family:var(--FM);font-size:11px;padding:10px 12px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);resize:vertical;min-height:160px;line-height:1.5;transition:border-color .15s}
+.pa:focus{outline:none;border-color:var(--accent2);background:var(--surface)}
+.pa::placeholder{color:var(--text3)}
+.ph{font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5}
+/* CITY */
+.cgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.cbtn{font-family:var(--FB);font-size:12px;font-weight:500;padding:8px 10px;border-radius:var(--rs);border:1.5px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;transition:all .15s;text-align:left;display:flex;flex-direction:column;gap:1px}
+.cbtn:hover{border-color:var(--accent2);color:var(--accent)}
+.cbtn.on{border-color:var(--accent);background:var(--blue-bg);color:var(--accent)}
+.cbtn-n{font-weight:600}
+.cbtn-s{font-size:10px;color:var(--text3)}
+.cbtn.on .cbtn-s{color:var(--accent2)}
+/* CASE LIST */
+.clist{display:flex;flex-direction:column;gap:6px}
+.cchip{display:flex;align-items:flex-start;justify-content:space-between;padding:10px 12px 10px 16px;border:1px solid var(--border);border-radius:var(--rs);cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
+.cchip:hover{border-color:var(--border2);background:var(--surface2)}
+.cchip.on{border-color:var(--accent);background:var(--blue-bg)}
+.cchip-b{flex:1}
+.cchip-n{font-size:12px;font-weight:600;color:var(--accent);font-family:var(--FM)}
+.cchip-d{font-size:12px;color:var(--text2);margin-top:1px}
+.cchip-m{font-size:11px;color:var(--text3);margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cdel{background:none;border:none;cursor:pointer;color:var(--text3);font-size:14px;padding:2px;border-radius:3px;transition:all .12s;line-height:1;flex-shrink:0}
+.cdel:hover{color:var(--red);background:var(--red-bg)}
+/* BADGES */
+.bdg{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;letter-spacing:.04em;text-transform:uppercase}
+.bdg-blue{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd)}
+.bdg-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd)}
+.bdg-amber{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-bd)}
+.bdg-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd)}
+.bdg-purple{background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-bd)}
+/* CARDS */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px 24px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.chd{margin-bottom:14px}
+.ct{font-size:14px;font-weight:600;color:var(--text)}
+.cs{font-size:12px;color:var(--text3);margin-top:2px}
+/* STATS */
+.sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.sbox{background:var(--surface2);border-radius:var(--rs);padding:14px 16px}
+.slbl{font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.sval{font-size:22px;font-weight:600;color:var(--accent);font-family:var(--FD);line-height:1}
+.sunit{font-size:11px;color:var(--text3);margin-top:2px}
+/* TABS */
+.tbar{display:flex;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto}
+.tb{font-family:var(--FB);font-size:13px;font-weight:500;padding:10px 14px;border:none;background:none;cursor:pointer;color:var(--text3);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;white-space:nowrap}
+.tb:hover{color:var(--text2)}
+.tb.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.tp{display:none;flex-direction:column;gap:20px}
+.tp.on{display:flex}
+/* TIMELINE */
+.tlw{position:relative;padding-left:28px;display:flex;flex-direction:column}
+.tlw::before{content:"";position:absolute;left:8px;top:14px;bottom:14px;width:1px;background:var(--border2)}
+.tli{position:relative;padding:6px 0}
+.tld{position:absolute;left:-22px;top:10px;width:13px;height:13px;border-radius:50%;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--border2)}
+.d-gray{background:var(--text3)}.d-blue{background:#2a5a9c}.d-green{background:#2a7a3a}
+.d-amber{background:#c07820}.d-purple{background:#5a3a9a}
+.d-proj{background:var(--amber);box-shadow:0 0 0 3px rgba(160,96,16,.2);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(160,96,16,.2)}50%{box-shadow:0 0 0 6px rgba(160,96,16,.1)}}
+.tldt{font-size:11px;color:var(--text3);font-family:var(--FM)}
+.tlev{font-size:13px;font-weight:600;color:var(--text);margin:1px 0}
+.tlnt{font-size:12px;color:var(--text2)}
+.tlsc{font-size:10px;color:var(--text3);font-family:var(--FM);margin-top:1px;opacity:.7}
+/* PROJECTION */
+.proj{border:2px solid var(--amber-bd);background:var(--amber-bg);border-radius:var(--r);padding:18px 22px}
+.proj-lbl{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);margin-bottom:6px}
+.proj-dt{font-size:28px;font-weight:400;color:var(--text);font-family:var(--FD);line-height:1.1;margin-bottom:6px}
+.proj-nt{font-size:12px;color:var(--text2);line-height:1.6}
+.proj-cf{display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;color:var(--amber);font-weight:600}
+.cfbar{height:4px;width:80px;background:rgba(160,96,16,.2);border-radius:2px;overflow:hidden}
+.cffil{height:100%;background:var(--amber);border-radius:2px}
+/* METHOD BOX */
+.mbox{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:14px 16px;margin-top:12px}
+.mbox-t{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
+.mrow{display:flex;gap:8px;font-size:12px;padding:3px 0}
+.mkey{color:var(--text3);min-width:150px;font-family:var(--FM);font-size:11px;flex-shrink:0}
+.mval{color:var(--text2);flex:1}.mval strong{color:var(--text)}
+/* PHASE BARS */
+.prow{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.pname{font-size:12px;color:var(--text2);min-width:130px}
+.ptrk{flex:1;height:8px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.pfil{height:100%;border-radius:4px}
+.pval{font-size:12px;color:var(--text3);min-width:50px;text-align:right;font-family:var(--FM)}
+/* RISK */
+.ritem{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.ritem:last-child{border-bottom:none}
+.rico{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;margin-top:1px}
+.r-ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd)}
+.r-warn{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-bd)}
+.r-danger{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd)}
+.rtxt{font-size:13px;font-weight:600;color:var(--text)}
+.rnt{font-size:11px;color:var(--text2);margin-top:2px}
+/* TABLES */
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;padding:8px 12px;background:var(--surface2);color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border)}
+.tbl td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--surface2)}
+.tbl .ca td{background:var(--blue-bg);font-weight:600}
+/* INFO GRID */
+.igrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ilbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:3px}
+.ival{font-size:13px;color:var(--text);font-weight:500}
+/* AI MEMO */
+.aisec{background:linear-gradient(135deg,#f8f6ff,#f0f4ff);border:1px solid var(--purple-bd);border-radius:var(--r);padding:20px 24px}
+.aihd{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.aidot{width:8px;height:8px;border-radius:50%;background:var(--purple);animation:pulse2 1.5s ease-in-out infinite}
+@keyframes pulse2{0%,100%{opacity:1}50%{opacity:.4}}
+.ailbl{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--purple)}
+.aitxt{font-size:13px;color:var(--text2);line-height:1.8;white-space:pre-wrap}
+/* ACCURACY */
+.accpanel{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:16px 20px}
+.acct{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px}
+.acci{display:flex;align-items:flex-start;gap:8px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)}
+.acci:last-child{border-bottom:none}
+.accck{font-size:14px;flex-shrink:0;margin-top:1px}
+.acctxt{color:var(--text2);flex:1}.acctxt strong{color:var(--text)}
+/* KNOWN CASES */
+.kcase{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:12px 14px;margin-bottom:8px}
+.kcase-t{font-size:12px;font-weight:600;color:var(--accent);font-family:var(--FM);margin-bottom:6px}
+/* LOADING */
+.lov{display:none;position:fixed;inset:0;background:rgba(28,27,24,.55);z-index:200;align-items:center;justify-content:center}
+.lov.on{display:flex}
+.lcard{background:var(--surface);border-radius:var(--r);padding:32px 40px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.12);max-width:340px;width:90%}
+.lspin{width:40px;height:40px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lt{font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px;font-family:var(--FD)}
+.lsteps{margin-top:10px;display:flex;flex-direction:column;gap:4px}
+.lstep{font-size:12px;display:flex;align-items:center;gap:6px;justify-content:center;padding:2px 0}
+.ls-done{color:var(--green)}.ls-active{color:var(--accent);font-weight:600}.ls-wait{color:var(--text3)}
+/* DOC CHIPS */
+.dchip{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);margin-bottom:6px;font-size:12px}
+.dname{flex:1;color:var(--text2);font-family:var(--FM);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dst{font-size:10px;font-weight:600;padding:2px 6px;border-radius:10px;background:var(--green-bg);color:var(--green)}
+/* EMPTY */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:420px;gap:14px;color:var(--text3);text-align:center}
+.eico{font-size:52px;opacity:.3}
+.et{font-size:20px;font-family:var(--FD);color:var(--text2)}
+.es{font-size:13px;max-width:400px;line-height:1.6}
+/* BUTTONS */
+.btn{font-family:var(--FB);font-size:13px;font-weight:600;padding:9px 18px;border-radius:var(--rs);cursor:pointer;border:1px solid transparent;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+.btn-p{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-p:hover{background:var(--accent2)}
+.btn-p:disabled{opacity:.4;cursor:not-allowed}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-g{background:transparent;color:var(--text2);border-color:var(--border2)}
+.btn-g:hover{background:var(--surface2)}
+.alert{border-radius:var(--rs);padding:10px 14px;font-size:12px;line-height:1.5;display:flex;gap:8px;align-items:flex-start}
+.al-i{background:var(--blue-bg);border:1px solid var(--blue-bd);color:var(--blue)}
+.al-w{background:var(--amber-bg);border:1px solid var(--amber-bd);color:var(--amber)}
+.al-s{background:var(--green-bg);border:1px solid var(--green-bd);color:var(--green)}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+@media(max-width:960px){.app{grid-template-columns:1fr;height:auto}.sb{height:auto}.main{padding:20px 16px}}
+
+@keyframes apulse {
+  0%,100% { opacity:1; }
+  50%      { opacity:.3; }
+}
+</style>
+</head>
+<body>
+
+<div class="lov" id="lov">
+  <div class="lcard">
+    <div class="lspin"></div>
+    <div class="lt">Analyzing Case</div>
+    <div class="lsteps" id="lsteps"></div>
+  </div>
+</div>
+
+<header class="hdr">
+  <div class="hdr-brand">
+    <div class="hdr-logo">&#9878;</div>
+    <div>
+      <div class="hdr-name">Tax Foreclosure Intelligence</div>
+      <div class="hdr-sub">PC Peak Development &middot; Platform v2.0 &middot; Dallas County LGBS</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(255,255,255,.75);font-family:var(--FM)">
+      <div id="agent-dot" style="width:7px;height:7px;border-radius:50%;background:#6ec890;flex-shrink:0"></div>
+      <span id="agent-txt">Agent idle</span>
+    </div>
+    <span class="hdr-ct" id="hct">0 cases</span>
+    <span class="hdr-pill" id="hdr-pill">AI-Powered</span>
+  </div>
+</header>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <div class="sb">
+
+    <!-- PORTFOLIO STATS -->
+    <div class="sbs">
+      <div class="sbl">Portfolio Overview</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;text-align:center">
+          <div style="font-size:22px;font-weight:700;font-family:var(--FD);color:var(--accent);line-height:1" id="s-total">—</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:3px">Total</div>
+        </div>
+        <div style="background:var(--green-bg);border-radius:var(--rs);padding:10px 12px;text-align:center">
+          <div style="font-size:22px;font-weight:700;font-family:var(--FD);color:var(--green);line-height:1" id="s-oos">—</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:3px">OOS Issued</div>
+        </div>
+        <div style="background:var(--amber-bg);border-radius:var(--rs);padding:10px 12px;text-align:center">
+          <div style="font-size:22px;font-weight:700;font-family:var(--FD);color:var(--amber);line-height:1" id="s-judged">—</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:3px">Judgment</div>
+        </div>
+        <div style="background:var(--red-bg);border-radius:var(--rs);padding:10px 12px;text-align:center">
+          <div style="font-size:22px;font-weight:700;font-family:var(--FD);color:var(--red);line-height:1" id="s-pulled">—</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:3px">Sale Pulled</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI AGENT -->
+    <div class="sbs">
+      <div class="sbl">AI Agent</div>
+      <div style="background:var(--surface2);border-radius:var(--r);padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text)">Auto-Scraper</div>
+            <div style="font-size:11px;color:var(--text3)" id="last-run-txt">Last run: never</div>
+          </div>
+          <button onclick="triggerAgent()" style="font-family:var(--FB);font-size:12px;font-weight:600;padding:7px 14px;border-radius:var(--rs);cursor:pointer;border:none;background:var(--accent);color:#fff">&#9654; Run Now</button>
+        </div>
+        <div style="font-size:11px;color:var(--text3);line-height:1.6">
+          Scrapes Dallas County portal, extracts case data, updates all monitored cases automatically.
+          <div style="margin-top:6px;font-family:var(--FM);font-size:10px;background:var(--surface3);padding:4px 8px;border-radius:4px">python3 agent/agent.py</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLATFORM SYNC -->
+    <div class="sbs">
+      <div class="sbl" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Platform Cases</span>
+        <button id="sync-btn" onclick="syncFromPlatform()" style="font-family:var(--FB);font-size:10px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">&#8635; Sync</button>
+      </div>
+      <div id="platform-status" style="font-size:11px;color:var(--text3)">Connecting to platform...</div>
+    </div>
+
+    <div class="sbs" id="api-key-section">
+      <div class="sbl">Anthropic API Key <span id="key-status" style="font-size:10px;color:var(--green);font-weight:400;letter-spacing:0;text-transform:none"></span></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="password" id="api-key-input" placeholder="sk-ant-..." 
+          style="flex:1;font-family:var(--FM);font-size:11px;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none"
+          oninput="saveKey(this.value)">
+        <button onclick="clearKey()" style="background:none;border:1px solid var(--border2);border-radius:var(--rs);padding:6px 8px;cursor:pointer;color:var(--text3);font-size:11px">Clear</button>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-top:5px;line-height:1.5">Your key is stored locally in this browser only. Never shared. Get yours at <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent2)">console.anthropic.com</a></div>
+    </div>
+
+    <div class="sbs">
+      <div class="sbl">Input Method</div>
+      <div class="itog">
+        <button class="tbtn on" id="m-upload" onclick="setMode('upload')">&#128196; PDF</button>
+        <button class="tbtn" id="m-paste" onclick="setMode('paste')">&#128203; Paste</button>
+        <button class="tbtn" id="m-both" onclick="setMode('both')">&#128279; Both</button>
+        <button class="tbtn" id="m-quick" onclick="setMode('quick')">&#9889; Quick</button>
+      </div>
+
+      <div id="p-upload">
+        <div class="uzn" id="uzn">
+          <input type="file" id="fin" multiple accept=".pdf,.txt,.png,.jpg,.jpeg">
+          <div class="uzi">&#128193;</div>
+          <div class="uzt">Drop petition or docket sheet</div>
+          <div class="uzs">PDF, image, or text &mdash; AI extracts everything</div>
+          <div class="uzchips"><span class="uzchip">PDF</span><span class="uzchip">TXT</span><span class="uzchip">IMG</span></div>
+        </div>
+        <div id="dlist" style="margin-top:8px"></div>
+      </div>
+
+      <div id="p-paste" style="display:none">
+        <textarea class="pa" id="ptxt" placeholder="Paste docket text or petition text here...
+
+Example:
+TX-25-01777 | DALLAS COUNTY vs. BENNY J. STEWART
+Case Number TX-25-01777
+Court 134th District Court
+File Date 10/28/2025
+DEFENDANT STEWART, BENNY J.
+
+Events:
+10/28/2025 NEW CASE FILED
+11/05/2025 CITATION issued
+12/11/2025 Served
+07/20/2026 Non Jury Trial 10:05 AM"></textarea>
+        <div class="ph">Paste full docket or petition text. All fields extracted automatically.</div>
+      </div>
+
+      <div id="p-quick" style="display:none">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5">Fill in key fields from the petition — no AI call needed. Instant projection.</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-top:2px">Required</div>
+          <input id="q-casenum" placeholder="Case # (e.g. TX-26-00009)" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%" oninput="checkQuickReady()">
+          <input id="q-defendant" placeholder="Defendant name" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
+          <input id="q-address" placeholder="Property address" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
+          <input id="q-filed" type="date" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
+          <input id="q-total" type="number" placeholder="Total due at filing ($)" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Optional but helpful</div>
+          <input id="q-court" placeholder="Court (e.g. 192nd District Court)" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
+          <input id="q-acct" placeholder="Account # (from petition)" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
+          <input id="q-defcount" type="number" placeholder="# of defendants" value="1" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
+          <input id="q-oldest" type="number" placeholder="Oldest delinquency year (e.g. 2018)" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
+          <select id="q-cbp" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
+            <option value="no">No CBP / citation by posting</option>
+            <option value="yes">CBP requested (address unknown)</option>
+          </select>
+          <select id="q-priorsuit" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
+            <option value="no">No prior suits</option>
+            <option value="yes">Prior related suit(s)</option>
+          </select>
+        </div>
+        <button class="btn btn-p" id="q-add-btn" style="width:100%;margin-top:10px;justify-content:center" onclick="doQuickAdd()" disabled>&#9889; Add Case Instantly</button>
+      </div>
+
+      <button class="btn btn-p" style="width:100%;margin-top:12px;justify-content:center" id="abtn" onclick="doAnalyze()" disabled>&#10022; Analyze with AI</button>
+    </div>
+
+    <div class="sbs">
+      <div class="sbl">City / Jurisdiction</div>
+      <div class="cgrid" id="cgrid"></div>
+    </div>
+
+    <div class="sbs">
+      <div class="sbl">Case Log <span style="font-size:11px;color:var(--text3);font-weight:400;letter-spacing:0;text-transform:none">5 records</span></div>
+      <div id="case-log-list" style="display:flex;flex-direction:column;gap:4px"></div>
+    </div>
+
+    <div class="sbs" style="flex:1">
+      <div class="sbl">Analyzed Cases <span id="cct" style="font-size:11px;color:var(--text3);font-weight:400;letter-spacing:0;text-transform:none">0 saved</span></div>
+      <div class="clist" id="clist"><div style="font-size:12px;color:var(--text3);padding:6px 0">No cases yet.</div></div>
+    </div>
+
+    <div class="sbs">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="btn btn-g btn-sm" style="width:100%;justify-content:center" onclick="expData()">&#128190; Export JSON</button>
+        <button class="btn btn-g btn-sm" style="width:100%;justify-content:center" onclick="impData()">&#128193; Import JSON</button>
+        <button class="btn btn-g btn-sm" style="width:100%;justify-content:center;color:var(--red)" onclick="clearAll()">&#128465; Clear All</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main" id="mainpanel">
+    <div class="empty" id="empstate">
+      <div class="eico">&#9878;</div>
+      <div class="et">No case selected</div>
+      <div class="es">Upload a PDF or paste docket text from Dallas County court records. The AI extracts every field and generates a complete timeline projection.</div>
+    </div>
+    <div id="cdet" style="display:none;flex-direction:column;gap:20px"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// BENCHMARK DATA — all cases provided
+// ═══════════════════════════════════════════
+const KNOWN = [{"caseNumber":"TX-23-00042","description":"Williams/Motley \u2014 3928 Atlanta St, Dallas","city":"dallas","complexity":"high","defCount":8,"filedDate":"2023-01-13","judgmentDate":"2026-02-16","judgmentType":"nonjury","oosDate":"2026-05-15","filingToJudgmentMonths":37,"judgmentToOOSDays":89,"totalDue":25889.7,"delinquencyYears":20,"oldestDelinquencyYear":2002,"plaintiffAttorney":"ATKINS, ASHLY STEELE","lawFirm":"LGBS (Linebarger)","court":"160th District Court","judicialOfficer":"GINSBERG, CARL","stage":"oos_issued","nextHearingDate":null,"serviceCompletedDate":null,"daysToServe":null,"propertyAddress":"3928 Atlanta St, Dallas TX 75215","accountNumber":"00000172327000000","keyFactors":["8 defendants","Ruby J. Williams address unknown at filing \u2014 CBP","ad litem appointed (Moman)","3 continuances + 4 trial resets","Willie A. Williams: CBP + Rule 106 + 5 service attempts","estate/heir \u2014 Mrs. James Motley original owner","taxes since 2002 (20 yrs)","2 prior suits"],"outcome":"CONFIRMED: OOS issued 89 days post-judgment (05/15/2026). 37 months filing to judgment."},{"caseNumber":"TX-25-00492","description":"Hedge \u2014 2827 E. Overton Rd, Dallas","city":"dallas","complexity":"low","defCount":1,"filedDate":"2025-03-14","judgmentDate":"2026-05-18","judgmentType":"default","oosDate":null,"filingToJudgmentMonths":14,"judgmentToOOSDays":null,"totalDue":13704.32,"delinquencyYears":4,"oldestDelinquencyYear":2021,"plaintiffAttorney":"ATKINS, ASHLY STEELE","lawFirm":"LGBS (Linebarger)","court":"193rd District Court","judicialOfficer":"GINSBERG, CARL","stage":"judgment_entered","nextHearingDate":null,"serviceCompletedDate":"2025-12-29","daysToServe":290,"propertyAddress":"2827 E. Overton Rd, Dallas TX 75216","accountNumber":"00000509671000000","keyFactors":["1 defendant","initial citation failed \u2014 Rule 106 needed","served 12/29/2025","1 continuance","default judgment","taxes 2021-2024 (4 yrs)","Honey Crest Heights subdivision"],"outcome":"Judgment entered 14 months from filing. OOS projected ~Aug 2026 (60-89 days post-judgment). Appeal window closed ~06/18/2026."},{"caseNumber":"TX-25-01777","description":"Stewart \u2014 Benny J. Stewart, Dallas (address TBD)","city":"dallas","complexity":"low","defCount":1,"filedDate":"2025-10-28","judgmentDate":null,"judgmentType":"none","oosDate":null,"filingToJudgmentMonths":null,"judgmentToOOSDays":null,"totalDue":null,"delinquencyYears":null,"oldestDelinquencyYear":null,"plaintiffAttorney":"ZOKAIE, CHEYENNE MATHEW","lawFirm":"LGBS (Linebarger)","court":"134th District Court","judicialOfficer":"GINSBERG, CARL","stage":"pre_judgment","nextHearingDate":"2026-07-20","serviceCompletedDate":"2025-12-11","daysToServe":43,"propertyAddress":"Address TBD \u2014 Dallas TX","accountNumber":"TBD","keyFactors":["1 defendant \u2014 Benny J. Stewart","served in 43 days (fastest of set)","no continuances, no ad litem, no CBP, no Rule 106","no prior suits","trial 07/20/2026 scheduled"],"outcome":"PENDING: Trial 07/20/2026. If no continuances, judgment ~late July 2026. OOS ~Sept-Oct 2026. Cleanest case observed."},{"caseNumber":"TX-23-00569","description":"Paula E. Williams / Chester F. Williams Est \u2014 1506 Harbor Rd, Dallas","city":"dallas","complexity":"high","defCount":5,"filedDate":"2023-04-03","judgmentDate":"2026-01-07","judgmentType":"nonjury","oosDate":"2026-04-20","filingToJudgmentMonths":33,"judgmentToOOSDays":103,"totalDue":112449.25,"delinquencyYears":35,"oldestDelinquencyYear":1991,"plaintiffAttorney":"ATKINS, ASHLY STEELE","lawFirm":"LGBS (Linebarger)","court":"162nd District Court","judicialOfficer":"GINSBERG, CARL","stage":"sale_pulled","nextHearingDate":null,"serviceCompletedDate":null,"daysToServe":null,"propertyAddress":"1506 Harbor Road, Dallas TX 75216","accountNumber":"00000503698000000","assessedValue":286730,"totalAtOOS":216554.02,"minimumBid":226910.25,"payoffBeforeSale":224381.25,"combinedCaseNumber":"00-31060-T-C","priorJudgmentDate":"2004-12-16","priorJudgmentAmount":29731.46,"saleScheduledDate":"2026-06-02","salePulledDate":"2026-05-12","salePulledBy":"LGBS (Tina M.) via fax/email to Sheriff","publishedDates":["2026-05-08","2026-05-15","2026-05-22"],"keyFactors":["Chester F. Williams ESTATE \u2014 deceased original owner","35 years of delinquency (1991 to present)","3 prior suits: TX-00-31060 (2000), TX-18-01607 (2018), TX-23-00569 (2023)","Prior judgment 2004 never collected \u2014 22 years unresolved","5 defendants: Paula E. Williams + 4 Williams family heirs","3 defendants address unknown at filing \u2014 CBP required","Paula Williams served via Rule 106","Ronald A. Williams Jr. answered pro se (in rem only)","Ad litem: Mark W. Sutherland (also defense attorney of record)","Sale ADVERTISED and SCHEDULED June 2, 2026 \u2014 PULLED May 12, 2026","Total at OOS: $216,554 vs assessed value $286,730","Minimum bid: $226,910 \u2014 thin equity for buyer","Paula Williams listed at 1506 Harbor Rd \u2014 likely occupant","Likely cause of pull: bankruptcy, last-minute payoff, or procedural challenge"],"taxBreakdownSummary":[{"entity":"Dallas County","total":17972.92},{"entity":"Parkland Hospital","total":20321.13},{"entity":"Dallas College","total":7491.07},{"entity":"School Equalization Fund","total":538.72},{"entity":"Dallas ISD","total":110250.99},{"entity":"City of Dallas","total":59979.19}],"outcome":"SALE PULLED 05/12/2026 \u2014 20 days before scheduled June 2 auction. Most likely: bankruptcy filing, payment agreement, or heir attorney intervention. Property WILL resurface. Monitor docket immediately. Three prior suits over 23 years indicate intractable heir dispute. Property occupied by Paula Williams at subject address."},{"caseNumber":"TX-26-00009","description":"Rogers \u2014 1218 Hudspeth Ave, Dallas","city":"dallas","complexity":"low","defCount":1,"filedDate":"2026-01-05","judgmentDate":null,"judgmentType":"none","oosDate":null,"filingToJudgmentMonths":null,"judgmentToOOSDays":null,"totalDue":19366.44,"delinquencyYears":7,"oldestDelinquencyYear":2018,"plaintiffAttorney":"ATKINS, ASHLY STEELE","lawFirm":"LGBS (Linebarger)","court":"192nd District Court","judicialOfficer":"TBD","stage":"pre_judgment","nextHearingDate":null,"serviceCompletedDate":null,"daysToServe":null,"propertyAddress":"1218 Hudspeth Ave, Dallas TX 75216","accountNumber":"00000303256000000","assessedValue":null,"totalAtOOS":null,"minimumBid":null,"payoffBeforeSale":null,"keyFactors":["1 defendant \u2014 Lucy Marilyn Rogers","Known address \u2014 personal service straightforward","No CBP, no prior suits, no estate situation","Taxes delinquent 2018-2024 (7 years)","Dallas ISD largest creditor: $8,923","Brand new case \u2014 filed 01/05/2026, no service events yet"],"taxBreakdownSummary":[{"entity":"Dallas County","total":1753.46},{"entity":"Parkland Hospital","total":1849.64},{"entity":"Dallas College","total":907.67},{"entity":"School Equalization","total":42.17},{"entity":"Dallas ISD","total":8923.52},{"entity":"City of Dallas","total":5889.98}],"outcome":"PENDING: Filed 01/05/2026. Low complexity \u2014 1 defendant, known address, no prior suits. Hedge benchmark (14mo, low, Dallas): judgment ~March 2027, OOS ~May-June 2027. Monitor for service confirmation."}]
+
+const STAGE = {
+  oos_issued:      {lbl:"OOS Issued",      cls:"bdg-green",  conf:100},
+  judgment_entered:{lbl:"Judgment Entered", cls:"bdg-amber",  conf:85},
+  pre_judgment:    {lbl:"Pre-Judgment",     cls:"bdg-blue",   conf:null},
+  sale_pulled:     {lbl:"Sale Pulled ⚠",   cls:"bdg-red",    conf:null},
+  auction_complete:{lbl:"Auction Complete", cls:"bdg-green",  conf:100}
+};
+
+// ═══════════════════════════════════════════
+// CITY DATA
+// ═══════════════════════════════════════════
+const CITIES = {
+  dallas:     {n:"Dallas",      speed:"Moderate", ftj:{low:[12,18],medium:[18,30],high:[30,48]}, joos:{low:60,medium:75,high:89},  ota:[20,45], firm:"LGBS (Linebarger)", note:"High volume court. All 3 confirmed cases use same LGBS firm and Judge Ginsberg. Timeline driven almost entirely by defendant count and service complexity.", auction:"First Tuesday of month"},
+  fort_worth: {n:"Fort Worth",  speed:"Faster",   ftj:{low:[10,15],medium:[15,24],high:[24,36]}, joos:{low:45,medium:60,high:75},  ota:[14,30], firm:"LGBS / Perdue Brandon", note:"Tarrant County moves faster. Lower volume, fewer estate-heir complications.", auction:"First Tuesday of month"},
+  houston:    {n:"Houston",     speed:"Slower",   ftj:{low:[18,28],medium:[28,42],high:[42,60]}, joos:{low:75,medium:90,high:120}, ota:[30,60], firm:"Linebarger / Perdue Brandon", note:"Harris County has significant backlog. Multi-defendant matters routinely 4-5 years.", auction:"First Tuesday of month"},
+  san_antonio:{n:"San Antonio", speed:"Moderate", ftj:{low:[12,20],medium:[20,32],high:[30,44]}, joos:{low:60,medium:80,high:100}, ota:[20,45], firm:"Linebarger", note:"Bexar County mid-tier. Service delays similar to Dallas.", auction:"First Tuesday of month"},
+  austin:     {n:"Austin",      speed:"Faster",   ftj:{low:[10,16],medium:[16,26],high:[26,38]}, joos:{low:45,medium:65,high:80},  ota:[14,35], firm:"Linebarger / Perdue Brandon", note:"Travis County efficient, smaller caseload.", auction:"First Tuesday of month"},
+  other:      {n:"Other TX",    speed:"Varies",   ftj:{low:[12,20],medium:[20,36],high:[30,48]}, joos:{low:60,medium:80,high:100}, ota:[20,50], firm:"Varies", note:"General Texas benchmark.", auction:"First Tuesday of month"}
+};
+const SBDG = {Faster:"bdg-green",Moderate:"bdg-amber",Slower:"bdg-red",Varies:"bdg-blue"};
+
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
+let selCity = "dallas";
+let cases = JSON.parse(localStorage.getItem("tfi_v5") || "[]");
+let activeId = null;
+let files = [];
+let mode = "upload";
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+function checkQuickReady() {
+  const cn = (document.getElementById("q-casenum")||{}).value||"";
+  const btn = document.getElementById("q-add-btn");
+  if (btn) btn.disabled = cn.trim().length < 5;
+}
+
+function doQuickAdd() {
+  const caseNum   = (document.getElementById("q-casenum").value||"").trim();
+  const defendant = (document.getElementById("q-defendant").value||"").trim();
+  const address   = (document.getElementById("q-address").value||"").trim();
+  const filedDate = document.getElementById("q-filed").value||"";
+  const totalDue  = parseFloat(document.getElementById("q-total").value)||0;
+  const court     = (document.getElementById("q-court").value||"").trim();
+  const acct      = (document.getElementById("q-acct").value||"").trim();
+  const defCount  = parseInt(document.getElementById("q-defcount").value)||1;
+  const oldestYr  = parseInt(document.getElementById("q-oldest").value)||0;
+  const cbp       = document.getElementById("q-cbp").value==="yes";
+  const priorSuit = document.getElementById("q-priorsuit").value==="yes";
+  const delinqYrs = oldestYr ? (new Date().getFullYear()-oldestYr) : 0;
+
+  // Auto-determine complexity
+  let complexity = "low";
+  if (defCount >= 5 || (cbp && priorSuit) || delinqYrs >= 15) complexity = "high";
+  else if (defCount >= 3 || cbp || priorSuit || delinqYrs >= 8) complexity = "medium";
+
+  const ex = {
+    caseNumber: caseNum, court: court||"Dallas District Court",
+    judicialOfficer: "GINSBERG, CARL", filedDate, judgmentDate: "", judgmentType: "none",
+    caseStatus: "open", defendant, allDefendants: [defendant], plaintiffs: [],
+    propertyAddress: address, propertyLegalDescription: "", accountNumber: acct,
+    lawFirm: "LGBS (Linebarger)", plaintiffAttorney: "ATKINS, ASHLY STEELE",
+    defendantAttorney: "", adLitemAppointed: false, adLitemName: "",
+    totalDueAtFiling: totalDue, delinquencyYears: [], oldestDelinquencyYear: oldestYr,
+    taxBreakdown: [], abstractorFee: 350, defCount,
+    citationByPostingRequested: cbp, rule106SubstituteService: false,
+    priorRelatedSuits: priorSuit ? ["See petition"] : [],
+    estateHeirSituation: false, continuanceCount: 0, trialResetCount: 0,
+    serviceIssues: cbp ? "Citation by posting requested — address unknown" : "",
+    nextHearingDate: "", keyDocketEvents: [],
+    orderOfSaleIssued: false, orderOfSaleDate: "", noticeOfJudgmentDate: "",
+    complexity, complexityReason: `Auto-assessed: ${defCount} defendant(s), ${delinqYrs}yr delinquent, CBP:${cbp}, prior:${priorSuit}`,
+    similarToBenchmark: complexity==="low" ? "TX-25-00492 (Hedge)" : complexity==="high" ? "TX-23-00042 (Williams)" : "TX-25-01777 (Stewart)",
+    benchmarkNotes: "Quick-add entry — upload petition PDF for full extraction",
+    aiNotes: "Quick-added without AI extraction. Key fields entered manually."
+  };
+
+  const cobj = {
+    id: Date.now().toString(), city: selCity, extracted: ex,
+    memo: `Quick-add entry for ${caseNum}. ${defendant} — ${address}. Filed ${filedDate}. Total due: $${totalDue.toLocaleString()}. Complexity: ${complexity.toUpperCase()}. Upload the petition PDF and re-analyze for full AI extraction and intelligence memo.`,
+    uploadedAt: new Date().toISOString(), fileNames: [], inputMethod: "quick"
+  };
+  cases.push(cobj); save(); renderList(); selectCase(cobj.id);
+  // Clear form
+  ["q-casenum","q-defendant","q-address","q-court","q-acct","q-total","q-oldest"].forEach(id => {
+    const el = document.getElementById(id); if(el) el.value="";
+  });
+  document.getElementById("q-filed").value = "";
+  document.getElementById("q-defcount").value = "1";
+  document.getElementById("q-add-btn").disabled = true;
+}
+
+function saveKey(val) {
+  if (val.trim()) {
+    localStorage.setItem("tfi_apikey", val.trim());
+    document.getElementById("key-status").textContent = "✓ Saved";
+    document.getElementById("key-status").style.color = "var(--green)";
+  }
+}
+function clearKey() {
+  localStorage.removeItem("tfi_apikey");
+  document.getElementById("api-key-input").value = "";
+  document.getElementById("key-status").textContent = "";
+}
+function loadKey() {
+  const k = localStorage.getItem("tfi_apikey");
+  if (k) {
+    document.getElementById("api-key-input").value = k;
+    document.getElementById("key-status").textContent = "✓ Saved";
+    document.getElementById("key-status").style.color = "var(--green)";
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// PLATFORM API INTEGRATION
+// ══════════════════════════════════════════════════════════════
+const PLATFORM_API = "http://localhost:8000/api";
+
+function safeArr(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  try { return JSON.parse(val); } catch(e) { return []; }
+}
+
+function platformToV3(pc, events) {
+  return {
+    id: pc.case_number + "_platform",
+    city: pc.city || "dallas",
+    memo: pc.ai_memo || "",
+    uploadedAt: pc.last_agent_run || pc.updated_at || new Date().toISOString(),
+    fileNames: ["[Platform Agent — " + (pc.last_agent_run ? new Date(pc.last_agent_run).toLocaleDateString() : "synced") + "]"],
+    extracted: {
+      caseNumber:               pc.case_number || "",
+      court:                    pc.court || "",
+      judicialOfficer:          pc.judicial_officer || "",
+      filedDate:                pc.filed_date || "",
+      judgmentDate:             pc.judgment_date || "",
+      judgmentType:             pc.judgment_type || "none",
+      caseStatus:               pc.case_status || "open",
+      defendant:                pc.defendant || "",
+      allDefendants:            safeArr(pc.all_defendants),
+      propertyAddress:          pc.property_address || "",
+      propertyLegalDescription: pc.property_legal || "",
+      accountNumber:            pc.account_number || "",
+      lawFirm:                  pc.law_firm || "LGBS (Linebarger)",
+      plaintiffAttorney:        pc.plaintiff_attorney || "",
+      totalDueAtFiling:         pc.total_due_filing || 0,
+      delinquencyYears:         safeArr(pc.delinquency_years),
+      oldestDelinquencyYear:    pc.oldest_delinquency_year || 0,
+      taxBreakdown:             safeArr(pc.tax_breakdown),
+      abstractorFee:            350,
+      defCount:                 pc.def_count || 1,
+      citationByPostingRequested: !!pc.cbp_requested,
+      rule106SubstituteService: !!pc.rule106,
+      priorRelatedSuits:        safeArr(pc.prior_suits),
+      estateHeirSituation:      !!pc.estate_heir,
+      continuanceCount:         pc.continuance_count || 0,
+      trialResetCount:          pc.trial_reset_count || 0,
+      serviceIssues:            pc.service_issues || "",
+      nextHearingDate:          pc.next_hearing_date || "",
+      orderOfSaleIssued:        !!pc.oos_issued,
+      orderOfSaleDate:          pc.oos_date || "",
+      noticeOfJudgmentDate:     "",
+      complexity:               pc.complexity || "medium",
+      complexityReason:         pc.complexity_reason || "",
+      similarToBenchmark:       pc.similar_benchmark || "",
+      benchmarkNotes:           "",
+      aiNotes:                  pc.ai_memo || "",
+      keyDocketEvents:          (events||[]).map(e => ({
+        date:  e.event_date || "",
+        event: e.description || "",
+        type:  e.event_type || "filing",
+        isNew: !!e.is_new
+      })),
+    }
+  };
+}
+
+async function syncFromPlatform() {
+  const btn   = document.getElementById("sync-btn");
+  const status = document.getElementById("platform-status");
+  if (btn) { btn.textContent = "Syncing..."; btn.disabled = true; }
+
+  try {
+    const [cr, sr] = await Promise.all([
+      fetch(PLATFORM_API + "/cases", {mode:'cors'}),
+      fetch(PLATFORM_API + "/stats", {mode:'cors'}),
+    ]);
+    if (!cr.ok) throw new Error("API offline");
+
+    const platformCases = await cr.json();
+    const stats = await sr.json();
+
+    // Update stats
+    const set = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val!==undefined?val:"—"; };
+    set("s-total",  stats.total_cases);
+    set("s-oos",    stats.oos_issued);
+    set("s-judged", stats.judgment_entered);
+    set("s-pulled", stats.sale_pulled);
+    set("hct", (stats.total_cases||0) + " cases");
+    if (stats.last_agent_run) {
+      const d = new Date(stats.last_agent_run);
+      set("last-run-txt", "Last run: " + d.toLocaleDateString("en-US",{month:"short",day:"numeric"}) + " " + d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}));
+    }
+
+    // Merge platform cases into V3 cases array (don't duplicate)
+    let added = 0, updated = 0;
+    for (const pc of platformCases) {
+      const evResp = await fetch(PLATFORM_API + "/events/" + pc.case_number, {mode:'cors'}).catch(()=>({ok:false}));
+      const events = evResp.ok ? await evResp.json() : [];
+      const v3case = platformToV3(pc, events);
+      const existing = cases.findIndex(c => c.extracted?.caseNumber === pc.case_number);
+      if (existing >= 0) { cases[existing] = v3case; updated++; }
+      else { cases.push(v3case); added++; }
+    }
+
+    save();
+    renderList();
+    updateHdr();
+    if (status) status.textContent = `${platformCases.length} cases loaded · ${added} new · ${updated} updated`;
+    if (btn) { btn.textContent = "✓ Synced"; setTimeout(()=>{btn.textContent="↺ Sync";btn.disabled=false;}, 2500); }
+
+    // Select first case if nothing active
+    if (cases.length && !activeId) selectCase(cases[0].id);
+
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:var(--red)">⚠ Cannot connect · <code style="font-family:var(--FM);font-size:10px">python3 backend/main.py</code></span>`;
+    if (btn) { btn.textContent = "↺ Sync"; btn.disabled = false; }
+  }
+}
+
+async function triggerAgent() {
+  try {
+    await fetch(PLATFORM_API + "/agent/run", {method:"POST"});
+    alert("Agent queued.\n\nRun in Terminal:\n  python3 agent/agent.py\n\nDashboard updates automatically after the run.");
+  } catch(e) {
+    alert("Cannot reach API.\nStart backend first: python3 backend/main.py");
+  }
+}
+
+async function loadAgentStatus() {
+  try {
+    const r = await fetch(PLATFORM_API + "/agent/runs?limit=1");
+    const runs = await r.json();
+    const dot = document.getElementById("agent-dot");
+    const txt = document.getElementById("agent-txt");
+    if (!runs.length) return;
+    const run = runs[0];
+    if (dot) dot.style.background = run.status==="running" ? "#e8c060" : run.status==="failed" ? "#e08080" : "#6ec890";
+    if (run.status==="running" && dot) dot.style.animation = "apulse 1s ease-in-out infinite";
+    if (txt) txt.textContent = run.status==="running" ? `Running run #${run.id}...` : `Last: ${run.cases_processed||0} cases`;
+  } catch(e) {}
+}
+
+
+function init() {
+  renderCities();
+  renderCaseLog();
+  renderList();
+  initUpload();
+  loadKey();
+  document.getElementById("ptxt").addEventListener("input", checkReady);
+  if (cases.length) selectCase(cases[cases.length-1].id);
+  // Auto-sync from platform on load
+  syncFromPlatform();
+  // Keep in sync
+  setInterval(syncFromPlatform, 30000);
+  setInterval(loadAgentStatus, 10000);
+}
+
+// ═══════════════════════════════════════════
+// MODE TOGGLE
+// ═══════════════════════════════════════════
+function setMode(m) {
+  mode = m;
+  ["upload","paste","both","quick"].forEach(x => {
+    const btn = document.getElementById("m-"+x);
+    if (btn) btn.classList.toggle("on", x === m);
+  });
+  document.getElementById("p-upload").style.display = (m==="upload"||m==="both") ? "block" : "none";
+  document.getElementById("p-paste").style.display  = (m==="paste" ||m==="both") ? "block" : "none";
+  document.getElementById("p-quick").style.display  = (m==="quick") ? "block" : "none";
+  const abtn = document.getElementById("abtn");
+  if (abtn) abtn.style.display = (m==="quick") ? "none" : "block";
+  checkReady();
+}
+
+function checkReady() {
+  const hasPaste = (document.getElementById("ptxt").value||"").trim().length > 20;
+  const hasFiles = files.length > 0;
+  let ready = false;
+  if (mode==="upload") ready = hasFiles;
+  if (mode==="paste")  ready = hasPaste;
+  if (mode==="both")   ready = hasFiles || hasPaste;
+  document.getElementById("abtn").disabled = !ready;
+}
+
+// ═══════════════════════════════════════════
+// UPLOAD
+// ═══════════════════════════════════════════
+function initUpload() {
+  const zone = document.getElementById("uzn");
+  const inp  = document.getElementById("fin");
+  inp.addEventListener("change", e => addFiles(Array.from(e.target.files)));
+  zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("dov"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("dov"));
+  zone.addEventListener("drop", e => {
+    e.preventDefault(); zone.classList.remove("dov");
+    addFiles(Array.from(e.dataTransfer.files));
+  });
+}
+
+function addFiles(newFiles) {
+  files = [...files, ...newFiles];
+  renderFiles();
+  checkReady();
+}
+
+function removeFile(i) {
+  files.splice(i,1);
+  renderFiles();
+  checkReady();
+}
+
+function renderFiles() {
+  document.getElementById("dlist").innerHTML = files.map((f,i) =>
+    `<div class="dchip">
+      <span style="font-size:16px">${f.type.includes("pdf")?"&#128196;":"&#128247;"}</span>
+      <span class="dname">${f.name}</span>
+      <span class="dst">Ready</span>
+      <button style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:13px;padding:0 2px" onclick="removeFile(${i})">&#215;</button>
+    </div>`
+  ).join("");
+}
+
+function readFile(file) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(",")[1];
+      let mt = file.type || "";
+      if (!mt || mt === "application/octet-stream") {
+        if (file.name.endsWith(".pdf")) mt = "application/pdf";
+        else if (file.name.endsWith(".png")) mt = "image/png";
+        else if (/\.jpe?g$/.test(file.name)) mt = "image/jpeg";
+        else mt = "text/plain";
+      }
+      res({ base64, mt });
+    };
+    reader.onerror = rej;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ═══════════════════════════════════════════
+// MAIN ANALYZE — handles all three modes
+// ═══════════════════════════════════════════
+async function doAnalyze() {
+  const paste = (document.getElementById("ptxt").value||"").trim();
+  const hasFiles = files.length > 0;
+  const hasPaste = paste.length > 20;
+
+  if (!hasFiles && !hasPaste) { alert("Please upload a file or paste text first."); return; }
+
+  showLoading(["Reading input...","Extracting case data...","Matching benchmarks...","Writing intelligence memo...","Done"]);
+
+  try {
+    // Build message content
+    const content = [];
+
+    // Add files if present
+    if (hasFiles) {
+      stepTo(0);
+      const fdata = await Promise.all(files.map(readFile));
+      for (let i = 0; i < files.length; i++) {
+        const {base64, mt} = fdata[i];
+        if (mt === "application/pdf") {
+          content.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:base64}});
+        } else if (mt.startsWith("image/")) {
+          content.push({type:"image", source:{type:"base64", media_type:mt, data:base64}});
+        } else {
+          // text file — decode and add as text
+          const txt = atob(base64);
+          content.push({type:"text", text:"FILE CONTENTS ("+files[i].name+"):\n"+txt});
+        }
+      }
+    }
+
+    // Add pasted text if present
+    if (hasPaste) {
+      content.push({type:"text", text:"PASTED CASE TEXT (docket / petition):\n" + paste});
+    }
+
+    // Instruction at end
+    content.push({type:"text", text:"Extract all case data from the above input and return the JSON object as specified."});
+
+    // ── EXTRACTION CALL ──
+    stepTo(1);
+    const sysPrompt = `You are an expert Texas tax foreclosure case analyst for PC Peak Development.
+
+CONFIRMED BENCHMARK CASES for calibration (all Dallas County, LGBS, Judge Ginsberg):
+- TX-23-00042 (Williams/Motley, HIGH complexity): 8 defendants, address unknown at filing (CBP), estate/heir, taxes since 2002, 3 continuances, 4 resets, ad litem. RESULT: 37 months filing to judgment, 89 days judgment to OOS. CONFIRMED COMPLETE.
+- TX-25-00492 (Hedge, LOW complexity): 1 defendant, Rule 106 needed, 1 continuance, default judgment, taxes 2021-2024. RESULT: 14 months filing to judgment. OOS ~Aug 2026.
+- TX-25-01777 (Stewart, LOW complexity): 1 defendant, served in 43 days (fastest), no complications, trial 07/20/2026. PENDING.
+
+Extract ALL case information from the provided input and return ONLY valid JSON with no markdown, no backticks, no explanation:
+{"caseNumber":"","court":"","judicialOfficer":"","filedDate":"YYYY-MM-DD","judgmentDate":"","judgmentType":"default|nonjury|none","caseStatus":"open|closed","defendant":"","allDefendants":[],"plaintiffs":[],"propertyAddress":"","propertyLegalDescription":"","accountNumber":"","lawFirm":"","plaintiffAttorney":"","defendantAttorney":"","adLitemAppointed":false,"adLitemName":"","totalDueAtFiling":0,"delinquencyYears":[],"oldestDelinquencyYear":0,"taxBreakdown":[{"entity":"","taxAmt":0,"penaltyInterest":0,"total":0}],"abstractorFee":0,"defCount":1,"citationByPostingRequested":false,"rule106SubstituteService":false,"priorRelatedSuits":[],"estateHeirSituation":false,"continuanceCount":0,"trialResetCount":0,"serviceIssues":"","nextHearingDate":"YYYY-MM-DD","keyDocketEvents":[{"date":"YYYY-MM-DD","event":"","type":"filing|service|hearing|judgment|oos|motion"}],"orderOfSaleIssued":false,"orderOfSaleDate":"","noticeOfJudgmentDate":"","complexity":"low|medium|high","complexityReason":"","similarToBenchmark":"","benchmarkNotes":"","aiNotes":""}
+
+Complexity rules: low=1-2 defs+known address+taxes<8yrs+no estate+no prior suits; medium=3-4 defs OR service issues OR 8-15yr OR 1 prior suit; high=5+ defs OR estate/heir OR 15+yr OR multiple prior suits OR address unknown at filing.`;
+
+    const apiKey = localStorage.getItem("tfi_apikey") || "";
+    if (!apiKey) { hideLoading(); alert("Please enter your Anthropic API key in the top of the left panel first.\n\nGet one free at console.anthropic.com"); return; }
+    const r1 = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true"},
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 4000,
+        system: sysPrompt,
+        messages: [{role:"user", content}]
+      })
+    });
+    const d1 = await r1.json();
+    if (d1.error) throw new Error("API error: " + d1.error.message);
+    const raw = (d1.content||[]).find(b => b.type==="text")?.text || "";
+    let ex;
+    try {
+      ex = JSON.parse(raw.replace(/```json|```/g,"").trim());
+    } catch(e) {
+      // Try to extract JSON from response
+      const m = raw.match(/\{[\s\S]+\}/);
+      if (m) ex = JSON.parse(m[0]);
+      else throw new Error("Could not parse AI response. Raw: " + raw.slice(0,200));
+    }
+
+    // ── MEMO CALL ──
+    stepTo(3);
+    const city = CITIES[selCity];
+    const r2 = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true"},
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 900,
+        messages: [{role:"user", content: `You are a Texas real estate acquisition analyst for PC Peak Development. Write a 3-paragraph intelligence memo in plain prose (no headers, no markdown, no bullet points) covering: (1) key timeline risks and complexity drivers compared to known benchmarks, (2) projected OOS window for ${city.n}, key docket watch dates, and what would change the projection, (3) acquisition opportunity assessment with specific recommended next steps.
+
+Confirmed Dallas County LGBS benchmarks (same firm + Judge Ginsberg across all):
+- TX-23-00042 (Williams, HIGH, 8 defendants, estate): 37 months filing to judgment, 89 days judgment to OOS. CONFIRMED COMPLETE.
+- TX-25-00492 (Hedge, LOW, 1 defendant, default): 14 months filing to judgment. OOS ~Aug 2026.
+- TX-25-01777 (Stewart, LOW, 1 defendant, 43-day service): Trial 07/20/2026. No complications.
+
+This case: ${JSON.stringify(ex)}
+City: ${city.n} | Complexity: ${ex.complexity||"medium"} | Benchmark range: ${JSON.stringify(city.ftj[ex.complexity||"medium"])} months filing-to-judgment, ${city.joos[ex.complexity||"medium"]} days judgment-to-OOS
+
+Be direct and specific. Reference which benchmark this most resembles and why.`}]
+      })
+    });
+    const d2 = await r2.json();
+    const memo = (d2.content||[]).find(b => b.type==="text")?.text || "";
+
+    stepTo(4);
+    const cobj = {
+      id: Date.now().toString(),
+      city: selCity,
+      extracted: ex,
+      memo,
+      uploadedAt: new Date().toISOString(),
+      fileNames: files.map(f=>f.name),
+      inputMethod: hasFiles && hasPaste ? "both" : hasFiles ? "file" : "paste"
+    };
+    cases.push(cobj);
+    save();
+    // Reset inputs
+    files = [];
+    renderFiles();
+    document.getElementById("ptxt").value = "";
+    document.getElementById("fin").value = "";
+    checkReady();
+    renderList();
+    selectCase(cobj.id);
+    hideLoading();
+
+  } catch(err) {
+    hideLoading();
+    alert("Analysis error: " + err.message);
+    console.error(err);
+  }
+}
+
+// ═══════════════════════════════════════════
+// PROJECTION ENGINE
+// ═══════════════════════════════════════════
+function project(cobj) {
+  const city = CITIES[cobj.city] || CITIES.dallas;
+  const ex = cobj.extracted;
+  const complexity = ex.complexity || "medium";
+  const ranges = city.ftj[complexity];
+  const oosDays = city.joos[complexity];
+  const now = new Date();
+
+  const filed  = ex.filedDate    ? new Date(ex.filedDate)    : null;
+  const judged = ex.judgmentDate ? new Date(ex.judgmentDate) : null;
+  const nextH  = ex.nextHearingDate ? new Date(ex.nextHearingDate) : null;
+  const trialAnchor = nextH && nextH > now ? nextH : null;
+
+  let estJudgment, projOOS, projAuction, appealClose;
+  let fjMonths = null, daysPostJ = null, confidence = 0;
+
+  if (judged) {
+    estJudgment = judged;
+    fjMonths = filed ? Math.round((judged-filed)/2592e6) : null;
+    projOOS = new Date(judged.getTime() + oosDays*864e5);
+    appealClose = new Date(judged.getTime() + 31*864e5);
+    daysPostJ = Math.round((now-judged)/864e5);
+    confidence = ex.orderOfSaleIssued ? 100 : 85;
+
+  } else if (trialAnchor) {
+    // Trial is scheduled — anchor projection to it
+    estJudgment = new Date(trialAnchor.getTime() + 7*864e5);
+    fjMonths = filed ? Math.round((estJudgment-filed)/2592e6) : null;
+    projOOS = new Date(estJudgment.getTime() + oosDays*864e5);
+    appealClose = new Date(estJudgment.getTime() + 31*864e5);
+    confidence = complexity==="low" ? 78 : complexity==="medium" ? 62 : 48;
+
+  } else if (filed) {
+    // Use confirmed Dallas benchmarks for same city+complexity to refine mid estimate
+    const dbench = KNOWN.filter(k => k.city===cobj.city && k.complexity===complexity && k.filingToJudgmentMonths);
+    const benchMid = dbench.length ? Math.round(dbench.reduce((s,k)=>s+k.filingToJudgmentMonths,0)/dbench.length) : null;
+    const mid = benchMid || Math.round((ranges[0]+ranges[1])/2);
+    estJudgment = new Date(filed.getTime() + mid*30*864e5);
+    fjMonths = mid;
+    projOOS = new Date(estJudgment.getTime() + oosDays*864e5);
+    appealClose = new Date(estJudgment.getTime() + 31*864e5);
+    confidence = complexity==="low" ? 65 : complexity==="medium" ? 50 : 35;
+  }
+
+  if (projOOS) {
+    const aMid = Math.round((city.ota[0]+city.ota[1])/2);
+    projAuction = new Date(projOOS.getTime() + aMid*864e5);
+  }
+
+  const daysToOOS = projOOS ? Math.round((projOOS-now)/864e5) : null;
+  const moActive  = filed   ? Math.round((now-filed)/2592e6)    : null;
+  const totalMo   = (fjMonths||0) + oosDays/30;
+
+  return {city, complexity, ranges, oosDays, filed, judged, estJudgment,
+          projOOS, projAuction, appealClose, fjMonths, daysPostJ, daysToOOS,
+          moActive, confidence, totalMo, trialAnchor,
+          phases:{svc:(fjMonths||0)*.45, trial:(fjMonths||0)*.55, post:oosDays/30}};
+}
+
+// ═══════════════════════════════════════════
+// RISK FLAGS
+// ═══════════════════════════════════════════
+function flags(ex) {
+  const f = [], def = parseInt(ex.defCount)||1;
+  if (def>=5)      f.push({l:"danger", t:`${def} defendants`,        n:"One hard-to-serve defendant stalls the whole case"});
+  else if (def>=2) f.push({l:"warn",   t:`${def} defendants`,        n:"Each must be independently served"});
+  else             f.push({l:"ok",     t:"1 defendant",              n:"Clean single-party — fastest possible path"});
+  if (ex.citationByPostingRequested)
+    f.push({l:"danger", t:"Citation by posting at filing", n:"Address unknown from day one — adds 3-6 months"});
+  if (ex.rule106SubstituteService)
+    f.push({l:"warn", t:"Rule 106 substitute service",    n:"Court order required — adds 2-4 months"});
+  if (ex.adLitemAppointed)
+    f.push({l:"warn", t:`Ad litem: ${ex.adLitemName||"appointed"}`, n:"Procedural delay per unserved defendant"});
+  if (ex.priorRelatedSuits?.length)
+    f.push({l:"danger", t:`${ex.priorRelatedSuits.length} prior suit(s)`, n:ex.priorRelatedSuits.join(", ")});
+  if (ex.estateHeirSituation)
+    f.push({l:"danger", t:"Estate / heir situation", n:"Deceased owner = fragmented title, multiple ad litems"});
+  const yr = ex.oldestDelinquencyYear ? (new Date().getFullYear()-ex.oldestDelinquencyYear) : (ex.delinquencyYears?.length||0);
+  if (yr>=15)      f.push({l:"danger", t:`${yr}+ years delinquent`, n:"Strong signal of deceased/absent owner"});
+  else if (yr>=8)  f.push({l:"warn",   t:`${yr} years delinquent`,  n:"May indicate ownership complications"});
+  else if (yr>0)   f.push({l:"ok",     t:`${yr} years delinquent`,  n:"Recent — likely living, locatable owner"});
+  if (ex.continuanceCount>=3) f.push({l:"danger", t:`${ex.continuanceCount} continuances`, n:"Repeated resets signal entrenched issues"});
+  else if (ex.continuanceCount>=1) f.push({l:"warn", t:`${ex.continuanceCount} continuance(s)`, n:"Each adds 2-6 months"});
+  if (ex.nextHearingDate && !ex.judgmentDate) {
+    const nd = new Date(ex.nextHearingDate);
+    if (nd > new Date()) f.push({l:"ok", t:"Trial scheduled: "+fmt(ex.nextHearingDate), n:"Anchors projection — raises confidence"});
+  }
+  if (ex.judgmentType==="default") f.push({l:"ok",   t:"Default judgment",     n:"No answer filed — fastest OOS path"});
+  else if (ex.judgmentType==="nonjury") f.push({l:"warn", t:"Non-jury / contested", n:"Full trial required"});
+  return f;
+}
+
+// ═══════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════
+function fmt(d)  { if(!d) return "—"; return new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
+function fmtC(n) { if(!n&&n!==0) return "—"; return "$"+parseFloat(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+// ═══════════════════════════════════════════
+// RENDER CASE DETAIL
+// ═══════════════════════════════════════════
+function selectCase(id) {
+  activeId = id;
+  const c = cases.find(x => x.id===id);
+  if (!c) return;
+  document.getElementById("empstate").style.display = "none";
+  const det = document.getElementById("cdet");
+  det.style.display = "flex";
+  renderDetail(c);
+  document.querySelectorAll(".cchip").forEach(el => el.classList.toggle("on", el.dataset.id===id));
+}
+
+function renderDetail(c) {
+  const ex = c.extracted, pr = project(c), fl = flags(ex), city = pr.city;
+  const hasJ = !!ex.judgmentDate, oosIssued = ex.orderOfSaleIssued;
+  const cbdg = {low:"bdg-green",medium:"bdg-amber",high:"bdg-red"}[ex.complexity||"medium"];
+  const dNote = pr.daysToOOS!==null ? (pr.daysToOOS>0 ? `~${pr.daysToOOS} days away` : "Past projected — check docket") : "";
+  const statusBdg = oosIssued ? `<span class="bdg bdg-green">OOS Issued</span>` :
+                    hasJ      ? `<span class="bdg bdg-amber">OOS Pending</span>` :
+                    ex.nextHearingDate ? `<span class="bdg bdg-blue">Trial Scheduled</span>` :
+                                `<span class="bdg bdg-blue">Pre-Judgment</span>`;
+
+  // Find closest benchmark
+  const closest = KNOWN.find(k => k.complexity===(ex.complexity||"medium") && Math.abs((k.defCount||1)-(parseInt(ex.defCount)||1))<=2)
+               || KNOWN.find(k => k.complexity===(ex.complexity||"medium"))
+               || KNOWN[1];
+
+  // Projection box
+  let projHTML = "";
+  if (pr.projOOS) {
+    const anchorNote = pr.trialAnchor ? `Trial scheduled ${fmt(ex.nextHearingDate)} anchors this estimate. ` : "";
+    projHTML = `
+      <div class="proj">
+        <div class="proj-lbl">&#128197; Projected Order of Sale &mdash; ${city.n}</div>
+        <div class="proj-dt">${fmt(pr.projOOS)}</div>
+        <div class="proj-nt">${dNote?`<strong>${dNote}</strong> &middot; `:""}${anchorNote}${city.n} ${ex.complexity||"medium"}-complexity: ${pr.oosDays}-day post-judgment window. ${pr.appealClose&&hasJ?`Appeal window ~${fmt(pr.appealClose)}.`:""} ${!hasJ?`Judgment not yet entered — projected ~${pr.fjMonths} months from filing (${pr.ranges[0]}–${pr.ranges[1]} mo range).`:""} ${pr.projAuction?`Auction est. ~${fmt(pr.projAuction)} (${city.auction}).`:""}</div>
+        <div class="proj-cf"><div class="cfbar"><div class="cffil" style="width:${pr.confidence}%"></div></div>${pr.confidence}% confidence &middot; ${pr.trialAnchor?"Trial anchored":hasJ?"Judgment confirmed":"Filing date estimate"}</div>
+      </div>
+      <div class="mbox">
+        <div class="mbox-t">&#128202; How this was calculated</div>
+        <div class="mrow"><span class="mkey">Closest benchmark</span><span class="mval"><strong>${closest.caseNumber}</strong> &mdash; ${closest.description}</span></div>
+        <div class="mrow"><span class="mkey">Benchmark outcome</span><span class="mval">${closest.filingToJudgmentMonths?closest.filingToJudgmentMonths+" mo to judgment":"Pending"} &middot; ${closest.judgmentToOOSDays?closest.judgmentToOOSDays+" days J&rarr;OOS":"OOS pending"}</span></div>
+        <div class="mrow"><span class="mkey">Complexity match</span><span class="mval">This case: <strong>${ex.complexity||"medium"}</strong> / Benchmark: <strong>${closest.complexity}</strong></span></div>
+        <div class="mrow"><span class="mkey">${city.n} range</span><span class="mval">${pr.ranges[0]}–${pr.ranges[1]} mo filing&rarr;judgment &middot; ${pr.oosDays} days J&rarr;OOS</span></div>
+        ${pr.trialAnchor?`<div class="mrow"><span class="mkey">Trial anchor boost</span><span class="mval">${fmt(ex.nextHearingDate)} scheduled &mdash; raises confidence from ~50% to ${pr.confidence}%</span></div>`:""}
+        <div class="mrow"><span class="mkey">Key caveat</span><span class="mval">Any single continuance or bankruptcy shifts OOS by 3-6 months. Only ${KNOWN.filter(k=>k.stage==="oos_issued").length} fully confirmed Dallas case(s) in system.</span></div>
+      </div>`;
+  }
+
+  // Timeline
+  const evts = [];
+  if (ex.filedDate) evts.push({d:ex.filedDate, e:"Case filed — original petition", n:`${ex.caseNumber} &middot; ${ex.defCount||1} defendant(s) &middot; ${fmtC(ex.totalDueAtFiling)}`, dot:"d-gray", src:"document"});
+  (ex.keyDocketEvents||[]).forEach(ev => {
+    const dm = {filing:"d-gray",service:"d-blue",hearing:"d-amber",judgment:"d-green",oos:"d-green",motion:"d-purple"};
+    evts.push({d:ev.date, e:ev.event, n:"", dot:dm[ev.type]||"d-gray", src:"extracted"});
+  });
+  if (hasJ && !(ex.keyDocketEvents||[]).some(e=>e.type==="judgment"))
+    evts.push({d:ex.judgmentDate, e:`Judgment entered (${ex.judgmentType==="default"?"default":"non-jury"})`, n:"Awarded to taxing entities", dot:"d-green", src:"document"});
+  if (ex.noticeOfJudgmentDate)
+    evts.push({d:ex.noticeOfJudgmentDate, e:"Notice of judgment mailed", n:"30-day appeal window begins", dot:"d-blue", src:"document"});
+  if (ex.nextHearingDate && !hasJ)
+    evts.push({d:ex.nextHearingDate, e:"Non-jury trial scheduled", n:"Judgment expected at or shortly after", dot:"d-amber", src:"document"});
+  if (pr.appealClose && hasJ && !oosIssued)
+    evts.push({d:pr.appealClose.toISOString().split("T")[0], e:"Appeal window closes (est.)", n:"OOS process accelerates", dot:"d-amber", src:"projected"});
+  if (oosIssued && ex.orderOfSaleDate)
+    evts.push({d:ex.orderOfSaleDate, e:"Order of Sale issued", n:"Directed to constable", dot:"d-green", src:"document"});
+  else if (pr.projOOS)
+    evts.push({d:pr.projOOS.toISOString().split("T")[0], e:"Order of Sale (projected)", n:`${pr.oosDays}-day ${city.n} benchmark &middot; ${dNote}`, dot:"d-proj", src:"projected"});
+  if (pr.projAuction && !oosIssued)
+    evts.push({d:pr.projAuction.toISOString().split("T")[0], e:"Auction (estimated)", n:`${city.auction} &middot; ${city.ota[0]}-${city.ota[1]} days post-OOS`, dot:"d-proj", src:"projected"});
+
+  evts.sort((a,b) => (a.d||"") < (b.d||"") ? -1 : 1);
+
+  const srcL = {document:"&#128196; from document", extracted:"&#128202; extracted", projected:"&#8943; projected"};
+  const tlHTML = evts.map(ev => `
+    <div class="tli">
+      <span class="tld ${ev.dot}"></span>
+      <div>
+        <div class="tldt">${ev.d ? fmt(ev.d) : "Estimated"}</div>
+        <div class="tlev">${ev.e}</div>
+        ${ev.n ? `<div class="tlnt">${ev.n}</div>` : ""}
+        <div class="tlsc">${srcL[ev.src]||""}</div>
+      </div>
+    </div>`).join("");
+
+  // Phase bars
+  const phaseHTML = [
+    {n:"Service phase",    v:pr.phases.svc,   c:"#2a5a9c"},
+    {n:"Trial / resets",   v:pr.phases.trial, c:"#c07820"},
+    {n:"Post-judgment",    v:pr.phases.post,  c:"#2a7a3a"}
+  ].map(p => `
+    <div class="prow">
+      <span class="pname">${p.n}</span>
+      <div class="ptrk"><div class="pfil" style="width:${pr.totalMo>0?Math.min(100,p.v/pr.totalMo*100).toFixed(1):0}%;background:${p.c}"></div></div>
+      <span class="pval">~${p.v.toFixed(1)} mo</span>
+    </div>`).join("");
+
+  // Flags
+  const flagHTML = fl.map(f => `
+    <div class="ritem">
+      <div class="rico r-${f.l}">${{ok:"✓",warn:"!",danger:"✕"}[f.l]}</div>
+      <div><div class="rtxt">${f.t}</div><div class="rnt">${f.n}</div></div>
+    </div>`).join("");
+
+  // Tax table
+  const taxRows = (ex.taxBreakdown||[]).map(r => `
+    <tr><td>${r.entity}</td>
+    <td style="text-align:right;font-family:var(--FM)">${fmtC(r.taxAmt)}</td>
+    <td style="text-align:right;font-family:var(--FM)">${fmtC(r.penaltyInterest)}</td>
+    <td style="text-align:right;font-family:var(--FM);font-weight:600">${fmtC(r.total)}</td></tr>`).join("");
+
+  // City comparison
+  const cityRows = Object.entries(CITIES).map(([k,ct]) => {
+    const r = ct.ftj[ex.complexity||"medium"], oos = ct.joos[ex.complexity||"medium"];
+    return `<tr class="${k===c.city?"ca":""}">
+      <td><strong>${ct.n}</strong>${k===c.city?" &#8592;":""}</td>
+      <td><span class="bdg ${SBDG[ct.speed]}" style="font-size:9px">${ct.speed}</span></td>
+      <td>${r[0]}–${r[1]} mo</td><td>${oos} days</td></tr>`;
+  }).join("");
+
+  // Known cases
+  const knownHTML = KNOWN.map(k => {
+    const si = STAGE[k.stage]||{lbl:k.stage,cls:"bdg-blue"};
+    const isMatch = k.complexity===(ex.complexity||"medium") && Math.abs((k.defCount||1)-(parseInt(ex.defCount)||1))<=2;
+    return `<div class="kcase" style="${isMatch?"border-color:var(--accent2);background:var(--blue-bg)":""}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <div class="kcase-t" style="margin-bottom:0">${k.caseNumber} &mdash; ${k.description}</div>
+        <div style="display:flex;gap:4px"><span class="bdg ${si.cls}" style="font-size:9px">${si.lbl}</span>${isMatch?'<span class="bdg bdg-purple" style="font-size:9px">&#128269; closest match</span>':""}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:11px;margin-bottom:8px">
+        <div><div style="color:var(--text3);font-size:10px">Complexity</div><div style="font-weight:600">${k.complexity.toUpperCase()}</div></div>
+        <div><div style="color:var(--text3);font-size:10px">Defendants</div><div style="font-weight:600">${k.defCount}</div></div>
+        <div><div style="color:var(--text3);font-size:10px">Filing&rarr;Judgment</div><div style="font-weight:600">${k.filingToJudgmentMonths?k.filingToJudgmentMonths+" mo":"Pending"}</div></div>
+        <div><div style="color:var(--text3);font-size:10px">Judgment&rarr;OOS</div><div style="font-weight:600">${k.judgmentToOOSDays?k.judgmentToOOSDays+" days":k.stage==="pre_judgment"?"No judgment":"Pending"}</div></div>
+      </div>
+      ${k.nextHearingDate?`<div style="font-size:11px;color:var(--amber);margin-bottom:6px">&#128197; Trial: ${fmt(k.nextHearingDate)} &middot; Served in ${k.daysToServe} days</div>`:""}
+      <div style="font-size:11px;color:var(--text3);margin-bottom:4px">${(k.keyFactors||[]).slice(0,4).join(" &middot; ")}</div>
+      <div style="font-size:11px;font-weight:500;color:${k.stage==="oos_issued"?"var(--green)":k.stage==="judgment_entered"?"var(--amber)":"var(--blue)"}">${k.outcome}</div>
+    </div>`;
+  }).join("");
+
+  // Accuracy panel
+  const accItems = [
+    {ok:!!ex.filedDate,        lbl:"Filing date",         val: ex.filedDate?fmt(ex.filedDate):"Not found — reduces accuracy"},
+    {ok:!!ex.defCount,         lbl:"Defendant count",     val: String(ex.defCount||"Not extracted")},
+    {ok:!!ex.nextHearingDate,  lbl:"Scheduled trial date",val: ex.nextHearingDate?fmt(ex.nextHearingDate):"None found — using statistical range"},
+    {ok:!!ex.judgmentDate,     lbl:"Judgment date",       val: ex.judgmentDate?fmt(ex.judgmentDate):"Not yet entered"},
+    {ok:!!ex.totalDueAtFiling, lbl:"Total due at filing", val: ex.totalDueAtFiling?fmtC(ex.totalDueAtFiling):"Upload petition PDF for detail"},
+    {ok:true,                  lbl:"Complexity",          val: (ex.complexity||"medium").toUpperCase()+" — "+pr.confidence+"% confidence"}
+  ].map(a => `<div class="acci"><span class="accck">${a.ok?"&#9989;":"&#9898;"}</span><span class="acctxt"><strong>${a.lbl}:</strong> ${a.val}</span></div>`).join("");
+
+  const inputBdg = {both:`<span class="bdg bdg-purple">PDF + Paste</span>`,file:`<span class="bdg bdg-blue">PDF Upload</span>`,paste:`<span class="bdg bdg-blue">Pasted Text</span>`}[c.inputMethod]||"";
+
+  document.getElementById("cdet").innerHTML = `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <div style="font-family:var(--FD);font-size:26px;color:var(--accent);line-height:1.1">${ex.caseNumber||"Case Analysis"}</div>
+        <div style="font-size:14px;color:var(--text2);margin-top:4px">${ex.defendant||""}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">${ex.propertyAddress||""}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          ${statusBdg}
+          <span class="bdg ${cbdg}">${(ex.complexity||"medium").toUpperCase()} complexity</span>
+          <span class="bdg bdg-blue">${city.n}</span>
+          ${inputBdg}
+          ${hasJ?`<span class="bdg ${ex.judgmentType==="default"?"bdg-green":"bdg-amber"}">${ex.judgmentType==="default"?"Default Judgment":"Non-Jury Judgment"}</span>`:""}
+        </div>
+      </div>
+      <button class="btn btn-g btn-sm" onclick="delCase('${c.id}')">&#128465; Remove</button>
+    </div>
+
+    <div>
+      <div class="tbar">
+        <button class="tb on" onclick="swTab(event,'ov')">Overview</button>
+        <button class="tb" onclick="swTab(event,'tl')">Timeline</button>
+        <button class="tb" onclick="swTab(event,'fin')">Financials</button>
+        <button class="tb" onclick="swTab(event,'risk')">Risk Flags</button>
+        <button class="tb" onclick="swTab(event,'city')">City Benchmarks</button>
+        <button class="tb" onclick="swTab(event,'known')">Known Cases</button>
+        <button class="tb" onclick="swTab(event,'ai')">AI Memo</button>
+      </div>
+
+      <div class="tp on" id="tp-ov">
+        <div class="sgrid">
+          <div class="sbox"><div class="slbl">Filed</div><div class="sval" style="font-size:16px">${fmt(ex.filedDate)}</div></div>
+          <div class="sbox"><div class="slbl">Judgment</div><div class="sval" style="font-size:16px">${hasJ?fmt(ex.judgmentDate):"Pending"}</div></div>
+          <div class="sbox"><div class="slbl">${hasJ?"Filing→Judgment":"Months Active"}</div><div class="sval">${pr.fjMonths||"—"}<span class="sunit"> mo${!hasJ?" est.":""}</span></div></div>
+          <div class="sbox"><div class="slbl">${hasJ?"Days Post-Judgment":"Est. to Judgment"}</div><div class="sval">${hasJ?(pr.daysPostJ||"—"):(pr.fjMonths||"—")}<span class="sunit"> ${hasJ?"days":"mo"}</span></div></div>
+          <div class="sbox"><div class="slbl">Total at Filing</div><div class="sval" style="font-size:16px">${fmtC(ex.totalDueAtFiling)}</div></div>
+          <div class="sbox"><div class="slbl">Defendants</div><div class="sval">${ex.defCount||1}</div></div>
+        </div>
+        ${projHTML}
+        <div class="card"><div class="chd"><div class="ct">Phase breakdown &mdash; ${city.n} ${ex.complexity||"medium"}</div></div>${phaseHTML}</div>
+        <div class="card"><div class="chd"><div class="ct">Case information</div></div>
+          <div class="igrid">
+            <div><div class="ilbl">Court</div><div class="ival">${ex.court||"—"}</div></div>
+            <div><div class="ilbl">Judicial Officer</div><div class="ival">${ex.judicialOfficer||"—"}</div></div>
+            <div><div class="ilbl">Plaintiff Attorney</div><div class="ival">${ex.plaintiffAttorney||"—"}</div></div>
+            <div><div class="ilbl">Law Firm</div><div class="ival">${ex.lawFirm||"—"}</div></div>
+            <div><div class="ilbl">Next Hearing</div><div class="ival">${ex.nextHearingDate?fmt(ex.nextHearingDate):"—"}</div></div>
+            <div><div class="ilbl">Prior Suits</div><div class="ival">${ex.priorRelatedSuits?.length?ex.priorRelatedSuits.join(", "):"None"}</div></div>
+            <div style="grid-column:1/-1"><div class="ilbl">Legal Description</div><div class="ival" style="font-size:12px;color:var(--text2)">${ex.propertyLegalDescription||"—"}</div></div>
+          </div>
+        </div>
+        ${ex.serviceIssues?`<div class="alert al-w">&#9888; <strong>Service issues:</strong> ${ex.serviceIssues}</div>`:""}
+        <div class="accpanel"><div class="acct">&#128269; Projection data quality</div>${accItems}</div>
+      </div>
+
+      <div class="tp" id="tp-tl">
+        <div class="card"><div class="chd"><div class="ct">Complete case timeline</div><div class="cs">All events &middot; Pulsing dot = projected &middot; Source labeled per event</div></div>
+          <div class="tlw">${tlHTML}</div>
+        </div>
+        <div class="alert al-i">&#8505; For the most complete timeline, use &ldquo;Both&rdquo; mode and paste the full docket text alongside the petition PDF.</div>
+      </div>
+
+      <div class="tp" id="tp-fin">
+        <div class="card"><div class="chd"><div class="ct">Delinquent tax breakdown</div><div class="cs">As of petition filing &middot; P&amp;I accrues monthly</div></div>
+          <div style="overflow-x:auto"><table class="tbl">
+            <thead><tr><th>Taxing Entity</th><th style="text-align:right">Tax Amt</th><th style="text-align:right">P &amp; I</th><th style="text-align:right">Total</th></tr></thead>
+            <tbody>${taxRows||"<tr><td colspan='4' style='text-align:center;color:var(--text3);padding:16px'>Upload petition PDF to extract tax breakdown</td></tr>"}</tbody>
+            <tfoot><tr style="background:var(--surface2);font-weight:600"><td>TOTAL AT FILING</td><td></td><td></td><td style="text-align:right;font-family:var(--FM);color:var(--accent)">${fmtC(ex.totalDueAtFiling)}</td></tr></tfoot>
+          </table></div>
+        </div>
+        <div class="alert al-w">&#9888; Total at judgment exceeds petition amount. P&amp;I continues accruing monthly.</div>
+      </div>
+
+      <div class="tp" id="tp-risk">
+        <div class="card"><div class="chd"><div class="ct">Risk &amp; complexity assessment</div><div class="cs">Auto-assessed from extracted data</div></div>${flagHTML}</div>
+        <div class="card"><div class="chd"><div class="ct">Complexity verdict</div></div>
+          <div style="font-size:13px;color:var(--text2);line-height:1.7"><span class="bdg ${cbdg}" style="margin-bottom:8px;display:inline-block">${(ex.complexity||"medium").toUpperCase()}</span><br>${ex.complexityReason||"Based on defendant count, service history, and delinquency span."}</div>
+        </div>
+        ${ex.similarToBenchmark?`<div class="alert al-s">&#128270; ${ex.similarToBenchmark} &middot; ${ex.benchmarkNotes||""}</div>`:""}
+      </div>
+
+      <div class="tp" id="tp-city">
+        <div class="card"><div class="chd"><div class="ct">City benchmarks &mdash; ${(ex.complexity||"medium")} complexity</div><div class="cs">Highlighted row = selected city</div></div>
+          <div style="overflow-x:auto"><table class="tbl">
+            <thead><tr><th>City</th><th>Speed</th><th>Filing&rarr;Judgment</th><th>Judgment&rarr;OOS</th></tr></thead>
+            <tbody>${cityRows}</tbody>
+          </table></div>
+        </div>
+        <div class="card"><div class="chd"><div class="ct">${city.n} — notes</div></div>
+          <div style="font-size:13px;color:var(--text2);line-height:1.7">${city.note}</div>
+          <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
+            <div><div class="ilbl">Law Firm</div><div class="ival">${city.firm}</div></div>
+            <div><div class="ilbl">OOS&rarr;Auction</div><div class="ival">${city.ota[0]}–${city.ota[1]} days</div></div>
+            <div><div class="ilbl">Auction Day</div><div class="ival">${city.auction}</div></div>
+          </div>
+        </div>
+        <div class="alert al-i">&#8505; Switch city in the left panel to instantly recalculate under any jurisdiction's benchmarks.</div>
+      </div>
+
+      <div class="tp" id="tp-known">
+        <div class="card"><div class="chd"><div class="ct">All confirmed benchmark cases</div><div class="cs">Every case provided — used to calibrate projections &middot; Highlighted = closest match to current case</div></div>${knownHTML}</div>
+        <div class="alert al-i">&#8505; As Stewart and Hedge OOS dates are confirmed, update KNOWN_CASES in the JS to tighten projections. The engine automatically averages confirmed cases of matching complexity.</div>
+      </div>
+
+      <div class="tp" id="tp-ai">
+        <div class="aisec"><div class="aihd"><div class="aidot"></div><span class="ailbl">AI Intelligence Memo</span></div>
+          <div class="aitxt">${c.memo||"No memo generated."}</div>
+        </div>
+        <div class="card"><div class="chd"><div class="ct">Raw extracted data</div><div class="cs">All AI-parsed fields</div></div>
+          <div style="background:var(--surface2);border-radius:var(--rs);padding:12px;font-family:var(--FM);font-size:11px;color:var(--text2);overflow-x:auto;white-space:pre-wrap;max-height:320px;overflow-y:auto">${JSON.stringify(ex,null,2)}</div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Analyzed ${new Date(c.uploadedAt).toLocaleString()} &middot; Input: ${c.inputMethod} &middot; Files: ${(c.fileNames||[]).join(", ")||"none"}</div>
+      </div>
+    </div>`;
+}
+
+function swTab(e, id) {
+  document.querySelectorAll(".tb").forEach(b => b.classList.remove("on"));
+  document.querySelectorAll(".tp").forEach(p => p.classList.remove("on"));
+  e.target.classList.add("on");
+  document.getElementById("tp-"+id).classList.add("on");
+}
+
+// ═══════════════════════════════════════════
+// CASE LIST
+// ═══════════════════════════════════════════
+function renderList() {
+  const list = document.getElementById("clist");
+  const cnt  = document.getElementById("cct");
+  cnt.textContent = `${cases.length} saved`;
+  updateHdr();
+  if (!cases.length) {
+    list.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:6px 0">No cases yet.</div>`;
+    return;
+  }
+  const sc = {Faster:"var(--green)",Moderate:"var(--amber)",Slower:"var(--red)",Varies:"var(--blue)"};
+  list.innerHTML = cases.map(c => {
+    const ex = c.extracted, city = CITIES[c.city]||CITIES.dallas, pr = project(c);
+    const hasJ = !!ex.judgmentDate, oos = ex.orderOfSaleIssued;
+    const dot = oos?"var(--green)":hasJ?"var(--amber)":"var(--blue)";
+    const ds = pr.daysToOOS!==null ? (pr.daysToOOS>0?`~${pr.daysToOOS}d to OOS`:"OOS due") : "";
+    return `<div class="cchip${activeId===c.id?" on":""}" data-id="${c.id}" onclick="selectCase('${c.id}')">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:${dot};border-radius:3px 0 0 3px"></div>
+      <div class="cchip-b">
+        <div class="cchip-n">${ex.caseNumber||"Untitled"}</div>
+        <div class="cchip-d">${ex.defendant||""}</div>
+        <div class="cchip-m">
+          <span style="color:${sc[city.speed]||"var(--amber)"};font-size:10px;font-weight:600">${city.n}</span>
+          ${ex.propertyAddress?"<span>"+ex.propertyAddress.split(",")[0]+"</span>":""}
+          ${ds?`<span style="color:var(--amber);font-weight:600">${ds}</span>`:""}
+        </div>
+      </div>
+      <button class="cdel" onclick="delCase('${c.id}',event)">&#215;</button>
+    </div>`;
+  }).join("");
+}
+
+function renderCaseLog() {
+  const el = document.getElementById("case-log-list");
+  if (!el) return;
+  const stageColors = {
+    oos_issued:"var(--green)", judgment_entered:"var(--amber)",
+    pre_judgment:"var(--blue)", sale_pulled:"var(--red)", auction_complete:"var(--green)"
+  };
+  el.innerHTML = KNOWN.map(k => {
+    const si = STAGE[k.stage]||{lbl:k.stage,cls:"bdg-blue"};
+    const dot = stageColors[k.stage]||"var(--text3)";
+    return `<div class="cchip" style="cursor:pointer" onclick="showKnownCase('${k.caseNumber}')">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:${dot};border-radius:3px 0 0 3px"></div>
+      <div class="cchip-b">
+        <div class="cchip-n">${k.caseNumber}</div>
+        <div class="cchip-d" style="font-size:11px">${k.propertyAddress||k.description}</div>
+        <div class="cchip-m">
+          <span class="bdg ${si.cls}" style="font-size:9px">${si.lbl}</span>
+          <span style="font-size:10px;color:var(--text3)">${k.delinquencyYears?k.delinquencyYears+"yr delinquent":""}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function showKnownCase(caseNum) {
+  const k = KNOWN.find(x => x.caseNumber === caseNum);
+  if (!k) return;
+  document.getElementById("empstate").style.display = "none";
+  const det = document.getElementById("cdet");
+  det.style.display = "flex";
+  const si = STAGE[k.stage]||{lbl:k.stage,cls:"bdg-blue"};
+  const tbHTML = (k.taxBreakdownSummary||[]).map(r =>
+    `<tr><td>${r.entity}</td><td style="text-align:right;font-family:var(--FM);font-weight:600">${fmtC(r.total)}</td></tr>`
+  ).join("");
+  const flagHTML = (k.keyFactors||[]).map(f =>
+    `<div class="ritem"><div class="rico r-${f.includes("PULLED")||f.includes("prior")||f.includes("35 year")||f.includes("estate")||f.includes("deceased")?"danger":f.includes("ad litem")||f.includes("CBP")||f.includes("Rule 106")||f.includes("bankruptcy")?"warn":"ok"}">${f.includes("PULLED")||f.includes("prior")||f.includes("35 year")||f.includes("estate")||f.includes("deceased")?"✕":f.includes("ad litem")||f.includes("CBP")||f.includes("Rule 106")?"!":"✓"}</div><div><div class="rtxt">${f}</div></div></div>`
+  ).join("");
+  det.innerHTML = `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <div style="font-family:var(--FD);font-size:26px;color:var(--accent);line-height:1.1">${k.caseNumber}</div>
+        <div style="font-size:14px;color:var(--text2);margin-top:4px">${k.description}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">${k.propertyAddress||""} ${k.accountNumber?"· Acct: "+k.accountNumber:""}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          <span class="bdg ${si.cls}">${si.lbl}</span>
+          <span class="bdg bdg-red">${k.complexity.toUpperCase()} complexity</span>
+          <span class="bdg bdg-blue">Dallas</span>
+          ${k.combinedCaseNumber?`<span class="bdg bdg-purple">Combined w/ ${k.combinedCaseNumber}</span>`:""}
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="tbar">
+        <button class="tb on" onclick="swTab(event,'kv-ov')">Overview</button>
+        <button class="tb" onclick="swTab(event,'kv-flags')">Key Factors</button>
+        <button class="tb" onclick="swTab(event,'kv-fin')">Financials</button>
+        <button class="tb" onclick="swTab(event,'kv-out')">Outcome</button>
+      </div>
+      <div class="tp on" id="tp-kv-ov">
+        <div class="sgrid">
+          <div class="sbox"><div class="slbl">Filed</div><div class="sval" style="font-size:16px">${fmt(k.filedDate)}</div></div>
+          <div class="sbox"><div class="slbl">Judgment</div><div class="sval" style="font-size:16px">${k.judgmentDate?fmt(k.judgmentDate):"Pending"}</div></div>
+          <div class="sbox"><div class="slbl">Filing → Judgment</div><div class="sval">${k.filingToJudgmentMonths||"—"}<span class="sunit"> mo</span></div></div>
+          <div class="sbox"><div class="slbl">Judgment → OOS</div><div class="sval">${k.judgmentToOOSDays||"—"}<span class="sunit">${k.judgmentToOOSDays?" days":""}</span></div></div>
+          <div class="sbox"><div class="slbl">Total at Filing</div><div class="sval" style="font-size:16px">${fmtC(k.totalDue)}</div></div>
+          <div class="sbox"><div class="slbl">Defendants</div><div class="sval">${k.defCount}</div></div>
+          ${k.assessedValue?`<div class="sbox"><div class="slbl">Assessed Value</div><div class="sval" style="font-size:16px">${fmtC(k.assessedValue)}</div></div>`:""}
+          ${k.minimumBid?`<div class="sbox"><div class="slbl">Minimum Bid</div><div class="sval" style="font-size:16px">${fmtC(k.minimumBid)}</div></div>`:""}
+          ${k.totalAtOOS?`<div class="sbox"><div class="slbl">Total at OOS</div><div class="sval" style="font-size:16px">${fmtC(k.totalAtOOS)}</div></div>`:""}
+          ${k.payoffBeforeSale?`<div class="sbox"><div class="slbl">Payoff Before Sale</div><div class="sval" style="font-size:16px">${fmtC(k.payoffBeforeSale)}</div></div>`:""}
+        </div>
+        <div class="card"><div class="chd"><div class="ct">Case information</div></div>
+          <div class="igrid">
+            <div><div class="ilbl">Court</div><div class="ival">${k.court||"—"}</div></div>
+            <div><div class="ilbl">Judicial Officer</div><div class="ival">${k.judicialOfficer||"—"}</div></div>
+            <div><div class="ilbl">Plaintiff Attorney</div><div class="ival">${k.plaintiffAttorney||"—"}</div></div>
+            <div><div class="ilbl">Law Firm</div><div class="ival">${k.lawFirm||"—"}</div></div>
+            <div><div class="ilbl">Account No.</div><div class="ival" style="font-family:var(--FM);font-size:12px">${k.accountNumber||"—"}</div></div>
+            <div><div class="ilbl">Oldest Delinquency</div><div class="ival">${k.oldestDelinquencyYear||"—"} (${k.delinquencyYears||"?"} yrs)</div></div>
+            ${k.combinedCaseNumber?`<div><div class="ilbl">Combined With</div><div class="ival" style="font-family:var(--FM)">${k.combinedCaseNumber}</div></div>`:""}
+            ${k.priorJudgmentDate?`<div><div class="ilbl">Prior Judgment</div><div class="ival">${fmt(k.priorJudgmentDate)} — ${fmtC(k.priorJudgmentAmount)}</div></div>`:""}
+            ${k.saleScheduledDate?`<div><div class="ilbl">Sale Scheduled</div><div class="ival">${fmt(k.saleScheduledDate)}</div></div>`:""}
+            ${k.salePulledDate?`<div><div class="ilbl">Sale Pulled</div><div class="ival" style="color:var(--red);font-weight:600">${fmt(k.salePulledDate)} — ${k.salePulledBy||""}</div></div>`:""}
+            ${k.publishedDates?`<div style="grid-column:1/-1"><div class="ilbl">Published Dates</div><div class="ival">${k.publishedDates.map(d=>fmt(d)).join(", ")}</div></div>`:""}
+          </div>
+        </div>
+        ${k.stage==="sale_pulled"?`<div class="alert al-w">&#9888; <strong>Sale was pulled ${fmt(k.salePulledDate)}.</strong> Most likely causes: bankruptcy filing (automatic stay), last-minute payment agreement with LGBS, or heir attorney intervention. This property WILL resurface — monitor docket immediately. Three prior suits over 23 years indicate intractable heir dispute.</div>`:""}
+      </div>
+      <div class="tp" id="tp-kv-flags">
+        <div class="card"><div class="chd"><div class="ct">Key factors & risk flags</div><div class="cs">${k.keyFactors.length} factors identified from document analysis</div></div>${flagHTML}</div>
+      </div>
+      <div class="tp" id="tp-kv-fin">
+        <div class="card"><div class="chd"><div class="ct">Tax breakdown at time of OOS</div><div class="cs">Per taxing entity</div></div>
+          ${tbHTML?`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Taxing Entity</th><th style="text-align:right">Amount</th></tr></thead><tbody>${tbHTML}</tbody><tfoot><tr style="background:var(--surface2);font-weight:600"><td>TOTAL AT OOS</td><td style="text-align:right;font-family:var(--FM);color:var(--accent)">${fmtC(k.totalAtOOS||k.totalDue)}</td></tr></tfoot></table></div>`:"<div style='color:var(--text3);padding:12px;font-size:12px'>No breakdown available</div>"}
+        </div>
+        ${k.assessedValue?`<div class="card"><div class="chd"><div class="ct">Acquisition math</div></div>
+          <div class="igrid">
+            <div><div class="ilbl">Assessed Value</div><div class="ival">${fmtC(k.assessedValue)}</div></div>
+            <div><div class="ilbl">Total Debt at OOS</div><div class="ival">${fmtC(k.totalAtOOS)}</div></div>
+            <div><div class="ilbl">Debt / Value Ratio</div><div class="ival" style="color:var(--red);font-weight:700">${k.totalAtOOS&&k.assessedValue?(k.totalAtOOS/k.assessedValue*100).toFixed(1)+"%":"—"}</div></div>
+            <div><div class="ilbl">Minimum Bid</div><div class="ival">${fmtC(k.minimumBid)}</div></div>
+            <div><div class="ilbl">Equity Above Min Bid</div><div class="ival">${k.assessedValue&&k.minimumBid?fmtC(k.assessedValue-k.minimumBid):"—"}</div></div>
+            <div><div class="ilbl">Payoff Before Sale</div><div class="ival">${fmtC(k.payoffBeforeSale)}</div></div>
+          </div>
+        </div>`:""}
+      </div>
+      <div class="tp" id="tp-kv-out">
+        <div class="card"><div class="chd"><div class="ct">Outcome &amp; intelligence notes</div></div>
+          <div style="font-size:13px;color:var(--text2);line-height:1.8">${k.outcome}</div>
+        </div>
+        <div class="card"><div class="chd"><div class="ct">Use as benchmark</div><div class="cs">This case calibrates HIGH complexity Dallas projections</div></div>
+          <div style="font-size:13px;color:var(--text2);line-height:1.7">
+            Filing → Judgment: <strong>${k.filingToJudgmentMonths||"pending"} months</strong><br>
+            Judgment → OOS issued: <strong>${k.judgmentToOOSDays||"pending"} days</strong><br>
+            OOS → Sale scheduled: <strong>${k.oosDate&&k.saleScheduledDate?Math.round((new Date(k.saleScheduledDate)-new Date(k.oosDate))/864e5)+" days":"~43 days"}</strong><br>
+            Sale pulled: <strong>${k.salePulledDate?fmt(k.salePulledDate)+" ("+Math.round((new Date(k.saleScheduledDate)-new Date(k.salePulledDate))/864e5)+" days before auction)":"N/A"}</strong>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  document.querySelectorAll(".cchip").forEach(el => el.classList.remove("on"));
+}
+
+function renderCities() {
+  document.getElementById("cgrid").innerHTML = Object.entries(CITIES).map(([k,c]) =>
+    `<button class="cbtn${selCity===k?" on":""}" onclick="setCity('${k}')">
+      <span class="cbtn-n">${c.n}</span>
+      <span class="cbtn-s">${c.speed}</span>
+    </button>`
+  ).join("");
+}
+
+function setCity(k) { selCity=k; renderCities(); if(activeId) selectCase(activeId); }
+
+// ═══════════════════════════════════════════
+// CRUD + PERSIST
+// ═══════════════════════════════════════════
+function delCase(id, e) {
+  if (e) e.stopPropagation();
+  if (!confirm("Remove this case?")) return;
+  cases = cases.filter(x => x.id!==id);
+  if (activeId===id) {
+    activeId = null;
+    document.getElementById("empstate").style.display = "flex";
+    document.getElementById("cdet").style.display = "none";
+  }
+  save(); renderList();
+}
+
+function clearAll() {
+  if (!confirm("Clear ALL cases? Cannot be undone.")) return;
+  cases=[]; activeId=null;
+  document.getElementById("empstate").style.display="flex";
+  document.getElementById("cdet").style.display="none";
+  save(); renderList();
+}
+
+function save() { localStorage.setItem("tfi_v5", JSON.stringify(cases)); }
+function updateHdr() { document.getElementById("hct").textContent = `${cases.length} case${cases.length!==1?"s":""}`; }
+
+function expData() {
+  const b = new Blob([JSON.stringify(cases,null,2)],{type:"application/json"});
+  const a = document.createElement("a"); a.href=URL.createObjectURL(b);
+  a.download="tax_foreclosure_"+new Date().toISOString().split("T")[0]+".json"; a.click();
+}
+function impData() {
+  const i = document.createElement("input"); i.type="file"; i.accept=".json";
+  i.onchange = e => {
+    const r = new FileReader();
+    r.onload = ev => {
+      try { const arr=JSON.parse(ev.target.result); if(Array.isArray(arr)){cases=[...cases,...arr];save();renderList();alert(`Imported ${arr.length} case(s).`);} }
+      catch { alert("Invalid JSON file."); }
+    };
+    r.readAsText(e.target.files[0]);
+  };
+  i.click();
+}
+
+// ═══════════════════════════════════════════
+// LOADING
+// ═══════════════════════════════════════════
+let _steps = [];
+function showLoading(steps) {
+  _steps = steps.map((s,i) => ({t:s, s:i===0?"active":"wait"}));
+  document.getElementById("lov").classList.add("on");
+  _renderSteps();
+}
+function stepTo(i) {
+  _steps = _steps.map((s,j) => ({...s, s:j<i?"done":j===i?"active":"wait"}));
+  _renderSteps();
+}
+function _renderSteps() {
+  const ic = {done:"&#9989;",active:"&#9654;",wait:"&#9675;"};
+  document.getElementById("lsteps").innerHTML = _steps.map(s =>
+    `<div class="lstep ls-${s.s}">${ic[s.s]} ${s.t}</div>`
+  ).join("");
+}
+function hideLoading() { document.getElementById("lov").classList.remove("on"); }
+
+// GO
+init();
+</script>
+</body>
+</html>
