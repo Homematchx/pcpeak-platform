@@ -516,7 +516,7 @@ function loadKey() {
 // ══════════════════════════════════════════════════════════════
 // PLATFORM API INTEGRATION
 // ══════════════════════════════════════════════════════════════
-const PLATFORM_API = "http://localhost:8000/api";
+const PLATFORM_API = "https://pcpeak-platform-production.up.railway.app/api";
 
 function safeArr(val) {
   if (!val) return [];
@@ -578,23 +578,72 @@ function platformToV3(pc, events) {
   };
 }
 
+// ── ACQUISITION PRIORITY ENGINE ──────────────────────────────
+function getAcqPriority(extracted) {
+  const stage = extracted.orderOfSaleIssued ? "oos_issued" :
+                extracted.judgmentDate ? "judgment_entered" :
+                extracted.stage === "sale_pulled" ? "sale_pulled" : "pre_judgment";
+  
+  const priorities = {
+    oos_issued: {
+      score: 1,
+      label: "ACT NOW",
+      color: "var(--red)",
+      bg: "var(--red-bg)",
+      border: "var(--red-bd)",
+      script: "Your property is scheduled for auction. I can make you a cash offer today and close in 7 days — before you lose everything.",
+      action: "Call immediately — days matter",
+      icon: "🔴"
+    },
+    sale_pulled: {
+      score: 2,
+      label: "HIGH PRIORITY",
+      color: "#7a1e7a",
+      bg: "#f5eaf5",
+      border: "#c090c0",
+      script: "I know you've been dealing with this tax situation for a while. The sale was postponed but the judgment is still there. Let me offer you a clean exit before it comes back.",
+      action: "Strategic outreach — owner is fighting but stressed",
+      icon: "⚠️"
+    },
+    judgment_entered: {
+      score: 3,
+      label: "URGENT",
+      color: "var(--amber)",
+      bg: "var(--amber-bg)",
+      border: "var(--amber-bd)",
+      script: "A judgment has been entered against your property for unpaid taxes. You have a limited window before an Order of Sale is issued. I'd like to help you resolve this.",
+      action: "Contact within 48 hours — judgment creates urgency",
+      icon: "🟡"
+    },
+    pre_judgment: {
+      score: 4,
+      label: "OPPORTUNITY",
+      color: "var(--blue)",
+      bg: "var(--blue-bg)",
+      border: "var(--blue-bd)",
+      script: "I noticed there may be some property tax challenges on your home. I work with homeowners in this situation and I'd like to see if I can help — no pressure, just a conversation.",
+      action: "Warm outreach — owner still has full control, low pressure",
+      icon: "🟢"
+    }
+  };
+  return priorities[stage] || priorities.pre_judgment;
+}
+
 async function syncFromPlatform() {
-  const btn   = document.getElementById("sync-btn");
+  const btn    = document.getElementById("sync-btn");
   const status = document.getElementById("platform-status");
   if (btn) { btn.textContent = "Syncing..."; btn.disabled = true; }
-
   try {
     const [cr, sr] = await Promise.all([
-      fetch(PLATFORM_API + "/cases", {mode:'cors'}),
-      fetch(PLATFORM_API + "/stats", {mode:'cors'}),
+      fetch(PLATFORM_API + "/cases"),
+      fetch(PLATFORM_API + "/stats"),
     ]);
     if (!cr.ok) throw new Error("API offline");
-
     const platformCases = await cr.json();
     const stats = await sr.json();
 
-    // Update stats
-    const set = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val!==undefined?val:"—"; };
+    // Update portfolio stats
+    const set = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val!==undefined?val:"—"; };
     set("s-total",  stats.total_cases);
     set("s-oos",    stats.oos_issued);
     set("s-judged", stats.judgment_entered);
@@ -605,10 +654,10 @@ async function syncFromPlatform() {
       set("last-run-txt", "Last run: " + d.toLocaleDateString("en-US",{month:"short",day:"numeric"}) + " " + d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}));
     }
 
-    // Merge platform cases into V3 cases array (don't duplicate)
+    // Pull events and convert to V3 format
     let added = 0, updated = 0;
     for (const pc of platformCases) {
-      const evResp = await fetch(PLATFORM_API + "/events/" + pc.case_number, {mode:'cors'}).catch(()=>({ok:false}));
+      const evResp = await fetch(PLATFORM_API + "/events/" + pc.case_number).catch(()=>({ok:false}));
       const events = evResp.ok ? await evResp.json() : [];
       const v3case = platformToV3(pc, events);
       const existing = cases.findIndex(c => c.extracted?.caseNumber === pc.case_number);
@@ -619,14 +668,14 @@ async function syncFromPlatform() {
     save();
     renderList();
     updateHdr();
-    if (status) status.textContent = `${platformCases.length} cases loaded · ${added} new · ${updated} updated`;
-    if (btn) { btn.textContent = "✓ Synced"; setTimeout(()=>{btn.textContent="↺ Sync";btn.disabled=false;}, 2500); }
+    if (status) status.textContent = platformCases.length + " cases · last sync " + new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+    if (btn) { btn.textContent = "✓ Synced"; setTimeout(()=>{btn.textContent="↺ Sync";btn.disabled=false;}, 2000); }
 
-    // Select first case if nothing active
+    // Auto-select first case on load
     if (cases.length && !activeId) selectCase(cases[0].id);
 
   } catch(e) {
-    if (status) status.innerHTML = `<span style="color:var(--red)">⚠ Cannot connect · <code style="font-family:var(--FM);font-size:10px">python3 backend/main.py</code></span>`;
+    if (status) status.innerHTML = '<span style="color:var(--red)">⚠ Backend offline &mdash; <code style="font-family:var(--FM);font-size:10px">python3 backend/main.py</code></span>';
     if (btn) { btn.textContent = "↺ Sync"; btn.disabled = false; }
   }
 }
@@ -663,9 +712,8 @@ function init() {
   loadKey();
   document.getElementById("ptxt").addEventListener("input", checkReady);
   if (cases.length) selectCase(cases[cases.length-1].id);
-  // Auto-sync from platform on load
+  // Auto-sync from platform on load — silent, immediate
   syncFromPlatform();
-  // Keep in sync
   setInterval(syncFromPlatform, 30000);
   setInterval(loadAgentStatus, 10000);
 }
@@ -1009,6 +1057,7 @@ function renderDetail(c) {
   const hasJ = !!ex.judgmentDate, oosIssued = ex.orderOfSaleIssued;
   const cbdg = {low:"bdg-green",medium:"bdg-amber",high:"bdg-red"}[ex.complexity||"medium"];
   const dNote = pr.daysToOOS!==null ? (pr.daysToOOS>0 ? `~${pr.daysToOOS} days away` : "Past projected — check docket") : "";
+  const acq = getAcqPriority(ex);
   const statusBdg = oosIssued ? `<span class="bdg bdg-green">OOS Issued</span>` :
                     hasJ      ? `<span class="bdg bdg-amber">OOS Pending</span>` :
                     ex.nextHearingDate ? `<span class="bdg bdg-blue">Trial Scheduled</span>` :
@@ -1285,15 +1334,17 @@ function renderList() {
     const hasJ = !!ex.judgmentDate, oos = ex.orderOfSaleIssued;
     const dot = oos?"var(--green)":hasJ?"var(--amber)":"var(--blue)";
     const ds = pr.daysToOOS!==null ? (pr.daysToOOS>0?`~${pr.daysToOOS}d to OOS`:"OOS due") : "";
+    const acq = getAcqPriority(ex);
+    const acqDot = oos?"var(--red)":hasJ?"var(--amber)":ex.stage==="sale_pulled"?"#7a1e7a":"var(--blue)";
     return `<div class="cchip${activeId===c.id?" on":""}" data-id="${c.id}" onclick="selectCase('${c.id}')">
-      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:${dot};border-radius:3px 0 0 3px"></div>
+      <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:${acqDot};border-radius:3px 0 0 3px"></div>
       <div class="cchip-b">
         <div class="cchip-n">${ex.caseNumber||"Untitled"}</div>
-        <div class="cchip-d">${ex.defendant||""}</div>
-        <div class="cchip-m">
-          <span style="color:${sc[city.speed]||"var(--amber)"};font-size:10px;font-weight:600">${city.n}</span>
-          ${ex.propertyAddress?"<span>"+ex.propertyAddress.split(",")[0]+"</span>":""}
-          ${ds?`<span style="color:var(--amber);font-weight:600">${ds}</span>`:""}
+        <div style="font-size:12px;font-weight:500;color:var(--text);margin-top:1px">${ex.propertyAddress?ex.propertyAddress.split(",")[0]:ex.defendant||""}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:1px">${ex.defendant||""}</div>
+        <div class="cchip-m" style="margin-top:5px">
+          <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${acq.bg};color:${acq.color};border:1px solid ${acq.border}">${acq.icon} ${acq.label}</span>
+          ${ds?`<span style="font-size:10px;color:${acqDot};font-weight:600">${ds}</span>`:""}
         </div>
       </div>
       <button class="cdel" onclick="delCase('${c.id}',event)">&#215;</button>
