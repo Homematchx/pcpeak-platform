@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from pydantic import BaseModel
 
 # ─── CONFIG ───────────────────────────────────────────────────
@@ -35,7 +35,11 @@ async def lifespan(app_: FastAPI):
 app = FastAPI(title="PC Peak Tax Foreclosure Intelligence", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(CORSMiddleware,
-    allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"])
 
 # ─── DATABASE ─────────────────────────────────────────────────
 @contextmanager
@@ -275,7 +279,25 @@ def compute_projection(case: dict) -> dict:
 
 @app.get("/")
 async def root():
-    return {"status":"ok","platform":"PC Peak Tax Foreclosure Intelligence","version":"1.0.0"}
+    # Serve the frontend dashboard
+    for path in [
+        BASE_DIR / "frontend" / "index.html",
+        Path("/app/frontend/index.html"),
+        Path("frontend/index.html"),
+    ]:
+        if path.exists():
+            return HTMLResponse(path.read_text())
+    return HTMLResponse("""<!DOCTYPE html>
+<html><head><title>PC Peak Platform</title></head>
+<body style="font-family:sans-serif;padding:40px;background:#f4f2ed">
+<h1 style="color:#1e3a5f">PC Peak Tax Foreclosure Intelligence</h1>
+<p>Platform API is running. Frontend loading...</p>
+<p><a href="/api/stats">View API Stats</a></p>
+</body></html>""")
+
+@app.get("/favicon.ico")
+async def favicon():
+    return HTMLResponse("")
 
 @app.get("/api/cases")
 async def get_cases(status: str = None, stage: str = None, city: str = None):
