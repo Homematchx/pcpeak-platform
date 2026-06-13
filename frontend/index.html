@@ -1264,6 +1264,68 @@ function renderDetail(c) {
           </table></div>
         </div>
         <div class="alert al-w">&#9888; Total at judgment exceeds petition amount. P&amp;I continues accruing monthly.</div>
+
+        <!-- PAYOFF CALCULATOR CARD -->
+        ${(() => {
+          const po = calcPayoff(ex, null);
+          return `<div class="card">
+            <div class="chd">
+              <div class="ct">&#128181; Estimated Payoff Calculator</div>
+              <div class="cs">Texas Tax Code §33.48 · LGBS attorney fees · as of today</div>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <tbody>
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:8px 0;color:var(--text2)">Balance at filing</td>
+                  <td style="text-align:right;font-family:var(--FM)">${fmtC(po.filedAmount)}</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:8px 0;color:var(--text2)">Accrued P&I since filing (~1.5%/mo)</td>
+                  <td style="text-align:right;font-family:var(--FM);color:var(--red)">+ ${fmtC(po.accruedInterest)}</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:8px 0;color:var(--text2)">LGBS attorney fees (${Math.round(po.attyFeeRate*100)}% — §33.48)</td>
+                  <td style="text-align:right;font-family:var(--FM);color:var(--red)">+ ${fmtC(po.attyFees)}</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:8px 0;color:var(--text2)">Court costs & filing fees</td>
+                  <td style="text-align:right;font-family:var(--FM);color:var(--red)">+ ${fmtC(po.courtCosts)}</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:8px 0;color:var(--text2)">Abstract & title search</td>
+                  <td style="text-align:right;font-family:var(--FM);color:var(--red)">+ ${fmtC(po.abstractFee)}</td>
+                </tr>
+                ${po.hasJudgment ? `<tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:8px 0;color:var(--text2)">Post-judgment collection costs</td>
+                  <td style="text-align:right;font-family:var(--FM);color:var(--red)">+ ${fmtC(po.postJudgment)}</td>
+                </tr>` : ''}
+              </tbody>
+              <tfoot>
+                <tr style="background:var(--red-bg)">
+                  <td style="padding:10px 8px;font-weight:700;color:var(--red)">ESTIMATED PAYOFF TODAY</td>
+                  <td style="text-align:right;font-family:var(--FM);font-weight:700;font-size:16px;color:var(--red);padding:10px 8px">${fmtC(po.totalPayoff)}</td>
+                </tr>
+              </tfoot>
+            </table>
+            <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div style="background:var(--blue-bg);border:1px solid var(--blue-bd);border-radius:var(--rs);padding:12px">
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Min Offer to Owner</div>
+                <div style="font-size:18px;font-weight:700;font-family:var(--FD);color:var(--blue)">${fmtC(po.minOffer)}</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:3px">Covers payoff + 5% cushion</div>
+              </div>
+              <div style="background:var(--green-bg);border:1px solid var(--green-bd);border-radius:var(--rs);padding:12px">
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Suggested Offer to Owner</div>
+                <div style="font-size:18px;font-weight:700;font-family:var(--FD);color:var(--green)">${fmtC(po.suggestedOffer)}</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:3px">Payoff + 15% owner incentive</div>
+              </div>
+            </div>
+            <div style="margin-top:10px;font-size:11px;color:var(--text3);line-height:1.6">
+              &#9432; Estimates based on Texas Tax Code §33.48. Actual payoff requires written statement from LGBS. 
+              Interest accrues at ~1.5% per month. Attorney fees are statutory. Always request an official 
+              payoff letter before making an offer.
+            </div>
+          </div>`;
+        })()}
       </div>
 
       <div class="tp" id="tp-risk">

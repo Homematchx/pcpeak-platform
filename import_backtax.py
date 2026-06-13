@@ -144,7 +144,8 @@ def load_csv(filepath: str) -> list:
 
 def save_prospect_to_db(prospect: dict, tax_suit: str = "", memo: str = ""):
     """Save delinquent account to prospects table (pre-suit pipeline)."""
-    if not DB_PATH.exists(): return
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if not DB_PATH.parent.exists(): return
     with sqlite3.connect(DB_PATH) as db:
         # Create prospects table if not exists
         db.execute("""CREATE TABLE IF NOT EXISTS prospects (
