@@ -1,159 +1,140 @@
 """
-PC Peak — Backtax CSV Importer
-Reads the backtax application CSV from dallasact.com,
-classifies every owner, searches courts portal for tax suits,
-and populates the platform database with full AI analysis.
+PC Peak — Backtax CSV Importer v2
+Two modes:
+  1. --prospect-only: Instantly saves all accounts as prospects (no browser)
+  2. --check NAME: Checks ONE specific owner on courts portal
 
 Usage:
-  python3 import_backtax.py --file Backtax_application_test_file.csv
-  python3 import_backtax.py --file myfile.csv --min-balance 5000
-  python3 import_backtax.py --file myfile.csv --individuals-only
+  # Import entire CSV as prospects instantly (no browser needed):
+  python3 import_backtax.py --file "Backtax application test file.csv" --prospect-only
+
+  # Then check specific high-priority owners one at a time:
+  python3 import_backtax.py --file "Backtax application test file.csv" --check "BOGGESS, TRESSIE"
+  python3 import_backtax.py --file "Backtax application test file.csv" --check "TAYLOR, JANETTA"
+  python3 import_backtax.py --file "Backtax application test file.csv" --check "JONES, PEARLY"
 """
 
 import asyncio, csv, json, os, re, sys, sqlite3, argparse, httpx
 from pathlib import Path
 from datetime import datetime, date
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).parent.resolve()
 DB_PATH  = BASE_DIR / "data" / "db" / "pcpeak.db"
 PDF_DIR  = BASE_DIR / "data" / "pdfs"
 PORTAL   = "https://courtsportal.dallascounty.org/DALLASPROD/Home/Dashboard/29"
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY","")
+TWO_CAPTCHA_KEY = "e6b154c8fad025b44a18d395ba6b1180"
 
-# ── BUSINESS / OWNER DETECTION ────────────────────────────────
+# ── OWNER CLASSIFICATION ──────────────────────────────────────
 BUSINESS_WORDS = [
     "LLC","INC","CORP","LTD","LP","LLP","PARTNERSHIP","TRUST",
     "PROPERTIES","HOLDINGS","INVESTMENTS","ENTERPRISES","GROUP",
     "REALTY","ASSOCIATES","MANAGEMENT","DEVELOPMENT","SERVICES",
     "COMPANY","DBA","PRES","ATTN","FUND","CITY","COMMUNITY",
-    "CHURCH","MINISTRY","FOUNDATION"
+    "CHURCH","MINISTRY","FOUNDATION","PROGRAM","FUNERAL","HOME"
 ]
-ESTATE_WORDS = ["EST OF","ESTATE OF","ESTATE","EST","HEIR"]
-SUFFIX_WORDS = ["JR","SR","II","III","IV","&"]
+ESTATE_WORDS = ["EST OF","ESTATE OF","ESTATE","EST","HEIR","LIFE ESTATE"]
 
-def parse_owner(raw_name: str) -> dict:
-    """Parse dallasact owner name and classify."""
-    name = raw_name.strip().upper()
+def parse_owner(raw: str) -> dict:
+    name = raw.strip().upper()
     if not name:
         return {"type":"unknown","priority":"low","courts_search":"",
-                "display_name":raw_name,"raw":raw_name}
+                "display_name":raw,"contact":"Direct mail","note":"Research further"}
 
-    is_estate  = any(w in name for w in ESTATE_WORDS)
+    is_estate   = any(w in name for w in ESTATE_WORDS)
     is_business = any(w in name for w in BUSINESS_WORDS) and not is_estate
 
-    # Clean suffixes for parsing
+    # Clean for parsing
     clean = name
-    for s in SUFFIX_WORDS + ESTATE_WORDS:
-        clean = clean.replace(s,"").strip()
-    clean = re.sub(r'\s+', ' ', clean).strip()
-
-    # Parse Last First format
+    for w in ESTATE_WORDS + ["JR","SR","II","III","IV","&","ET AL","ETAL"]:
+        clean = clean.replace(w,"").strip()
+    clean = re.sub(r'\s+',' ',clean).strip()
     parts = clean.split()
+
     if len(parts) >= 2 and not is_business:
-        last  = parts[0]
-        first = parts[1]
-        courts_search = f"{last}, {first}"
-    elif is_business:
-        courts_search = name.split()[0]  # Search by first word of company
+        courts_search = f"{parts[0]}, {parts[1]}"
+    elif is_business and parts:
+        courts_search = parts[0]
     else:
         courts_search = parts[0] if parts else name
 
-    # Classification
     if is_estate:
-        owner_type = "estate"
-        priority   = "high"
-        reason     = "Estate/heir — title complications, highly motivated to sell"
-        contact    = "Contact estate administrator or known heirs"
-        note       = "Higher complexity but often desperate to resolve"
+        return {"type":"estate","priority":"high",
+                "reason":"Estate/heir — title complications, highly motivated",
+                "contact":"Contact estate administrator or heirs",
+                "note":"Higher complexity, often desperate to resolve",
+                "courts_search":courts_search,"display_name":raw.strip()}
     elif is_business:
-        owner_type = "business"
-        priority   = "medium"
-        reason     = "Business entity — investment/commercial property"
-        contact    = "Formal letter to registered agent, then call"
-        note       = "Negotiate on ROI and numbers"
+        return {"type":"business","priority":"medium",
+                "reason":"Business entity — investment property",
+                "contact":"Formal letter to registered agent",
+                "note":"Negotiate on ROI and numbers",
+                "courts_search":courts_search,"display_name":raw.strip()}
     else:
-        owner_type = "individual"
-        priority   = "high"
-        reason     = "Individual homeowner — likely primary residence, highly motivated"
-        contact    = "Door knock first, then direct mail, then phone"
-        note       = "Lead with empathy — help them resolve situation"
+        return {"type":"individual","priority":"high",
+                "reason":"Individual homeowner — likely primary residence",
+                "contact":"Door knock first, then direct mail, then phone",
+                "note":"Lead with empathy — help them resolve situation",
+                "courts_search":courts_search,"display_name":raw.strip()}
 
-    return {
-        "type":          owner_type,
-        "priority":      priority,
-        "reason":        reason,
-        "contact":       contact,
-        "note":          note,
-        "courts_search": courts_search,
-        "display_name":  raw_name.strip(),
-        "raw":           raw_name
-    }
-
-def parse_amount(val: str) -> float:
+def parse_amount(val):
     try: return float(str(val).replace(',','').replace('$','').strip())
     except: return 0.0
 
-def extract_account(url: str) -> str:
+def extract_account(url):
     try: return url.split('can=')[1].split('&')[0]
     except: return ""
 
-def load_csv(filepath: str) -> list:
-    """Load and parse the backtax CSV."""
+def load_csv(filepath: str, min_balance: float = 0) -> list:
     rows = []
-    with open(filepath, 'r', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
+    seen_owners = set()
+    with open(filepath,'r',encoding='utf-8-sig') as f:
+        for row in csv.DictReader(f):
             owner_raw = row.get('Owner','').strip()
             if not owner_raw: continue
-            
-            total_due = parse_amount(row.get('Total amount due','0'))
-            curr_due  = parse_amount(row.get('Current amount due','0'))
-            prior_due = parse_amount(row.get('Prior amount due','0'))
-            account   = extract_account(row.get('Property page',''))
-            
-            # Build address
+            total = parse_amount(row.get('Total amount due','0'))
+            if total < min_balance: continue
+
+            owner = parse_owner(owner_raw)
+            key = owner['courts_search']
+            if key in seen_owners: continue
+            seen_owners.add(key)
+
             addr_parts = [row.get(f'Address {i}','').strip() for i in range(2,5)]
-            addr = next((a for a in addr_parts if a), '')
-            city  = row.get('City','').strip()
+            addr = next((a for a in addr_parts if a and not a.startswith('%')),'')
+            city  = row.get('City','Dallas').strip()
             state = row.get('State','TX').strip()
             zip_  = row.get('Zip','').strip()
-            full_addr = f"{addr}, {city}, {state} {zip_}".strip(', ')
 
             rows.append({
                 "owner_raw":    owner_raw,
-                "owner":        parse_owner(owner_raw),
-                "total_due":    total_due,
-                "current_due":  curr_due,
-                "prior_due":    prior_due,
-                "account":      account,
-                "address":      full_addr,
+                "owner":        owner,
+                "total_due":    total,
+                "current_due":  parse_amount(row.get('Current amount due','0')),
+                "prior_due":    parse_amount(row.get('Prior amount due','0')),
+                "account":      extract_account(row.get('Property page','')),
+                "address":      f"{addr}, {city}, {state} {zip_}".strip(', '),
                 "property_url": row.get('Property page',''),
                 "appraisal_url":row.get('Appraisal page',''),
                 "homestead":    bool(row.get('Homestead','').strip()),
                 "over65":       bool(row.get('Over 65','').strip()),
                 "veteran":      bool(row.get('Veteran','').strip()),
-                "disabled":     bool(row.get('Disabled','').strip()),
                 "bankruptcy_no":row.get('Bankruptcy number','').strip(),
-                "bankruptcy_dt":row.get('Bankruptcy filed date','').strip(),
-                "year_built":   row.get('Year built','').strip(),
                 "appraised_val":parse_amount(row.get('Appraised value','0')),
-                "sq_ft":        row.get('Square foot','').strip(),
-                "legal_desc":   row.get('Legal description','').strip(),
+                "year_built":   row.get('Year built','').strip(),
             })
     return rows
 
-def save_prospect_to_db(prospect: dict, tax_suit: str = "", memo: str = ""):
-    """Save delinquent account to prospects table (pre-suit pipeline)."""
+def ensure_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if not DB_PATH.parent.exists(): return
-    with sqlite3.connect(DB_PATH) as db:
-        # Create prospects table if not exists
+    with sqlite3.connect(str(DB_PATH)) as db:
         db.execute("""CREATE TABLE IF NOT EXISTS prospects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             account_number TEXT UNIQUE,
             owner_name TEXT,
             owner_type TEXT,
             owner_priority TEXT,
+            courts_search_name TEXT,
             property_address TEXT,
             total_due REAL,
             current_due REAL,
@@ -161,71 +142,72 @@ def save_prospect_to_db(prospect: dict, tax_suit: str = "", memo: str = ""):
             appraised_value REAL,
             homestead INTEGER DEFAULT 0,
             over65 INTEGER DEFAULT 0,
+            veteran INTEGER DEFAULT 0,
             bankruptcy_number TEXT,
             tax_suit_number TEXT,
             has_suit INTEGER DEFAULT 0,
             property_url TEXT,
             appraisal_url TEXT,
-            ai_memo TEXT,
-            courts_search_name TEXT,
+            contact_approach TEXT,
+            acquisition_note TEXT,
             added_date TEXT,
             last_checked TEXT
         )""")
-        
-        owner = prospect['owner']
-        now   = datetime.now().isoformat()
-        
-        db.execute("""INSERT INTO prospects 
-            (account_number,owner_name,owner_type,owner_priority,property_address,
-             total_due,current_due,prior_due,appraised_value,homestead,over65,
-             bankruptcy_number,tax_suit_number,has_suit,property_url,appraisal_url,
-             ai_memo,courts_search_name,added_date,last_checked)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        db.commit()
+
+def save_prospect(p: dict, suit: str = ""):
+    ensure_db()
+    owner = p['owner']
+    now   = datetime.now().isoformat()
+    with sqlite3.connect(str(DB_PATH)) as db:
+        acct = p['account'] or f"NOACCT_{owner['courts_search'].replace(' ','_')}"
+        db.execute("""INSERT INTO prospects
+            (account_number,owner_name,owner_type,owner_priority,courts_search_name,
+             property_address,total_due,current_due,prior_due,appraised_value,
+             homestead,over65,veteran,bankruptcy_number,tax_suit_number,has_suit,
+             property_url,appraisal_url,contact_approach,acquisition_note,
+             added_date,last_checked)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(account_number) DO UPDATE SET
-            total_due=excluded.total_due, current_due=excluded.current_due,
-            tax_suit_number=excluded.tax_suit_number, has_suit=excluded.has_suit,
-            ai_memo=excluded.ai_memo, last_checked=excluded.last_checked""",
-            [prospect['account'], owner['display_name'], owner['type'],
-             owner['priority'], prospect['address'],
-             prospect['total_due'], prospect['current_due'], prospect['prior_due'],
-             prospect['appraised_val'], 1 if prospect['homestead'] else 0,
-             1 if prospect['over65'] else 0, prospect['bankruptcy_no'],
-             tax_suit, 1 if tax_suit else 0,
-             prospect['property_url'], prospect['appraisal_url'],
-             memo, owner['courts_search'], now, now])
+            total_due=excluded.total_due,tax_suit_number=excluded.tax_suit_number,
+            has_suit=excluded.has_suit,last_checked=excluded.last_checked""",
+            [acct, owner['display_name'], owner['type'], owner['priority'],
+             owner['courts_search'], p['address'],
+             p['total_due'], p['current_due'], p['prior_due'], p['appraised_val'],
+             1 if p['homestead'] else 0, 1 if p['over65'] else 0,
+             1 if p['veteran'] else 0, p['bankruptcy_no'],
+             suit, 1 if suit else 0,
+             p['property_url'], p['appraisal_url'],
+             owner['contact'], owner['note'], now, now])
         db.commit()
 
 # ── CLAUDE AI ─────────────────────────────────────────────────
 EXTRACTION_PROMPT = """You are a Texas tax foreclosure analyst for PC Peak Development.
-Extract ALL case data. Return ONLY valid JSON:
+Extract ALL case data from this Dallas County docket. Return ONLY valid JSON:
 {"caseNumber":"","court":"","judicialOfficer":"","filedDate":"YYYY-MM-DD",
 "caseStatus":"open","judgmentDate":"","judgmentType":"none",
 "defendant":"","allDefendants":[],"propertyAddress":"","accountNumber":"",
-"lawFirm":"","plaintiffAttorney":"","totalDueAtFiling":0,
+"lawFirm":"LGBS (Linebarger)","plaintiffAttorney":"","totalDueAtFiling":0,
 "delinquencyYears":[],"oldestDelinquencyYear":0,
 "taxBreakdown":[{"entity":"","taxAmt":0,"penaltyInterest":0,"total":0}],
 "defCount":1,"citationByPostingRequested":false,"rule106SubstituteService":false,
 "priorRelatedSuits":[],"estateHeirSituation":false,
 "continuanceCount":0,"trialResetCount":0,"serviceIssues":"",
-"nextHearingDate":"","orderOfSaleIssued":false,
+"nextHearingDate":"","orderOfSaleIssued":false,"orderOfSaleDate":"",
 "complexity":"low","complexityReason":"",
 "keyDocketEvents":[{"date":"YYYY-MM-DD","event":"","type":"filing"}]}"""
 
 MEMO_PROMPT = """Acquisition memo for PC Peak Development.
-Owner type: {owner_type} — {owner_reason}
-Contact approach: {contact}
-Delinquent balance from dallasact.com: ${total_due:,.2f} (current: ${current_due:,.2f}, prior: ${prior_due:,.2f})
-Appraised value: ${appraised_val:,.2f}
-Homestead exemption: {homestead} | Over 65: {over65}
-
-{suit_context}
+Owner: {owner_type} — {owner_reason}
+Contact: {contact}
+Dallasact balance: ${total_due:,.2f} | Current: ${current_due:,.2f} | Homestead: {homestead} | Over 65: {over65}
+{suit_info}
 
 Write 3 paragraphs:
-1. PROPERTY & OWNER: Situation, debt load vs appraised value, owner type significance, equity position
-2. TIMELINE & URGENCY: {timeline_context}
-3. ACQUISITION STRATEGY: Specific approach for THIS owner type — offer range based on debt/value ratio, exact contact method, urgency level
-
-Be direct. Specific dollar ranges. No fluff."""
+1. OWNER SITUATION: Who they are, debt vs appraised value, urgency
+2. TIMELINE: {timeline}
+3. STRATEGY: Exact contact method for this owner type, offer range, urgency
+Be direct. Specific numbers."""
 
 async def claude_extract(text: str) -> dict:
     if not ANTHROPIC_KEY: return {}
@@ -246,39 +228,28 @@ async def claude_extract(text: str) -> dict:
             if attempt < 2: await asyncio.sleep(5)
     return {}
 
-async def claude_memo_prospect(prospect: dict, suit_case: str = "") -> str:
+async def claude_memo(prospect: dict, suit: str = "") -> str:
     if not ANTHROPIC_KEY: return ""
     owner = prospect['owner']
-    
-    if suit_case:
-        suit_context = f"TAX SUIT FILED: {suit_case} — case is active in Dallas County courts."
-        timeline = "Tax suit is filed. Reference benchmarks: TX-23-00042 (HIGH: 37mo→J, 89d→OOS), TX-25-00492 (LOW: 14mo→J). Estimate time to judgment and OOS."
-    else:
-        suit_context = "NO TAX SUIT YET — owner is delinquent but LGBS has not filed yet. This is an early-stage opportunity."
-        timeline = "No suit filed yet. With this balance level, LGBS typically files within 6-18 months. This is the BEST time to approach — before legal pressure escalates."
-
+    suit_info = f"TAX SUIT FILED: {suit}" if suit else "NO SUIT YET — early outreach opportunity"
+    timeline = ("Suit filed — estimate judgment timeline using benchmarks: TX-23-00042 HIGH 37mo→J, TX-25-00492 LOW 14mo→J"
+                if suit else "No suit. LGBS files typically 1-2 years after delinquency. BEST time to approach is NOW before legal pressure.")
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(90.0,connect=30.0)) as c:
             r = await c.post("https://api.anthropic.com/v1/messages",
                 headers={"x-api-key":ANTHROPIC_KEY,"anthropic-version":"2023-06-01","Content-Type":"application/json"},
-                json={"model":"claude-sonnet-4-5","max_tokens":700,
+                json={"model":"claude-sonnet-4-5","max_tokens":600,
                       "messages":[{"role":"user","content":MEMO_PROMPT.format(
-                          owner_type=owner['type'],
-                          owner_reason=owner['reason'],
-                          contact=owner['contact'],
-                          total_due=prospect['total_due'],
+                          owner_type=owner['type'], owner_reason=owner['reason'],
+                          contact=owner['contact'], total_due=prospect['total_due'],
                           current_due=prospect['current_due'],
-                          prior_due=prospect['prior_due'],
-                          appraised_val=prospect['appraised_val'],
                           homestead="YES — PRIMARY RESIDENCE" if prospect['homestead'] else "No",
-                          over65="YES — SENIOR CITIZEN" if prospect['over65'] else "No",
-                          suit_context=suit_context,
-                          timeline_context=timeline)}]})
+                          over65="YES — SENIOR" if prospect['over65'] else "No",
+                          suit_info=suit_info, timeline=timeline)}]})
             return next((b["text"] for b in r.json().get("content",[]) if b["type"]=="text"),"")
     except: return ""
 
-async def save_case_to_cases_db(extracted: dict, memo: str, owner: dict):
-    """Save to main cases table."""
+def save_case_to_db(extracted: dict, memo: str, owner: dict):
     cn = extracted.get("caseNumber","")
     if not cn: return
     now = datetime.now().isoformat()
@@ -317,13 +288,13 @@ async def save_case_to_cases_db(extracted: dict, memo: str, owner: dict):
         "updated_at":         now,
         "monitored":          1,
     }
-    with sqlite3.connect(DB_PATH) as db:
+    ensure_db()
+    with sqlite3.connect(str(DB_PATH)) as db:
         for col in ["owner_type TEXT","owner_priority TEXT"]:
             try: db.execute(f"ALTER TABLE cases ADD COLUMN {col}")
             except: pass
         data["owner_type"]     = owner.get("type","unknown")
         data["owner_priority"] = owner.get("priority","medium")
-        
         exists = db.execute("SELECT id FROM cases WHERE case_number=?",[cn]).fetchone()
         if exists:
             sets = ", ".join(f"{k}=?" for k in data if k != "case_number")
@@ -334,19 +305,16 @@ async def save_case_to_cases_db(extracted: dict, memo: str, owner: dict):
             cols = ", ".join(data.keys())
             db.execute(f"INSERT INTO cases ({cols}) VALUES ({','.join(['?']*len(data))})",
                       list(data.values()))
+        for ev in extracted.get("keyDocketEvents",[]):
+            db.execute("INSERT OR IGNORE INTO docket_events (case_number,event_date,event_type,description,is_new) VALUES (?,?,?,?,1)",
+                      [cn,ev.get("date"),ev.get("type","filing"),ev.get("event","")])
         db.commit()
 
-# ── BROWSER AGENT ─────────────────────────────────────────────
-class BacktaxImporter:
+# ── BROWSER (single name check) ───────────────────────────────
+class PortalChecker:
     def __init__(self):
         self.page = None
         self.browser = None
-        self.captcha_solved = False
-        self.stats = {
-            "total":0,"individuals":0,"businesses":0,"estates":0,
-            "suits_found":0,"no_suit":0,"processed":0,"errors":0,
-            "skipped_balance":0,"skipped_bankruptcy":0
-        }
 
     def log(self, msg):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
@@ -360,27 +328,77 @@ class BacktaxImporter:
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
         self.page = await ctx.new_page()
 
-    async def handle_captcha(self):
-        has = await self.page.evaluate(
+    async def check_one(self, name: str, prospect: dict) -> list:
+        """Search portal for ONE name and process any suits found."""
+        self.log(f"Navigating to portal...")
+        await self.page.goto(PORTAL, wait_until="networkidle", timeout=30000)
+        await asyncio.sleep(2)
+
+        # Handle CAPTCHA
+        has_cap = await self.page.evaluate(
             "()=>!!document.querySelector('iframe[src*=recaptcha],.g-recaptcha,[data-sitekey]')")
-        if not has: return
-        if not self.captcha_solved:
-            self.log("CAPTCHA — solve in browser then press ENTER")
-            input("Press ENTER after solving CAPTCHA...")
-            self.captcha_solved = True
+        if has_cap:
+            solved = False
+            if TWO_CAPTCHA_KEY:
+                self.log("Solving CAPTCHA via 2Captcha...")
+                try:
+                    site_key = await self.page.evaluate("""
+                        document.querySelector('[data-sitekey]')?.dataset?.sitekey ||
+                        [...document.querySelectorAll('iframe')]
+                          .find(f=>f.src.includes('recaptcha'))
+                          ?.src?.match(/[?&]k=([^&]+)/)?.[1] || null
+                    """)
+                    if site_key:
+                        self.log(f"  Site key found: {site_key[:20]}...")
+                        async with httpx.AsyncClient(timeout=30) as client:
+                            r = await client.post("http://2captcha.com/in.php", data={
+                                "key": TWO_CAPTCHA_KEY, "method": "userrecaptcha",
+                                "googlekey": site_key, "pageurl": self.page.url, "json": 1})
+                            d = r.json()
+                            if d.get("status") == 1:
+                                cid = d["request"]
+                                self.log(f"  Submitted (ID:{cid}), waiting for solution...")
+                                for _ in range(24):
+                                    await asyncio.sleep(5)
+                                    r2 = await client.get(f"http://2captcha.com/res.php?key={TWO_CAPTCHA_KEY}&action=get&id={cid}&json=1")
+                                    d2 = r2.json()
+                                    if d2.get("status") == 1:
+                                        token = d2["request"]
+                                        await self.page.evaluate(f"""
+                                            document.querySelectorAll('[name="g-recaptcha-response"]').forEach(el=>{{
+                                                el.value='{token}';el.innerHTML='{token}';
+                                            }});
+                                            try{{
+                                                const c=window.___grecaptcha_cfg?.clients;
+                                                if(c)Object.values(c).forEach(cl=>{{
+                                                    const cb=Object.values(cl).find(v=>v&&typeof v.callback==='function');
+                                                    if(cb)cb.callback('{token}');
+                                                }});
+                                            }}catch(e){{}}
+                                        """)
+                                        self.log("  ✓ CAPTCHA solved automatically!")
+                                        solved = True
+                                        await asyncio.sleep(1)
+                                        break
+                                    if d2.get("request") not in ("CAPCHA_NOT_READY",):
+                                        self.log(f"  2Captcha error: {d2}")
+                                        break
+                            else:
+                                self.log(f"  2Captcha submit failed: {d}")
+                except Exception as e:
+                    self.log(f"  2Captcha exception: {e}")
+            if not solved:
+                self.log("CAPTCHA — solve in browser then press ENTER")
+                input("Press ENTER after solving...")
             await asyncio.sleep(1)
 
-    async def search_courts(self, query: str) -> list:
-        """Search courts portal for a name or case number."""
-        await self.page.goto(PORTAL, wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(3)
-        await self.handle_captcha()
-
+        # Fill search
+        safe = name.replace("'","").replace("`","")
         await self.page.evaluate(f"""() => {{
-            const inputs = [...document.querySelectorAll('input[type=text],input:not([type])')];
-            const inp = inputs.find(i=>i.offsetParent!==null)||inputs[0];
+            const inputs = [...document.querySelectorAll('input')];
+            const inp = inputs.find(i=>(i.type==='text'||i.type==='')&&i.offsetParent!==null);
             if(inp){{
-                inp.value=`{query.replace('`',"'")}`;
+                inp.value='{safe}';
                 inp.dispatchEvent(new Event('input',{{bubbles:true}}));
                 inp.dispatchEvent(new Event('change',{{bubbles:true}}));
             }}
@@ -391,208 +409,290 @@ class BacktaxImporter:
                 .find(x=>(x.value||x.textContent||'').toLowerCase().includes('submit'));
             if(b)b.click();else{const f=document.querySelector('form');if(f)f.submit();}
         }""")
-        await asyncio.sleep(4)
 
-        results = await self.page.evaluate("""()=>{
-            const out=[];
-            document.querySelectorAll('table tbody tr').forEach(row=>{
-                const a=row.querySelector('a');
-                const text=row.innerText||'';
-                const m=text.match(/TX-\\d{2}-\\d{5}/);
-                if(m) out.push({caseNumber:m[0],href:a?a.href:'',rowText:text.trim()});
-            });
-            if(out.length===0){
-                document.querySelectorAll('a').forEach(a=>{
-                    const m=(a.innerText||'').match(/TX-\\d{2}-\\d{5}/);
-                    if(m&&!out.find(x=>x.caseNumber===m[0]))
-                        out.push({caseNumber:m[0],href:a.href,rowText:a.innerText});
-                });
-            }
-            return out;
-        }""")
-        return results
-
-    async def process_suit(self, case_number: str, href: str, prospect: dict) -> bool:
-        """Navigate to case detail and process it."""
         try:
-            if href and "CaseDetail" in href:
-                await self.page.goto(href, wait_until="domcontentloaded", timeout=20000)
-            else:
-                results = await self.search_courts(case_number)
-                if not results: return False
-                href = results[0].get("href","")
-                if href: await self.page.goto(href, wait_until="domcontentloaded", timeout=20000)
-            await asyncio.sleep(2)
+            await self.page.wait_for_load_state("networkidle", timeout=10000)
+        except:
+            await asyncio.sleep(4)
 
-            docket_text = await self.page.inner_text("body")
-            if len(docket_text) < 300: return False
+        # Check if CAPTCHA appeared again after submit
+        has_cap2 = await self.page.evaluate(
+            "()=>!!document.querySelector('iframe[src*=recaptcha],.g-recaptcha,[data-sitekey]')")
+        if has_cap2:
+            self.log("CAPTCHA appeared again — solving...")
+            solved2 = False
+            if TWO_CAPTCHA_KEY:
+                try:
+                    site_key2 = await self.page.evaluate("""
+                        document.querySelector('[data-sitekey]')?.dataset?.sitekey ||
+                        [...document.querySelectorAll('iframe')]
+                          .find(f=>f.src.includes('recaptcha'))
+                          ?.src?.match(/[?&]k=([^&]+)/)?.[1] || null
+                    """)
+                    if site_key2:
+                        async with httpx.AsyncClient(timeout=30) as client:
+                            r = await client.post("http://2captcha.com/in.php", data={
+                                "key":TWO_CAPTCHA_KEY,"method":"userrecaptcha",
+                                "googlekey":site_key2,"pageurl":self.page.url,"json":1})
+                            d = r.json()
+                            if d.get("status")==1:
+                                cid = d["request"]
+                                for _ in range(24):
+                                    await asyncio.sleep(5)
+                                    r2 = await client.get(f"http://2captcha.com/res.php?key={TWO_CAPTCHA_KEY}&action=get&id={cid}&json=1")
+                                    d2 = r2.json()
+                                    if d2.get("status")==1:
+                                        token = d2["request"]
+                                        await self.page.evaluate(f"""
+                                            document.querySelectorAll('[name="g-recaptcha-response"]').forEach(el=>{{
+                                                el.value='{token}';el.innerHTML='{token}';
+                                            }});
+                                        """)
+                                        solved2 = True
+                                        await asyncio.sleep(1)
+                                        break
+                                    if d2.get("request") not in ("CAPCHA_NOT_READY",): break
+                except Exception as e:
+                    self.log(f"  2Captcha error: {e}")
+            if not solved2:
+                self.log("CAPTCHA — solve manually and press ENTER")
+                input("Press ENTER after solving...")
+            await asyncio.sleep(1)
+            await self.page.evaluate("""()=>{
+                const b=[...document.querySelectorAll('input[type=submit],button[type=submit],button')]
+                    .find(x=>(x.value||x.textContent||'').toLowerCase().includes('submit'));
+                if(b)b.click();
+            }""")
+            await asyncio.sleep(4)
 
-            # Save docket
-            pdf_dir = PDF_DIR / case_number
-            pdf_dir.mkdir(parents=True, exist_ok=True)
-            (pdf_dir/"docket.txt").write_text(docket_text, encoding="utf-8")
+        page_text = await self.page.inner_text("body")
 
-            # Extract
-            extracted = await claude_extract(docket_text)
-            if not extracted: return False
-            extracted["caseNumber"] = case_number
+        # Extract TX- case numbers only
+        all_cases = re.findall(r'TX-\d{2}-\d{5}', page_text)
+        if not all_cases:
+            self.log(f"  No TX- suits found for '{name}'")
+            return []
 
-            # Generate memo with both dallasact balance data AND suit data
-            memo = await claude_memo_prospect(prospect, case_number)
+        # Dedup — most recent per year
+        case_dict = {}
+        for cn in all_cases:
+            parts = cn.split('-')
+            if len(parts) == 3:
+                yr, seq = parts[1], parts[2]
+                if yr not in case_dict or seq > case_dict[yr]['seq']:
+                    case_dict[yr] = {'caseNumber': cn, 'seq': seq}
 
-            # Save to cases table
-            await save_case_to_cases_db(extracted, memo, prospect['owner'])
-            return True
-        except Exception as e:
-            self.log(f"  Error processing {case_number}: {e}")
-            return False
+        deduped = sorted([v['caseNumber'] for v in case_dict.values()], reverse=True)
+        self.log(f"  Found {len(deduped)} TX- suit(s): {deduped}")
 
-    async def run(self, args):
-        # Load CSV
-        self.log(f"Loading CSV: {args.file}")
-        all_prospects = load_csv(args.file)
-        self.log(f"Loaded {len(all_prospects)} accounts")
-
-        # Filter
-        prospects = []
-        for p in all_prospects:
-            # Balance filter
-            if p['total_due'] < args.min_balance:
-                self.stats["skipped_balance"] += 1
-                continue
-            # Bankruptcy filter
-            if p['bankruptcy_no'] and not args.include_bankruptcy:
-                self.stats["skipped_bankruptcy"] += 1
-                continue
-            # Individuals only filter
-            if args.individuals_only and p['owner']['type'] == 'business':
-                continue
-            prospects.append(p)
-
-        # Dedup by owner name
-        seen_owners = set()
-        unique_prospects = []
-        for p in prospects:
-            key = p['owner']['courts_search']
-            if key not in seen_owners:
-                seen_owners.add(key)
-                unique_prospects.append(p)
-
-        self.stats["total"] = len(unique_prospects)
-        self.log(f"After filters: {len(unique_prospects)} unique owners to process")
-        self.log(f"  (skipped {self.stats['skipped_balance']} below ${args.min_balance:,.0f} minimum)")
-        self.log(f"  (skipped {self.stats['skipped_bankruptcy']} bankruptcy cases)")
-
-        # Count by type
-        for p in unique_prospects:
-            t = p['owner']['type']
-            if t == 'individual': self.stats["individuals"] += 1
-            elif t == 'business': self.stats["businesses"] += 1
-            elif t == 'estate':   self.stats["estates"] += 1
-
-        self.log(f"\nOwner breakdown:")
-        self.log(f"  🔴 Individuals: {self.stats['individuals']} (high priority — door knock)")
-        self.log(f"  🟡 Businesses:  {self.stats['businesses']} (medium priority — formal letter)")
-        self.log(f"  ⚠️  Estates:     {self.stats['estates']} (high priority — contact administrator)")
-
-        if not args.dry_run:
-            await self.start()
-
-        # Process each prospect
-        for i, prospect in enumerate(unique_prospects):
-            owner = prospect['owner']
-            self.log(f"\n[{i+1}/{len(unique_prospects)}] {owner['display_name']} | {owner['type'].upper()} | ${prospect['total_due']:,.2f}")
-            self.log(f"  Address: {prospect['address']}")
-            self.log(f"  Courts search: '{owner['courts_search']}'")
-
-            if args.dry_run:
-                self.log(f"  [DRY RUN — would search courts portal and process]")
-                # Still save to prospects table without browser
-                memo = f"[Dry run — {owner['type']} owner, ${prospect['total_due']:,.2f} delinquent, address: {prospect['address']}]"
-                save_prospect_to_db(prospect, "", memo)
-                self.stats["no_suit"] += 1
-                continue
-
-            # Search courts portal
-            search_results = await self.search_courts(owner['courts_search'])
-
-            if search_results:
-                self.log(f"  ✓ TAX SUIT FOUND: {[r['caseNumber'] for r in search_results]}")
-                self.stats["suits_found"] += 1
-
-                for result in search_results:
-                    cn = result['caseNumber']
-                    self.log(f"  Processing suit {cn}...")
-                    success = await self.process_suit(cn, result.get('href',''), prospect)
-                    if success:
-                        save_prospect_to_db(prospect, cn, "")
-                        self.stats["processed"] += 1
-                    else:
-                        self.stats["errors"] += 1
-                    await asyncio.sleep(2)
-            else:
-                self.log(f"  → No suit filed yet — adding to pre-suit prospect list")
-                self.stats["no_suit"] += 1
-                # Generate pre-suit memo
-                memo = await claude_memo_prospect(prospect, "")
-                save_prospect_to_db(prospect, "", memo)
-
-            # Brief delay between owners
-            if i < len(unique_prospects)-1:
+        # Process each suit
+        results = []
+        for cn in deduped:
+            self.log(f"  Processing {cn}...")
+            # Click into case
+            try:
+                link = self.page.locator(f"a:has-text('{cn}')").first
+                await link.wait_for(timeout=5000, state="visible")
+                await link.click()
+                await self.page.wait_for_load_state("domcontentloaded", timeout=15000)
                 await asyncio.sleep(2)
 
-        # Final report
-        self.log(f"\n{'='*60}")
-        self.log(f"IMPORT COMPLETE")
-        self.log(f"  Total processed:    {self.stats['total']}")
-        self.log(f"  Tax suits found:    {self.stats['suits_found']} → in your cases database")
-        self.log(f"  Pre-suit prospects: {self.stats['no_suit']} → in your prospects pipeline")
-        self.log(f"  Errors:             {self.stats['errors']}")
-        self.log(f"{'='*60}")
-        self.log(f"Go to taxforeclosureanalyzer.com → click Sync to see updated cases")
-        self.log(f"Pre-suit prospects saved to database prospects table")
+                docket_text = await self.page.inner_text("body")
+                pdf_dir = PDF_DIR / cn
+                pdf_dir.mkdir(parents=True, exist_ok=True)
+                (pdf_dir/"docket.txt").write_text(docket_text, encoding="utf-8")
 
+                self.log(f"  Running AI extraction...")
+                extracted = await claude_extract(docket_text)
+                if extracted:
+                    extracted["caseNumber"] = cn
+                    memo = await claude_memo(prospect, cn)
+                    save_case_to_db(extracted, memo, prospect['owner'])
+                    save_prospect(prospect, cn)
+                    self.log(f"  ✓ {cn} saved to database")
+                    results.append(cn)
+                else:
+                    self.log(f"  Extraction failed for {cn}")
+
+                # Go back for next case
+                if len(deduped) > 1:
+                    await self.page.go_back()
+                    await asyncio.sleep(2)
+
+            except Exception as e:
+                self.log(f"  Error on {cn}: {e}")
+
+        return results
+
+    async def close(self):
         if self.browser: await self.browser.close()
 
+# ── MAIN ──────────────────────────────────────────────────────
 async def main():
     parser = argparse.ArgumentParser(
-        description="PC Peak Backtax CSV Importer",
+        description="PC Peak Backtax CSV Importer v2",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  Full import (searches every owner on courts portal):
-    python3 import_backtax.py --file Backtax_application_test_file.csv
+MODES:
 
-  Only accounts over $15,000:
-    python3 import_backtax.py --file myfile.csv --min-balance 15000
+  1. Import all as prospects instantly (no browser):
+     python3 import_backtax.py --file "file.csv" --prospect-only
 
-  Individuals only (skip businesses):
-    python3 import_backtax.py --file myfile.csv --individuals-only
+  2. Check ONE specific owner on courts portal:
+     python3 import_backtax.py --file "file.csv" --check "BOGGESS, TRESSIE"
+     python3 import_backtax.py --file "file.csv" --check "TAYLOR, JANETTA"
+     python3 import_backtax.py --file "file.csv" --check "JONES, PEARLY"
 
-  Dry run (loads CSV, classifies owners, saves to prospects — no browser):
-    python3 import_backtax.py --file myfile.csv --dry-run
+  RECOMMENDED WORKFLOW:
+  Step 1 - Import all as prospects:
+    python3 import_backtax.py --file "file.csv" --prospect-only --min-balance 5000
 
-  Preview what's in the CSV without processing:
-    python3 import_backtax.py --file myfile.csv --dry-run --min-balance 0
+  Step 2 - Check top targets one at a time:
+    python3 import_backtax.py --file "file.csv" --check "TAYLOR, JANETTA"
+    python3 import_backtax.py --file "file.csv" --check "BOGGESS, TRESSIE"
         """)
-    parser.add_argument("--file",               required=True, help="Path to backtax CSV file")
-    parser.add_argument("--min-balance",         type=float, default=5000, help="Minimum total due (default: $5,000)")
-    parser.add_argument("--individuals-only",    action="store_true", help="Skip business entities")
-    parser.add_argument("--include-bankruptcy",  action="store_true", help="Include bankruptcy cases")
-    parser.add_argument("--dry-run",             action="store_true", help="Classify and save prospects without browser scraping")
+    parser.add_argument("--file",          required=True)
+    parser.add_argument("--prospect-only", action="store_true",
+                       help="Import all as prospects without browser")
+    parser.add_argument("--check",         help="Check ONE owner name on courts portal")
+    parser.add_argument("--check-list",    nargs="+", help="Check MULTIPLE names: --check-list 'BOGGESS, TRESSIE' 'TAYLOR, JANETTA' 'JONES, PEARLY'")
+    parser.add_argument("--min-balance",   type=float, default=5000)
+    parser.add_argument("--individuals-only", action="store_true")
     args = parser.parse_args()
 
     if not Path(args.file).exists():
-        print(f"ERROR: File not found: {args.file}")
+        print(f"File not found: {args.file}"); return
+
+    prospects = load_csv(args.file, args.min_balance)
+    if args.individuals_only:
+        prospects = [p for p in prospects if p['owner']['type'] == 'individual']
+
+    print(f"Loaded {len(prospects)} unique owners")
+
+    # ── MODE 1: Prospect-only (no browser) ──
+    if args.prospect_only:
+        print(f"\nSaving all as prospects to database...")
+        ind = est = biz = 0
+        for p in prospects:
+            save_prospect(p)
+            t = p['owner']['type']
+            if t=='individual': ind+=1
+            elif t=='estate': est+=1
+            else: biz+=1
+
+        print(f"\n{'='*50}")
+        print(f"IMPORT COMPLETE — {len(prospects)} prospects saved")
+        print(f"  🔴 Individuals: {ind} — door knock")
+        print(f"  ⚠️  Estates:    {est} — contact administrator")
+        print(f"  🟡 Businesses:  {biz} — formal letter")
+        print(f"{'='*50}")
+        print(f"\nTop 10 by balance:")
+        top = sorted(prospects, key=lambda x: x['total_due'], reverse=True)[:10]
+        for p in top:
+            print(f"  ${p['total_due']:>10,.2f} | {p['owner']['type'].upper()[:3]} | {p['owner']['display_name']} | {p['address']}")
+        print(f"\nNext step — check specific owners:")
+        print(f"  python3 import_backtax.py --file \"{args.file}\" --check \"TAYLOR, JANETTA\"")
         return
 
-    if not ANTHROPIC_KEY and not args.dry_run:
-        print("ERROR: Set ANTHROPIC_API_KEY")
-        print("  export ANTHROPIC_API_KEY=sk-ant-...")
+    # ── MODE 2: Check multiple names ──
+    if args.check_list:
+        names = args.check_list
+        print(f"\nChecking {len(names)} names in one session...")
+        print("Solve CAPTCHA once — all names will be searched automatically\n")
+
+        if not ANTHROPIC_KEY:
+            print("ERROR: Set ANTHROPIC_API_KEY"); return
+
+        checker = PortalChecker()
+        try:
+            await checker.start()
+            results_summary = []
+
+            for i, name in enumerate(names):
+                print(f"\n[{i+1}/{len(names)}] Searching: {name}")
+                # Find matching prospect
+                search_name = name.upper().strip()
+                match = None
+                for p in prospects:
+                    if (p['owner']['courts_search'].upper() == search_name or
+                        p['owner']['display_name'].upper().startswith(search_name.split(',')[0].strip())):
+                        match = p
+                        break
+                if not match:
+                    match = {
+                        "owner": parse_owner(name.replace(',',' ')),
+                        "total_due":0,"current_due":0,"prior_due":0,
+                        "account":"","address":"","property_url":"",
+                        "appraisal_url":"","homestead":False,"over65":False,
+                        "veteran":False,"bankruptcy_no":"","appraised_val":0
+                    }
+                    match['owner']['courts_search'] = name
+
+                if match.get('total_due'):
+                    print(f"  Balance: ${match['total_due']:,.2f} | {match['owner']['type'].upper()} | {match.get('address','')}")
+
+                suits = await checker.check_one(name, match)
+                if suits:
+                    results_summary.append(f"  ✓ SUIT FOUND: {name} → {suits}")
+                else:
+                    results_summary.append(f"  → No suit: {name} (pre-suit prospect)")
+
+            print(f"\n{'='*60}")
+            print(f"BATCH CHECK COMPLETE")
+            for r in results_summary:
+                print(r)
+            print(f"{'='*60}")
+            print(f"Go to taxforeclosureanalyzer.com → Sync")
+        finally:
+            await checker.close()
         return
 
-    importer = BacktaxImporter()
-    await importer.run(args)
+    # ── MODE 3: Check one name ──
+    if args.check:
+        # Find matching prospect from CSV
+        search_name = args.check.upper().strip()
+        match = None
+        for p in prospects:
+            if (p['owner']['courts_search'].upper() == search_name or
+                p['owner']['display_name'].upper().startswith(search_name.split(',')[0].strip())):
+                match = p
+                break
+
+        if not match:
+            # Create a minimal prospect for the search
+            parts = search_name.split(',')
+            match = {
+                "owner": parse_owner(search_name.replace(',',' ')),
+                "total_due": 0, "current_due": 0, "prior_due": 0,
+                "account": "", "address": "", "property_url": "",
+                "appraisal_url": "", "homestead": False, "over65": False,
+                "veteran": False, "bankruptcy_no": "", "appraised_val": 0
+            }
+            match['owner']['courts_search'] = args.check
+
+        print(f"\nChecking: '{args.check}'")
+        if match.get('total_due'):
+            print(f"  Balance: ${match['total_due']:,.2f} | {match['owner']['type'].upper()} | {match.get('address','')}")
+
+        if not ANTHROPIC_KEY:
+            print("ERROR: Set ANTHROPIC_API_KEY"); return
+
+        checker = PortalChecker()
+        try:
+            await checker.start()
+            suits = await checker.check_one(args.check, match)
+            if suits:
+                print(f"\n✓ SUIT(S) FOUND: {suits}")
+                print(f"Go to taxforeclosureanalyzer.com → Sync to see the case")
+            else:
+                print(f"\n→ No suit found — saved as pre-suit prospect")
+                save_prospect(match)
+        finally:
+            await checker.close()
+        return
+
+    print("Please specify --prospect-only or --check 'NAME'")
+    print("Run with --help for usage examples")
 
 if __name__ == "__main__":
     asyncio.run(main())

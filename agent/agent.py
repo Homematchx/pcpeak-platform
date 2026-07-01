@@ -16,7 +16,7 @@ DELAY_BETWEEN   = 3.0
 SCHEDULE_HOURS  = 24
 
 ANTHROPIC_KEY   = os.environ.get("ANTHROPIC_API_KEY", "")
-TWO_CAPTCHA_KEY = os.environ.get("TWO_CAPTCHA_KEY", "")
+TWO_CAPTCHA_KEY = os.environ.get("TWO_CAPTCHA_KEY", "e6b154c8fad025b44a18d395ba6b1180")
 
 if not ANTHROPIC_KEY:
     print("ERROR: Set ANTHROPIC_API_KEY\n  export ANTHROPIC_API_KEY=sk-ant-...")
