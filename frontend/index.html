@@ -999,6 +999,45 @@ function project(cobj) {
           phases:{svc:(fjMonths||0)*.45, trial:(fjMonths||0)*.55, post:oosDays/30}};
 }
 
+
+// ═══════════════════════════════════════════
+// PAYOFF CALCULATOR
+// ═══════════════════════════════════════════
+function calcPayoff(ex, dallasactBalance) {
+  const filedAmt  = ex.totalDueAtFiling || 0;
+  const filedDate = ex.filedDate ? new Date(ex.filedDate) : null;
+  const now       = new Date();
+  const baseAmt   = dallasactBalance && dallasactBalance > filedAmt ? dallasactBalance : filedAmt;
+  let accruedInterest = 0;
+  if (filedDate && filedAmt > 0) {
+    const months = Math.max(0,
+      (now.getFullYear() - filedDate.getFullYear()) * 12 +
+      (now.getMonth() - filedDate.getMonth()));
+    accruedInterest = filedAmt * (0.015 * months);
+  }
+  const hasJudgment  = !!ex.judgmentDate;
+  const attyFeeRate  = hasJudgment ? 0.20 : 0.15;
+  const attyFees     = (baseAmt + accruedInterest) * attyFeeRate;
+  const courtCosts   = 450;
+  const abstractFee  = ex.abstractorFee || 350;
+  const postJudgment = hasJudgment ? 500 : 0;
+  const totalPayoff  = baseAmt + accruedInterest + attyFees + courtCosts + abstractFee + postJudgment;
+  return {
+    filedAmount:     filedAmt,
+    currentBalance:  dallasactBalance || filedAmt,
+    accruedInterest: Math.round(accruedInterest),
+    attyFees:        Math.round(attyFees),
+    attyFeeRate:     attyFeeRate,
+    courtCosts:      courtCosts,
+    abstractFee:     abstractFee,
+    postJudgment:    postJudgment,
+    totalPayoff:     Math.round(totalPayoff),
+    hasJudgment:     hasJudgment,
+    minOffer:        Math.round(totalPayoff * 1.05),
+    suggestedOffer:  Math.round(totalPayoff * 1.15),
+  };
+}
+
 // ═══════════════════════════════════════════
 // RISK FLAGS
 // ═══════════════════════════════════════════

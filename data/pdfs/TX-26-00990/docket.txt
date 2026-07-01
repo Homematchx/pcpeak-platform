@@ -1,0 +1,80 @@
+DALLAS COUNTY, TEXAS COURTS PORTAL
+Register / Sign In  
+1
+
+Smart Search
+
+ 
+2
+
+Search Results
+
+Print
+The search returned 200 cases, but could have returned more. Please narrow the search by entering more precise criteria.
+Cases
+ 
+Case Number
+	
+File Date
+	
+Type
+	
+Status
+	
+Location
+	
+Party Name
+
+TX-26-00821	04/23/2026	TAX DELINQUENCY	OPEN	116th District Court	LIMA, ERWIN
+
+
+TX-26-00835	04/22/2026	TAX CASES (OTHER)	OPEN	68th District Court	MORA, JOSE ANGEL
+
+
+TX-26-00801	04/22/2026	TAX DELINQUENCY	OPEN	101st District Court	CBC RESTAURANT CORP D/B/A CORNER BAKERY CAFE
+
+
+TX-26-00802	04/22/2026	TAX DELINQUENCY	CLOSED	95th District Court	SIERRA, JOSE E
+
+
+TX-26-00803	04/22/2026	TAX DELINQUENCY	OPEN	298th District Court	SINGLETARY, MELISSA
+
+
+TX-26-00804	04/22/2026	TAX DELINQUENCY	OPEN	193rd District Court	MARIAM, ZELEKA T.
+
+
+TX-26-00805	04/22/2026	TAX DELINQUENCY	OPEN	14th District Court	PHAM, AI THI
+
+
+TX-26-00806	04/22/2026	TAX DELINQUENCY	OPEN	101st District Court	RAMEY, HARDIN R.
+
+
+TX-26-00807	04/22/2026	TAX DELINQUENCY	OPEN	68th District Court	D. DENISE BARNES, A/K/A DEBORAH DENISE BARNES
+
+
+TX-26-00794	04/21/2026	TAX DELINQUENCY	OPEN	116th District Court	HEIRS AND UNKNOWN HEIRS OF RUBY J. TAYLOR
+
+seek-w
+arrow-w
+...
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+arrow-e
+seek-e
+10
+select
+items per page
+191 - 200 of 200 items
+
+© 2026 Tyler Technologies, Inc. | All Rights Reserved
+
+
+Version: 2017.1.63.0
