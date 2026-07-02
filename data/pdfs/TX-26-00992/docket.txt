@@ -18,15 +18,15 @@ Case Information
 
 
 
-TX-26-00992 | CITY OF GARLAND AND GARLAND INDEPENDENT SCHOOL DISTRICT vs. MISAEL RIVERA MARTINEZ et al
+TX-26-00989 | DALLAS COUNTY et al vs. AMY ORTEGA
 
 
 
 Case Number
-TX-26-00992
+TX-26-00989
 
 Court
-162nd District Court
+68th District Court
 
 Judicial Officer
 GINSBERG, CARL
@@ -43,7 +43,7 @@ OPEN
 Party
 
 PLAINTIFF
-CITY OF GARLAND AND GARLAND INDEPENDENT SCHOOL DISTRICT
+DALLAS COUNTY
 
  
 
@@ -51,27 +51,77 @@ Active Attorneys
 
 
 Lead Attorney
-REECE, LINDA D.
+JONES, STEPHEN EARL
 
 Retained
 
-DEFENDANT
-RIVERA MARTINEZ, MISAEL
+PLAINTIFF
+DALLAS INDEPENDENT SCHOOL DISTRICT
 
  
 
 Active Attorneys
 
 
-Pro Se
+Lead Attorney
+JONES, STEPHEN EARL
 
-DEFENDANT
-KEN MY LUONG (IN REM ONLY)
+Retained
+
+PLAINTIFF
+CITY OF DALLAS
 
  
 
+Active Attorneys
+
+
+Lead Attorney
+JONES, STEPHEN EARL
+
+Retained
+
+PLAINTIFF
+PARKLAND HOSPITAL DISTRICT
+
+ 
+
+Active Attorneys
+
+
+Lead Attorney
+JONES, STEPHEN EARL
+
+Retained
+
+PLAINTIFF
+DALLAS COLLEGE
+
+ 
+
+Active Attorneys
+
+
+Lead Attorney
+JONES, STEPHEN EARL
+
+Retained
+
+PLAINTIFF
+DALLAS COUNTY SCHOOL EQUALIZATION FUND
+
+ 
+
+Active Attorneys
+
+
+Lead Attorney
+JONES, STEPHEN EARL
+
+Retained
+
 DEFENDANT
-RESOLUTION FINANCE, LLC (IN REM ONLY)
+ORTEGA, AMY
 
  
 Events and Hearings
@@ -87,86 +137,36 @@ View Document ORIGINAL PETITION
 Comment
 - REAL PROPERTY
 
-05/26/2026 REQUEST FOR SERVICE 
+05/19/2026 REQUEST FOR SERVICE 
 
 View Document REQUEST FOR SERVICE
 
 Comment
-CITATION 3
+CITATION 1
 
-05/27/2026 ISSUE CITATION 
+05/20/2026 ISSUE CITATION 
 
-View Document RESOLUTION FINANCE, LLC
+View Document AMY ORTEGA
 
-View Document MISAEL RIVERA MARTINEZ
-
-View Document KEN MY LUONG
-
-05/27/2026 CITATION
+05/20/2026 CITATION
 
 Unserved
 
 Anticipated Server
-CONSTABLE 2
+PRIVATE PROCESS SERVER
 
 Anticipated Method
 
 
 Comment
-1 - DALLAS CO PCT 2
+1 - TJRC
 
-05/27/2026 CITATION
+06/25/2026 AFFIDAVIT 
 
-Served
-06/02/2026
-
-Anticipated Server
-CONSTABLE 2
-
-Anticipated Method
-
+View Document AFFIDAVIT FOR COST OF ABSTRACT
 
 Comment
-1 - DALLAS CO PCT 2
-
-05/27/2026 CITATION
-
-Unserved
-
-Anticipated Server
-CONSTABLE 5
-
-Anticipated Method
-
-
-Comment
-1 - DALLAS CO PCT 5
-
-06/04/2026 RETURN OF SERVICE 
-
-View Document EXECUTED - KEN MY LUONG (IN REM ONLY) - CITATION
-
-Comment
-EXECUTED CITATION - KEN MY LUONG
-
-06/09/2026 ORIGINAL ANSWER - GENERAL DENIAL 
-
-View Document ANSWER
-
-01/13/2027 Non Jury Trial 
-
-View Document Non Jury Trial PERDUE
-
-View Document Non Jury Trial MISAEL
-
-Judicial Officer
-GINSBERG, CARL
-
-Hearing Time
-12:00 PM
-
-Comment
-MEETING ID 824 1902 1400
+AFFIDAVIT FOR COST OF ABSTRACT
 
 01/27/2027 Non Jury Trial 
 
@@ -178,23 +178,19 @@ GINSBERG, CARL
 Hearing Time
 10:05 AM
 
-Cancel Reason
-CASE TRIAL RESET
-
 Financial
 
 
 
-RIVERA MARTINEZ, MISAEL
+ORTEGA, AMY
 
 Total Financial Assessment
-$454.00
+$358.00
 Total Payments and Credits
 $0.00
 
 5/19/2026	Transaction Assessment			$350.00
-5/27/2026	Transaction Assessment			$24.00
-6/4/2026	Transaction Assessment			$80.00
+5/20/2026	Transaction Assessment			$8.00
 Documents
 
 
@@ -203,21 +199,11 @@ View Document ORIGINAL PETITION
 
 View Document Non Jury Trial
 
-View Document RESOLUTION FINANCE, LLC
-
-View Document MISAEL RIVERA MARTINEZ
-
-View Document KEN MY LUONG
+View Document AMY ORTEGA
 
 View Document REQUEST FOR SERVICE
 
-View Document EXECUTED - KEN MY LUONG (IN REM ONLY) - CITATION
-
-View Document ANSWER
-
-View Document Non Jury Trial PERDUE
-
-View Document Non Jury Trial MISAEL
+View Document AFFIDAVIT FOR COST OF ABSTRACT
 
 Print
 

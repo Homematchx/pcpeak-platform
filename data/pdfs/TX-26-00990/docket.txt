@@ -9,71 +9,210 @@ Smart Search
 
 Search Results
 
-Print
-The search returned 200 cases, but could have returned more. Please narrow the search by entering more precise criteria.
-Cases
- 
+ 
+3
+
+Details
+
+Case Information
+
+
+
+TX-26-00989 | DALLAS COUNTY et al vs. AMY ORTEGA
+
+
+
 Case Number
-	
+TX-26-00989
+
+Court
+68th District Court
+
+Judicial Officer
+GINSBERG, CARL
+
 File Date
-	
-Type
-	
-Status
-	
-Location
-	
-Party Name
+05/19/2026
 
-TX-26-00821	04/23/2026	TAX DELINQUENCY	OPEN	116th District Court	LIMA, ERWIN
+Case Type
+TAX DELINQUENCY
 
+Case Status
+OPEN
 
-TX-26-00835	04/22/2026	TAX CASES (OTHER)	OPEN	68th District Court	MORA, JOSE ANGEL
+Party
 
+PLAINTIFF
+DALLAS COUNTY
 
-TX-26-00801	04/22/2026	TAX DELINQUENCY	OPEN	101st District Court	CBC RESTAURANT CORP D/B/A CORNER BAKERY CAFE
+ 
 
-
-TX-26-00802	04/22/2026	TAX DELINQUENCY	CLOSED	95th District Court	SIERRA, JOSE E
+Active Attorneys
 
 
-TX-26-00803	04/22/2026	TAX DELINQUENCY	OPEN	298th District Court	SINGLETARY, MELISSA
+Lead Attorney
+JONES, STEPHEN EARL
+
+Retained
+
+PLAINTIFF
+DALLAS INDEPENDENT SCHOOL DISTRICT
+
+ 
+
+Active Attorneys
 
 
-TX-26-00804	04/22/2026	TAX DELINQUENCY	OPEN	193rd District Court	MARIAM, ZELEKA T.
+Lead Attorney
+JONES, STEPHEN EARL
+
+Retained
+
+PLAINTIFF
+CITY OF DALLAS
+
+ 
+
+Active Attorneys
 
 
-TX-26-00805	04/22/2026	TAX DELINQUENCY	OPEN	14th District Court	PHAM, AI THI
+Lead Attorney
+JONES, STEPHEN EARL
+
+Retained
+
+PLAINTIFF
+PARKLAND HOSPITAL DISTRICT
+
+ 
+
+Active Attorneys
 
 
-TX-26-00806	04/22/2026	TAX DELINQUENCY	OPEN	101st District Court	RAMEY, HARDIN R.
+Lead Attorney
+JONES, STEPHEN EARL
+
+Retained
+
+PLAINTIFF
+DALLAS COLLEGE
+
+ 
+
+Active Attorneys
 
 
-TX-26-00807	04/22/2026	TAX DELINQUENCY	OPEN	68th District Court	D. DENISE BARNES, A/K/A DEBORAH DENISE BARNES
+Lead Attorney
+JONES, STEPHEN EARL
+
+Retained
+
+PLAINTIFF
+DALLAS COUNTY SCHOOL EQUALIZATION FUND
+
+ 
+
+Active Attorneys
 
 
-TX-26-00794	04/21/2026	TAX DELINQUENCY	OPEN	116th District Court	HEIRS AND UNKNOWN HEIRS OF RUBY J. TAYLOR
+Lead Attorney
+JONES, STEPHEN EARL
 
-seek-w
-arrow-w
-...
-11
-12
-13
-14
-15
-16
-17
-18
-19
-20
-arrow-e
-seek-e
-10
-select
-items per page
-191 - 200 of 200 items
+Retained
 
+DEFENDANT
+ORTEGA, AMY
+
+ 
+Events and Hearings
+
+
+
+05/19/2026 NEW CASE FILED (OCA) - CIVIL
+
+05/19/2026 ORIGINAL PETITION 
+
+View Document ORIGINAL PETITION
+
+Comment
+- REAL PROPERTY
+
+05/19/2026 REQUEST FOR SERVICE 
+
+View Document REQUEST FOR SERVICE
+
+Comment
+CITATION 1
+
+05/20/2026 ISSUE CITATION 
+
+View Document AMY ORTEGA
+
+05/20/2026 CITATION
+
+Unserved
+
+Anticipated Server
+PRIVATE PROCESS SERVER
+
+Anticipated Method
+
+
+Comment
+1 - TJRC
+
+06/25/2026 AFFIDAVIT 
+
+View Document AFFIDAVIT FOR COST OF ABSTRACT
+
+Comment
+AFFIDAVIT FOR COST OF ABSTRACT
+
+01/27/2027 Non Jury Trial 
+
+View Document Non Jury Trial
+
+Judicial Officer
+GINSBERG, CARL
+
+Hearing Time
+10:05 AM
+
+Financial
+
+
+
+ORTEGA, AMY
+
+Total Financial Assessment
+$358.00
+Total Payments and Credits
+$0.00
+
+5/19/2026	Transaction Assessment			$350.00
+5/20/2026	Transaction Assessment			$8.00
+Documents
+
+
+
+View Document ORIGINAL PETITION
+
+View Document Non Jury Trial
+
+View Document AMY ORTEGA
+
+View Document REQUEST FOR SERVICE
+
+View Document AFFIDAVIT FOR COST OF ABSTRACT
+
+Print
+
+Case Information
+Party
+Events and Hearings
+Financial
+Documents
+Back to top
 © 2026 Tyler Technologies, Inc. | All Rights Reserved
 
 

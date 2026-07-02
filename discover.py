@@ -90,7 +90,7 @@ async def claude_extract(text):
                     json={"model": "claude-sonnet-4-5", "max_tokens": 2000,
                           "system": EXTRACTION_PROMPT,
                           "messages": [{"role": "user",
-                                        "content": "Extract:\n\n" + text[:5000]}]})
+                                        "content": "Extract:\n\nIMPORTANT: totalDueAtFiling is on the LAST PAGE of the petition as 'TOTAL DUE AS OF' followed by a dollar amount. Find it.\n\n" + text[:8000]}]})
                 d = r.json()
                 if d.get("error"):
                     await asyncio.sleep(5)
@@ -306,6 +306,7 @@ class Discoverer:
         if token:
             await self.inject_token(token)
             self.log("  CAPTCHA solved!")
+            await asyncio.sleep(2)
             return
         self.log("  Solve CAPTCHA manually then press ENTER")
         input("  Press ENTER after solving...")
@@ -389,58 +390,81 @@ class Discoverer:
 
     async def click_into_case(self, case_number, href=""):
         """
-        Navigate to case detail page using stored href.
-        Never goes back to Smart Search -- no new CAPTCHA.
+        Navigate to case DETAIL page (Tab 3) — the full docket with petition data.
+        The portal has TWO intermediate pages before the real docket:
+          1. Search results (Tab 2) — list of cases
+          2. Party search results — intermediate page (~1413 chars)
+          3. Case detail (Tab 3) — FULL docket with address, debt, events
+        We need to click through ALL intermediate pages to reach the real docket.
         """
-        # Primary: use stored href directly
+        # Step 1: Navigate to href (lands on party search results ~1413 chars)
         if href and href.startswith("http"):
             try:
-                self.log("  Opening via href...")
+                self.log("  Navigating to case page...")
                 await self.page.goto(href, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(3)
-                text = await self.page.inner_text("body")
-                self.log("  Page loaded: " + str(len(text)) + " chars")
-
-                # Portal may show party list first -- click case number to get to detail
-                if case_number in text and len(text) < 8000:
-                    self.log("  Clicking case number link to reach detail page...")
-                    try:
-                        lnk = self.page.locator("a:has-text('" + case_number + "')").first
-                        await lnk.wait_for(timeout=5000, state="visible")
-                        await lnk.click()
-                        await asyncio.sleep(3)
-                        text = await self.page.inner_text("body")
-                        self.log("  Detail page: " + str(len(text)) + " chars")
-                    except Exception:
-                        pass
-
-                if len(text) > 1000:
-                    return True
+                await asyncio.sleep(2)
             except Exception as e:
-                self.log("  href navigation failed: " + str(e))
+                self.log("  href failed: " + str(e))
 
-        # Last resort: search by exact case number
-        self.log("  No href -- searching by case number...")
-        await self.go_to_portal_and_search(case_number)
+        # Step 2: Click through ANY intermediate pages until we reach the real docket
+        # Real docket has: Events section, docket entries, property details
+        # We keep clicking the case number link until page is large enough
+        for attempt in range(4):
+            try:
+                text = await self.page.inner_text("body")
+                self.log("  Attempt " + str(attempt+1) + ": " + str(len(text)) + " chars")
+
+                # Real docket detected:
+                # - Intermediate party page = ~1373 chars
+                # - Real docket (confirmed) = ~2128+ chars with case keywords
+                # Threshold 1600 sits safely between them
+                is_docket = (
+                    len(text) > 1600 and (
+                        "Events and Hearings" in text or
+                        "Case Information" in text or
+                        "Events" in text or
+                        "LGBS" in text or
+                        "Linebarger" in text
+                    )
+                )
+                if is_docket:
+                    self.log("  Real docket found! (" + str(len(text)) + " chars)")
+                    return True
+
+                # Click case link — interpolate CN into JS string, no arguments[]
+                js = (
+                    "(function(){"
+                    "var links=document.querySelectorAll('a');"
+                    "for(var i=0;i<links.length;i++){"
+                    "var t=(links[i].innerText||links[i].textContent||'').trim();"
+                    "if(t==='" + case_number + "')"
+                    "{links[i].click();return 'exact';}"
+                    "}"
+                    "var cd=document.querySelector('a[href*=CaseDetail]');"
+                    "if(cd){cd.click();return 'detail';}"
+                    "return null;"
+                    "})()"
+                )
+                clicked = await self.page.evaluate(js)
+                self.log("  Click: " + str(clicked))
+                if not clicked:
+                    self.log("  No case link — using href directly")
+                    break
+                await asyncio.sleep(3)
+
+            except Exception as e:
+                self.log("  Click attempt " + str(attempt+1) + " failed: " + str(e))
+                break
+
+        # Final check — accept anything over 1600 chars as usable docket
         try:
-            lnk = self.page.locator("a:has-text('" + case_number + "')").first
-            await lnk.wait_for(timeout=8000, state="visible")
-            await lnk.click()
-            await asyncio.sleep(3)
             text = await self.page.inner_text("body")
-            if case_number in text and len(text) < 8000:
-                try:
-                    lnk2 = self.page.locator("a:has-text('" + case_number + "')").first
-                    await lnk2.wait_for(timeout=5000, state="visible")
-                    await lnk2.click()
-                    await asyncio.sleep(3)
-                    text = await self.page.inner_text("body")
-                except Exception:
-                    pass
-            if len(text) > 1000:
+            self.log("  Final page: " + str(len(text)) + " chars")
+            if len(text) > 1600:
+                self.log("  Accepting as docket")
                 return True
-        except Exception as e:
-            self.log("  Search fallback failed: " + str(e))
+        except Exception:
+            pass
 
         return False
 
@@ -487,16 +511,22 @@ class Discoverer:
         party = case_info.get("partyName", "")
         owner = classify(party)
 
-        # Skip if already processed today
+        # Skip only if processed today AND data is complete
         if DB_PATH.exists():
             with sqlite3.connect(str(DB_PATH)) as db:
                 row = db.execute(
-                    "SELECT last_agent_run FROM cases WHERE case_number=?",
+                    "SELECT last_agent_run, property_address, total_due_filing "
+                    "FROM cases WHERE case_number=?",
                     [cn]).fetchone()
                 if row and row[0] and row[0][:10] == date.today().isoformat():
-                    self.log("  Already done today: " + cn)
-                    self.stats["skipped"] += 1
-                    return False
+                    has_addr = bool(row[1] and str(row[1]).strip())
+                    has_debt = bool(row[2] and float(row[2] or 0) > 0)
+                    if has_addr and has_debt:
+                        self.log("  Already complete today: " + cn)
+                        self.stats["skipped"] += 1
+                        return False
+                    else:
+                        self.log("  Re-processing (incomplete): " + cn)
 
         # Skip businesses if flag set
         if self.skip_biz and owner["type"] == "business":
@@ -528,22 +558,60 @@ class Discoverer:
         case_dir.mkdir(parents=True, exist_ok=True)
         (case_dir / "docket.txt").write_text(docket_text, encoding="utf-8")
 
-        # Try to download petition PDF
+        # Download Original Petition PDF + extract text for Claude
+        pdf_text = ""
         try:
-            view = self.page.locator("a:has-text('View Document')").first
-            await view.wait_for(timeout=3000, state="visible")
-            async with self.page.expect_download(timeout=20000) as dl_info:
-                await view.click()
-            dl = await dl_info.value
-            pdf_path = case_dir / "petition.pdf"
-            await dl.save_as(pdf_path)
-            self.log("  PDF downloaded")
-        except Exception:
-            pass  # PDF download is optional
+            # Find the View Document href nearest to ORIGINAL PETITION text
+            petition_href = await self.page.evaluate(
+                "(function(){"
+                "var links=document.querySelectorAll('a');"
+                "for(var i=0;i<links.length;i++){"
+                "if((links[i].innerText||'').trim()!=='View Document')continue;"
+                "var p=links[i].parentElement||links[i];"
+                "var ctx=(p.innerText||p.textContent||'')+'';"
+                "if(ctx.indexOf('ORIGINAL PETITION')>=0||"
+                "ctx.indexOf('Original Petition')>=0)"
+                "return links[i].href;"
+                "}"
+                "var first=document.querySelector('a[href*=Document]');"
+                "return first?first.href:null;"
+                "})()")
+            if petition_href:
+                self.log("  Downloading Original Petition...")
+                # Open fresh context to capture download without navigating main page
+                dl_ctx = await self.browser.new_context(accept_downloads=True)
+                dl_page = await dl_ctx.new_page()
+                async with dl_page.expect_download(timeout=30000) as dl_info:
+                    try:
+                        await dl_page.goto(petition_href)
+                    except Exception:
+                        pass  # Download starting error is expected
+                dl = await dl_info.value
+                pdf_path = case_dir / "petition.pdf"
+                await dl.save_as(pdf_path)
+                await dl_page.close()
+                await dl_ctx.close()
+                self.log("  PDF saved")
+                try:
+                    import pypdf
+                    reader = pypdf.PdfReader(str(pdf_path))
+                    pages = [p.extract_text() for p in reader.pages
+                             if p.extract_text()]
+                    pdf_text = "\n".join(pages)
+                    self.log("  PDF text: " + str(len(pdf_text)) + " chars")
+                except Exception as pe:
+                    self.log("  PDF text error: " + str(pe))
+        except Exception as e:
+            self.log("  PDF error: " + str(e))
+
+        # Combine docket + petition for Claude
+        full_text = docket_text
+        if pdf_text:
+            full_text = docket_text + "\n\nORIGINAL PETITION PDF:\n" + pdf_text
 
         # Claude extraction
         self.log("  Running Claude extraction...")
-        extracted = await claude_extract(docket_text)
+        extracted = await claude_extract(full_text)
         if not extracted:
             self.log("  Extraction failed for " + cn)
             self.stats["errors"] += 1
@@ -602,95 +670,83 @@ class Discoverer:
                 pattern = pad_pattern(args.pattern)
                 self.log("Pattern: '" + args.pattern + "' -> '" + pattern + "'")
 
-                # Step 1: Search and collect ALL case rows from results pages
+                # Process page by page — immediate saves, stoppable anytime
                 await self.go_to_portal_and_search(pattern)
-                all_rows = await self.get_case_list_from_current_page()
-                self.log("Page 1: " + str(len(all_rows)) + " cases found")
-
-                # Collect additional pages by clicking Next
+                total_found = 0
                 page_num = 1
-                while page_num < 20:  # max 20 pages safety cap
+                prev_first_cn = ""
+
+                while True:
+                    page_rows = await self.get_case_list_from_current_page()
+                    if not page_rows:
+                        self.log("Page " + str(page_num) + ": no rows")
+                        break
+                    first_cn = page_rows[0]["caseNumber"]
+                    if first_cn == prev_first_cn:
+                        self.log("Pagination stalled — done")
+                        break
+                    prev_first_cn = first_cn
+                    total_found += len(page_rows)
+                    self.stats["found"] = total_found
+
+                    targets = [r for r in page_rows
+                               if "OPEN" in r.get("status","").upper()
+                               or r.get("status","") == ""]
+                    if self.skip_biz:
+                        targets = [r for r in targets
+                                   if classify(r["partyName"])["type"] != "business"]
+
+                    self.log("")
+                    self.log("Page " + str(page_num) + ": " +
+                             str(len(page_rows)) + " cases | " +
+                             str(len(targets)) + " to process")
+
+                    for i, case in enumerate(targets):
+                        o = classify(case["partyName"])
+                        tag = ("[IND]" if o["type"]=="individual"
+                               else "[EST]" if o["type"]=="estate" else "[BIZ]")
+                        self.log("[pg" + str(page_num) + " " +
+                                 str(i+1) + "/" + str(len(targets)) + "] " +
+                                 tag + " " + case["caseNumber"] +
+                                 " | " + case.get("partyName",""))
+                        await self.process_one_case(case)
+                        await asyncio.sleep(3)
+
+                    # Next page — aria-label/title only, not ">" text
+                    next_js = (
+                        "(function(){"
+                        "var els=document.querySelectorAll('a,button,span,li');"
+                        "for(var i=0;i<els.length;i++){"
+                        "var el=els[i];"
+                        "if(el.offsetParent===null)continue;"
+                        "var aria=(el.getAttribute('aria-label')||'').toLowerCase();"
+                        "var title=(el.getAttribute('title')||'').toLowerCase();"
+                        "var cls=(el.className||'').toLowerCase();"
+                        "var isNext=(aria.indexOf('next page')>=0||"
+                        "title.indexOf('next page')>=0||"
+                        "cls.indexOf('k-i-arrow-60-right')>=0||"
+                        "(cls.indexOf('k-next')>=0&&cls.indexOf('k-last')<0));"
+                        "var isLast=(aria.indexOf('last')>=0||"
+                        "title.indexOf('last')>=0||cls.indexOf('k-last')>=0);"
+                        "if(isNext&&!isLast){el.click();return true;}"
+                        "}"
+                        "return false;"
+                        "})()")
                     try:
-                        next_btn = await self.page.evaluate(
-                            "(function(){"
-                            "var els=document.querySelectorAll('a,span,input');"
-                            "for(var i=0;i<els.length;i++){"
-                            "var cls=els[i].className||'';"
-                            "var title=els[i].title||'';"
-                            "var txt=els[i].innerText||'';"
-                            "if(cls.indexOf('seek-e')>=0||"
-                            "title.indexOf('Next')>=0||"
-                            "txt.trim()==='>'){"
-                            "if(els[i].offsetParent!==null){"
-                            "els[i].click();return true;}"
-                            "}"
-                            "}"
-                            "return false;"
-                            "})()")
-                        if not next_btn:
+                        moved = await self.page.evaluate(next_js)
+                        if not moved:
+                            self.log("No Next button — all pages done")
                             break
                         await asyncio.sleep(3)
-                        new_rows = await self.get_case_list_from_current_page()
-                        if not new_rows:
-                            break
-                        # Check for duplicates
-                        existing = {r["caseNumber"] for r in all_rows}
-                        fresh = [r for r in new_rows
-                                 if r["caseNumber"] not in existing]
-                        if not fresh:
-                            break
-                        all_rows.extend(fresh)
                         page_num += 1
-                        self.log("Page " + str(page_num) + ": " +
-                                 str(len(fresh)) + " more | Total: " +
-                                 str(len(all_rows)))
-                    except Exception:
+                        if page_num > 30:
+                            break
+                    except Exception as ne:
+                        self.log("Next page error: " + str(ne))
                         break
 
-                self.stats["found"] = len(all_rows)
+                self.stats["found"] = total_found
 
-                # Separate OPEN vs CLOSED
-                open_rows = [r for r in all_rows
-                             if "OPEN" in r.get("status", "").upper()]
-                closed_rows = [r for r in all_rows
-                               if "CLOSED" in r.get("status", "").upper()]
-
-                self.log("")
-                self.log("=" * 55)
-                self.log("RESULTS: " + str(len(all_rows)) + " total | " +
-                         str(len(open_rows)) + " OPEN | " +
-                         str(len(closed_rows)) + " CLOSED")
-                self.log("=" * 55)
-                self.log("")
-                self.log("OPEN acquisition targets:")
-                for r in open_rows[:30]:
-                    o = classify(r["partyName"])
-                    tag = ("[IND]" if o["type"] == "individual"
-                           else "[EST]" if o["type"] == "estate" else "[BIZ]")
-                    self.log("  " + tag + " " + r["caseNumber"] + " | " +
-                             r["fileDate"] + " | " + r["partyName"])
-                if len(open_rows) > 30:
-                    self.log("  ... and " + str(len(open_rows) - 30) + " more")
-
-                targets = open_rows if self.open_only else all_rows
-                if not targets:
-                    self.log("No cases to process")
-                    return
-
-                self.log("")
-                self.log("Processing " + str(len(targets)) + " cases...")
-                self.log("Each case: click detail page -> extract -> memo -> save")
-                self.log("")
-
-                for i, case in enumerate(targets):
-                    self.log("[" + str(i+1) + "/" + str(len(targets)) + "] " +
-                             case["caseNumber"] + " | " +
-                             case.get("partyName", ""))
-                    # Process the case -- this clicks into the detail page
-                    success = await self.process_one_case(case)
-                    if i < len(targets) - 1:
-                        # Wait between cases to avoid portal rate limiting
-                        await asyncio.sleep(5)
 
         finally:
             self.log("")
