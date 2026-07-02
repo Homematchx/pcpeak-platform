@@ -235,6 +235,7 @@ CITY_DATA = {
 def compute_projection(case: dict) -> dict:
     city = CITY_DATA.get(case.get("city","dallas"), CITY_DATA["dallas"])
     complexity = case.get("complexity","medium")
+    complexity = complexity if complexity in city["ftj"] else "low"
     ranges = city["ftj"][complexity]
     oos_days = city["joos"][complexity]
     
