@@ -63,19 +63,59 @@ def parse_rows_from_text(text):
     return rows
 
 EXTRACTION_PROMPT = """You are a Texas tax foreclosure analyst for PC Peak Development.
-Extract ALL case data from this Dallas County court docket. Return ONLY valid JSON:
-{"caseNumber":"","court":"","judicialOfficer":"","filedDate":"YYYY-MM-DD",
-"caseStatus":"open","judgmentDate":"","judgmentType":"none",
-"defendant":"","allDefendants":[],"propertyAddress":"","accountNumber":"",
-"lawFirm":"LGBS (Linebarger)","plaintiffAttorney":"","totalDueAtFiling":0,
-"delinquencyYears":[],"oldestDelinquencyYear":0,
+Extract ALL case data from this Dallas County court docket AND Original Petition PDF.
+Return ONLY valid JSON with NO markdown, NO explanation:
+{
+"caseNumber":"",
+"court":"",
+"judicialOfficer":"",
+"filedDate":"YYYY-MM-DD",
+"caseStatus":"open",
+"judgmentDate":"",
+"judgmentType":"none",
+"defendant":"",
+"allDefendants":[
+  {
+    "name":"",
+    "address":"",
+    "serviceStatus":"unserved",
+    "serviceMethod":"",
+    "isInRemOnly":false,
+    "notes":""
+  }
+],
+"propertyAddress":"",
+"legalDescription":"",
+"accountNumber":"",
+"lawFirm":"LGBS (Linebarger)",
+"plaintiffAttorney":"",
+"totalDueAtFiling":0,
+"delinquencyYears":[],
+"oldestDelinquencyYear":0,
 "taxBreakdown":[{"entity":"","taxAmt":0,"penaltyInterest":0,"total":0}],
-"defCount":1,"citationByPostingRequested":false,"rule106SubstituteService":false,
-"priorRelatedSuits":[],"estateHeirSituation":false,
-"continuanceCount":0,"trialResetCount":0,"serviceIssues":"",
-"nextHearingDate":"","orderOfSaleIssued":false,"orderOfSaleDate":"",
-"complexity":"low","complexityReason":"",
-"keyDocketEvents":[{"date":"YYYY-MM-DD","event":"","type":"filing"}]}"""
+"defCount":1,
+"citationByPostingRequested":false,
+"rule106SubstituteService":false,
+"priorRelatedSuits":[],
+"estateHeirSituation":false,
+"continuanceCount":0,
+"trialResetCount":0,
+"serviceIssues":"",
+"nextHearingDate":"",
+"orderOfSaleIssued":false,
+"orderOfSaleDate":"",
+"complexity":"low",
+"complexityReason":"",
+"keyDocketEvents":[{"date":"YYYY-MM-DD","event":"","type":"filing"}]
+}
+
+CRITICAL EXTRACTION RULES:
+1. totalDueAtFiling: Find "TOTAL DUE AS OF" on the LAST PAGE of the petition. It is a dollar amount like $17,653.39. Extract the TOTAL number only.
+2. allDefendants: List EVERY defendant named in the petition with their address. Find addresses in bold like "Amy Ortega, 1549 Harris Ct., Dallas, TX 75223". Mark IN REM ONLY defendants. Check docket Events for service status (Served/Unserved).
+3. propertyAddress: The physical property address from Exhibit A (e.g. "1549 HARRIS CT, DALLAS, TX 75223-3326").
+4. accountNumber: The DCAD account number from Exhibit A (e.g. "00000153766000000").
+5. defendant: Primary defendant name (first non-IN-REM defendant).
+6. complexity: "low" if single defendant served, "medium" if multiple defendants or service issues, "high" if CBP/Rule106/estate/heir situation."""
 
 async def claude_extract(text):
     if not ANTHROPIC_KEY:
@@ -90,7 +130,7 @@ async def claude_extract(text):
                     json={"model": "claude-sonnet-4-5", "max_tokens": 2000,
                           "system": EXTRACTION_PROMPT,
                           "messages": [{"role": "user",
-                                        "content": "Extract:\n\nIMPORTANT: totalDueAtFiling is on the LAST PAGE of the petition as 'TOTAL DUE AS OF' followed by a dollar amount. Find it.\n\n" + text[:8000]}]})
+                                        "content": "Extract:\n\n" + text[:5000]}]})
                 d = r.json()
                 if d.get("error"):
                     await asyncio.sleep(5)
@@ -151,6 +191,7 @@ def save_to_db(extracted, memo, owner):
             "case_status": extracted.get("caseStatus", "OPEN").upper(),
             "defendant": extracted.get("defendant", ""),
             "all_defendants": json.dumps(extracted.get("allDefendants", [])),
+            "legal_description": extracted.get("legalDescription", ""),
             "property_address": extracted.get("propertyAddress", ""),
             "account_number": extracted.get("accountNumber", ""),
             "law_firm": extracted.get("lawFirm", "LGBS"),
@@ -381,6 +422,9 @@ class Discoverer:
                 "})()")
             found_hrefs = sum(1 for r in rows if hrefs.get(r["caseNumber"]))
             self.log("  hrefs captured: " + str(found_hrefs) + "/" + str(len(rows)))
+            # Debug: show first 2 hrefs
+            for cn, href in list(hrefs.items())[:2]:
+                self.log("  HREF[" + cn + "]: " + str(href)[:80])
             for row in rows:
                 row["href"] = hrefs.get(row["caseNumber"], "")
         except Exception:
@@ -390,84 +434,85 @@ class Discoverer:
 
     async def click_into_case(self, case_number, href=""):
         """
-        Navigate to case DETAIL page (Tab 3) — the full docket with petition data.
-        The portal has TWO intermediate pages before the real docket:
-          1. Search results (Tab 2) — list of cases
-          2. Party search results — intermediate page (~1413 chars)
-          3. Case detail (Tab 3) — FULL docket with address, debt, events
-        We need to click through ALL intermediate pages to reach the real docket.
+        Navigate to case detail page (Tab 3).
+        
+        CORRECT FLOW (confirmed from session):
+          href → intermediate party page (~1373 chars)
+          click case number link → real docket (~2128+ chars with case number in text)
+        
+        KEY FIX: After PDF download corrupts browser state, we always re-navigate
+        from scratch using page.goto(href) before attempting to find the docket.
+        We verify success by checking that case_number appears in page text.
         """
-        # Step 1: Navigate to href (lands on party search results ~1413 chars)
-        if href and href.startswith("http"):
-            try:
-                self.log("  Navigating to case page...")
-                await self.page.goto(href, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(2)
-            except Exception as e:
-                self.log("  href failed: " + str(e))
+        # Navigate to search results first, then click the case number
+        # hrefs are all "#" (SPA), so goto(href) doesn't work
+        # Instead: click Search Results breadcrumb to return to Tab 2
+        self.log("  Going to Search Results...")
+        back_clicked = await self.page.evaluate(
+            "(function(){"
+            "var els=document.querySelectorAll('a,li,span,div,ol');"
+            "for(var i=0;i<els.length;i++){"
+            "var t=(els[i].innerText||els[i].textContent||'').trim();"
+            "if(t==='Search Results'||t==='2'||t==='2 Search Results'){"
+            "els[i].click();return true;}"
+            "}"
+            "return false;"
+            "})()"
+        )
+        self.log("  Back to results: " + str(back_clicked))
+        await asyncio.sleep(3)
 
-        # Step 2: Click through ANY intermediate pages until we reach the real docket
-        # Real docket has: Events section, docket entries, property details
-        # We keep clicking the case number link until page is large enough
-        for attempt in range(4):
+        # Now click through to the actual case detail page
+        # We know we're on the right page when case_number appears in body text
+        for attempt in range(5):
             try:
                 text = await self.page.inner_text("body")
                 self.log("  Attempt " + str(attempt+1) + ": " + str(len(text)) + " chars")
 
-                # Real docket detected:
-                # - Intermediate party page = ~1373 chars
-                # - Real docket (confirmed) = ~2128+ chars with case keywords
-                # Threshold 1600 sits safely between them
-                is_docket = (
-                    len(text) > 1600 and (
-                        "Events and Hearings" in text or
-                        "Case Information" in text or
-                        "Events" in text or
-                        "LGBS" in text or
-                        "Linebarger" in text
-                    )
-                )
-                if is_docket:
-                    self.log("  Real docket found! (" + str(len(text)) + " chars)")
+                # SUCCESS: case number is visible AND page has case detail content
+                if case_number in text and "Events and Hearings" in text:
+                    self.log("  Correct docket confirmed: " + case_number)
                     return True
 
-                # Click case link — interpolate CN into JS string, no arguments[]
+                # On intermediate page — click the case number link
                 js = (
                     "(function(){"
                     "var links=document.querySelectorAll('a');"
                     "for(var i=0;i<links.length;i++){"
                     "var t=(links[i].innerText||links[i].textContent||'').trim();"
-                    "if(t==='" + case_number + "')"
-                    "{links[i].click();return 'exact';}"
+                    "if(t==='" + case_number + "'){links[i].click();return 'clicked-exact';}"
                     "}"
                     "var cd=document.querySelector('a[href*=CaseDetail]');"
-                    "if(cd){cd.click();return 'detail';}"
+                    "if(cd){cd.click();return 'clicked-detail';}"
                     "return null;"
                     "})()"
                 )
-                clicked = await self.page.evaluate(js)
-                self.log("  Click: " + str(clicked))
-                if not clicked:
-                    self.log("  No case link — using href directly")
-                    break
+                result = await self.page.evaluate(js)
+                self.log("  Click result: " + str(result))
+
+                if not result:
+                    # Nothing to click — try re-navigating via href
+                    if href and href.startswith("http"):
+                        self.log("  Re-navigating via href...")
+                        await self.page.goto(href, wait_until="domcontentloaded", timeout=20000)
+                    else:
+                        break
                 await asyncio.sleep(3)
 
             except Exception as e:
-                self.log("  Click attempt " + str(attempt+1) + " failed: " + str(e))
-                break
+                self.log("  Attempt " + str(attempt+1) + " error: " + str(e))
+                await asyncio.sleep(2)
 
-        # Final check — accept anything over 1600 chars as usable docket
+        # Final check
         try:
             text = await self.page.inner_text("body")
-            self.log("  Final page: " + str(len(text)) + " chars")
-            if len(text) > 1600:
-                self.log("  Accepting as docket")
+            if case_number in text and len(text) > 1600:
+                self.log("  Docket confirmed on final check")
                 return True
+            self.log("  FAILED: " + case_number + " not found in page")
         except Exception:
             pass
-
         return False
-
     async def back_to_search_results(self):
         """
         Click 'Search Results' breadcrumb to return to Tab 2.
@@ -558,10 +603,10 @@ class Discoverer:
         case_dir.mkdir(parents=True, exist_ok=True)
         (case_dir / "docket.txt").write_text(docket_text, encoding="utf-8")
 
-        # Download Original Petition PDF + extract text for Claude
+        # Download Original Petition PDF via fresh context
         pdf_text = ""
+        href = case_info.get("href", "")
         try:
-            # Find the View Document href nearest to ORIGINAL PETITION text
             petition_href = await self.page.evaluate(
                 "(function(){"
                 "var links=document.querySelectorAll('a');"
@@ -569,42 +614,58 @@ class Discoverer:
                 "if((links[i].innerText||'').trim()!=='View Document')continue;"
                 "var p=links[i].parentElement||links[i];"
                 "var ctx=(p.innerText||p.textContent||'')+'';"
-                "if(ctx.indexOf('ORIGINAL PETITION')>=0||"
-                "ctx.indexOf('Original Petition')>=0)"
-                "return links[i].href;"
+                "if(ctx.indexOf('ORIGINAL PETITION')>=0)return links[i].href;"
                 "}"
                 "var first=document.querySelector('a[href*=Document]');"
                 "return first?first.href:null;"
                 "})()")
             if petition_href:
                 self.log("  Downloading Original Petition...")
-                # Open fresh context to capture download without navigating main page
                 dl_ctx = await self.browser.new_context(accept_downloads=True)
                 dl_page = await dl_ctx.new_page()
-                async with dl_page.expect_download(timeout=30000) as dl_info:
-                    try:
-                        await dl_page.goto(petition_href)
-                    except Exception:
-                        pass  # Download starting error is expected
-                dl = await dl_info.value
-                pdf_path = case_dir / "petition.pdf"
-                await dl.save_as(pdf_path)
-                await dl_page.close()
-                await dl_ctx.close()
-                self.log("  PDF saved")
                 try:
+                    async with dl_page.expect_download(timeout=30000) as dl_info:
+                        try:
+                            await dl_page.goto(petition_href)
+                        except Exception:
+                            pass  # Download starting error expected
+                    dl = await dl_info.value
+                    pdf_path = case_dir / "petition.pdf"
+                    await dl.save_as(pdf_path)
+                    self.log("  PDF saved")
                     import pypdf
                     reader = pypdf.PdfReader(str(pdf_path))
-                    pages = [p.extract_text() for p in reader.pages
-                             if p.extract_text()]
+                    pages = [p.extract_text() for p in reader.pages if p.extract_text()]
                     pdf_text = "\n".join(pages)
                     self.log("  PDF text: " + str(len(pdf_text)) + " chars")
                 except Exception as pe:
-                    self.log("  PDF text error: " + str(pe))
+                    self.log("  PDF error: " + str(pe))
+                finally:
+                    await dl_page.close()
+                    await dl_ctx.close()
+                # Re-navigate main page back to case docket after PDF download
+                if href and href.startswith("http"):
+                    try:
+                        await self.page.goto(href,
+                            wait_until="domcontentloaded", timeout=20000)
+                        await asyncio.sleep(2)
+                        rejs = (
+                            "(function(){"
+                            "var links=document.querySelectorAll('a');"
+                            "for(var i=0;i<links.length;i++){"
+                            "var t=(links[i].innerText||links[i].textContent||'').trim();"
+                            "if(t==='" + cn + "'){links[i].click();return true;}"
+                            "}return false;"
+                            "})()"
+                        )
+                        await self.page.evaluate(rejs)
+                        await asyncio.sleep(2)
+                    except Exception:
+                        pass
         except Exception as e:
             self.log("  PDF error: " + str(e))
 
-        # Combine docket + petition for Claude
+        # Combine docket + petition PDF for Claude
         full_text = docket_text
         if pdf_text:
             full_text = docket_text + "\n\nORIGINAL PETITION PDF:\n" + pdf_text
@@ -670,7 +731,7 @@ class Discoverer:
                 pattern = pad_pattern(args.pattern)
                 self.log("Pattern: '" + args.pattern + "' -> '" + pattern + "'")
 
-                # Process page by page — immediate saves, stoppable anytime
+                # Process page by page — saves immediately, stoppable anytime
                 await self.go_to_portal_and_search(pattern)
                 total_found = 0
                 page_num = 1
@@ -712,7 +773,6 @@ class Discoverer:
                         await self.process_one_case(case)
                         await asyncio.sleep(3)
 
-                    # Next page — aria-label/title only, not ">" text
                     next_js = (
                         "(function(){"
                         "var els=document.querySelectorAll('a,button,span,li');"
@@ -729,8 +789,7 @@ class Discoverer:
                         "var isLast=(aria.indexOf('last')>=0||"
                         "title.indexOf('last')>=0||cls.indexOf('k-last')>=0);"
                         "if(isNext&&!isLast){el.click();return true;}"
-                        "}"
-                        "return false;"
+                        "}return false;"
                         "})()")
                     try:
                         moved = await self.page.evaluate(next_js)

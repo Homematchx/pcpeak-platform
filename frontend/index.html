@@ -1270,6 +1270,43 @@ function renderDetail(c) {
           <div class="sbox"><div class="slbl">Total at Filing</div><div class="sval" style="font-size:16px">${fmtC(ex.totalDueAtFiling)}</div></div>
           <div class="sbox"><div class="slbl">Defendants</div><div class="sval">${ex.defCount||1}</div></div>
         </div>
+
+        <!-- DEFENDANTS PANEL -->
+        ${(()=>{
+          const defs = ex.allDefendants || [];
+          if(!defs.length) return '';
+          const rows = defs.map(d => {
+            const isPrimary = !d.isInRemOnly;
+            const svcColor = d.serviceStatus==='served' ? '#22c55e' : '#ef4444';
+            const svcLabel = d.serviceStatus==='served' ? 'SERVED' : 'UNSERVED';
+            const remBadge = d.isInRemOnly ? '<span style="background:#6b7280;color:#fff;font-size:9px;padding:2px 5px;border-radius:3px;margin-left:6px">IN REM</span>' : '<span style="background:#3b82f6;color:#fff;font-size:9px;padding:2px 5px;border-radius:3px;margin-left:6px">PRIMARY</span>';
+            const contact = isPrimary && d.serviceStatus!=='served' ? '🚪 Door knock priority' : d.isInRemOnly && d.serviceStatus!=='served' ? '📋 Skip trace needed' : '✅ Served';
+            return \`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border2)">
+              <div style="flex:1">
+                <div style="font-weight:600;font-size:13px;color:var(--text)">\${d.name}\${remBadge}</div>
+                <div style="font-size:12px;color:var(--text2);margin-top:3px">📍 \${d.address||'Address unknown'}</div>
+                \${d.notes ? \`<div style="font-size:11px;color:var(--text3);margin-top:2px">\${d.notes}</div>\` : ''}
+                <div style="font-size:11px;color:#f59e0b;margin-top:4px">\${contact}</div>
+              </div>
+              <div style="margin-left:12px;text-align:right;flex-shrink:0">
+                <span style="background:\${svcColor}22;color:\${svcColor};font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px">\${svcLabel}</span>
+                \${d.serviceMethod ? \`<div style="font-size:10px;color:var(--text3);margin-top:3px">\${d.serviceMethod}</div>\` : ''}
+              </div>
+            </div>\`;
+          }).join('');
+          return \`<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--rc);padding:16px 20px;margin-top:16px">
+            <div style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Defendants & Service Status</div>
+            \${rows}
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border2);font-size:11px;color:var(--text3)">
+              \${defs.filter(d=>!d.isInRemOnly&&d.serviceStatus!=='served').length} primary unserved · 
+              \${defs.filter(d=>d.isInRemOnly&&d.serviceStatus!=='served').length} in-rem unserved · 
+              \${defs.filter(d=>d.serviceStatus==='served').length} served
+            </div>
+          </div>\`;
+        })()}
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px">
+        </div>
         ${projHTML}
         <div class="card"><div class="chd"><div class="ct">Phase breakdown &mdash; ${city.n} ${ex.complexity||"medium"}</div></div>${phaseHTML}</div>
         <div class="card"><div class="chd"><div class="ct">Case information</div></div>
