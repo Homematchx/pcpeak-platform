@@ -18,15 +18,15 @@ Case Information
 
 
 
-TX-26-00989 | DALLAS COUNTY et al vs. AMY ORTEGA
+TX-26-00991 | CITY OF GARLAND AND GARLAND INDEPENDENT SCHOOL DISTRICT vs. JUAN CARLOS ESTRADA MACIAS et al
 
 
 
 Case Number
-TX-26-00989
+TX-26-00991
 
 Court
-68th District Court
+298th District Court
 
 Judicial Officer
 GINSBERG, CARL
@@ -43,7 +43,7 @@ OPEN
 Party
 
 PLAINTIFF
-DALLAS COUNTY
+CITY OF GARLAND AND GARLAND INDEPENDENT SCHOOL DISTRICT
 
  
 
@@ -51,77 +51,22 @@ Active Attorneys
 
 
 Lead Attorney
-JONES, STEPHEN EARL
-
-Retained
-
-PLAINTIFF
-DALLAS INDEPENDENT SCHOOL DISTRICT
-
- 
-
-Active Attorneys
-
-
-Lead Attorney
-JONES, STEPHEN EARL
-
-Retained
-
-PLAINTIFF
-CITY OF DALLAS
-
- 
-
-Active Attorneys
-
-
-Lead Attorney
-JONES, STEPHEN EARL
-
-Retained
-
-PLAINTIFF
-PARKLAND HOSPITAL DISTRICT
-
- 
-
-Active Attorneys
-
-
-Lead Attorney
-JONES, STEPHEN EARL
-
-Retained
-
-PLAINTIFF
-DALLAS COLLEGE
-
- 
-
-Active Attorneys
-
-
-Lead Attorney
-JONES, STEPHEN EARL
-
-Retained
-
-PLAINTIFF
-DALLAS COUNTY SCHOOL EQUALIZATION FUND
-
- 
-
-Active Attorneys
-
-
-Lead Attorney
-JONES, STEPHEN EARL
+REECE, LINDA D.
 
 Retained
 
 DEFENDANT
-ORTEGA, AMY
+MACIAS, JUAN CARLOS ESTRADA
+
+ 
+
+DEFENDANT
+LOZOYA, IRMA ISELA MEDINA
+
+ 
+
+DEFENDANT
+PATRICIA PORTER WILER (IN REM ONLY)
 
  
 Events and Hearings
@@ -137,36 +82,72 @@ View Document ORIGINAL PETITION
 Comment
 - REAL PROPERTY
 
-05/19/2026 REQUEST FOR SERVICE 
+05/26/2026 REQUEST FOR SERVICE 
 
 View Document REQUEST FOR SERVICE
 
 Comment
-CITATION 1
+CITATION 3
 
-05/20/2026 ISSUE CITATION 
+05/27/2026 ISSUE CITATION 
 
-View Document AMY ORTEGA
+View Document JUAN CARLOS ESTRADA MACIAS
 
-05/20/2026 CITATION
+View Document IRMA ISELA MEDINA LOZOYA
 
-Unserved
+View Document PATRICIA PORTER WILER
+
+05/27/2026 CITATION
+
+Served
+06/11/2026
 
 Anticipated Server
-PRIVATE PROCESS SERVER
+CONSTABLE 2
 
 Anticipated Method
 
 
 Comment
-1 - TJRC
+1 - DALLAS CO PCT 2
 
-06/25/2026 AFFIDAVIT 
+05/27/2026 CITATION
 
-View Document AFFIDAVIT FOR COST OF ABSTRACT
+Unserved
+
+Anticipated Server
+CONSTABLE 2
+
+Anticipated Method
+
 
 Comment
-AFFIDAVIT FOR COST OF ABSTRACT
+1 - DALLAS CO PCT 2
+
+05/27/2026 CITATION
+
+Unserved
+
+Anticipated Server
+CONSTABLE 2
+
+Anticipated Method
+
+
+Comment
+1 - DALLAS CO PCT 2
+
+06/16/2026 RETURN OF SERVICE 
+
+View Document EXECUTED - PATRICIA PORTER WILER (IN REM ONLY) - CITATION
+
+Comment
+EXECUTED CITATION - PATRICIA PORTER WILER
+
+06/25/2026 MISCELLANOUS EVENT 
+
+Comment
+PAYMENT RECEIVED
 
 01/27/2027 Non Jury Trial 
 
@@ -182,15 +163,17 @@ Financial
 
 
 
-ORTEGA, AMY
+MACIAS, JUAN CARLOS ESTRADA
 
 Total Financial Assessment
-$358.00
+$454.00
 Total Payments and Credits
-$0.00
+$614.00
 
 5/19/2026	Transaction Assessment			$350.00
-5/20/2026	Transaction Assessment			$8.00
+5/27/2026	Transaction Assessment			$24.00
+6/16/2026	Transaction Assessment			$80.00
+6/25/2026	CASE FEE PAYMENT-MAINFRAME	Receipt # 43702-2026-DCLK	JONATHAN L CASTILLO	($614.00)
 Documents
 
 
@@ -199,11 +182,15 @@ View Document ORIGINAL PETITION
 
 View Document Non Jury Trial
 
-View Document AMY ORTEGA
+View Document JUAN CARLOS ESTRADA MACIAS
+
+View Document IRMA ISELA MEDINA LOZOYA
+
+View Document PATRICIA PORTER WILER
 
 View Document REQUEST FOR SERVICE
 
-View Document AFFIDAVIT FOR COST OF ABSTRACT
+View Document EXECUTED - PATRICIA PORTER WILER (IN REM ONLY) - CITATION
 
 Print
 

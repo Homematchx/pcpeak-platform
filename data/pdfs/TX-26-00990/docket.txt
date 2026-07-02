@@ -18,15 +18,15 @@ Case Information
 
 
 
-TX-26-00989 | DALLAS COUNTY et al vs. AMY ORTEGA
+TX-26-00990 | DALLAS COUNTY et al vs. HECTOR LOPEZ LOPEZ et al
 
 
 
 Case Number
-TX-26-00989
+TX-26-00990
 
 Court
-68th District Court
+191st District Court
 
 Judicial Officer
 GINSBERG, CARL
@@ -121,7 +121,12 @@ JONES, STEPHEN EARL
 Retained
 
 DEFENDANT
-ORTEGA, AMY
+LOPEZ, HECTOR LOPEZ
+
+ 
+
+DEFENDANT
+LEUNG, DAN
 
  
 Events and Hearings
@@ -139,16 +144,18 @@ Comment
 
 05/19/2026 REQUEST FOR SERVICE 
 
-View Document REQUEST FOR SERVICE
+View Document DAL ISSUANCE REQUEST
 
 Comment
-CITATION 1
+CITATION 2
 
-05/20/2026 ISSUE CITATION 
+05/19/2026 ISSUE CITATION 
 
-View Document AMY ORTEGA
+View Document HECTOR LOPEZ LOPEZ
 
-05/20/2026 CITATION
+View Document DAN LEUNG
+
+05/19/2026 CITATION
 
 Unserved
 
@@ -159,7 +166,20 @@ Anticipated Method
 
 
 Comment
-1 - TJRC
+TJRC
+
+05/19/2026 CITATION
+
+Unserved
+
+Anticipated Server
+PRIVATE PROCESS SERVER
+
+Anticipated Method
+
+
+Comment
+TJRC
 
 06/25/2026 AFFIDAVIT 
 
@@ -182,15 +202,15 @@ Financial
 
 
 
-ORTEGA, AMY
+LOPEZ, HECTOR LOPEZ
 
 Total Financial Assessment
-$358.00
+$366.00
 Total Payments and Credits
 $0.00
 
 5/19/2026	Transaction Assessment			$350.00
-5/20/2026	Transaction Assessment			$8.00
+5/19/2026	Transaction Assessment			$16.00
 Documents
 
 
@@ -199,9 +219,11 @@ View Document ORIGINAL PETITION
 
 View Document Non Jury Trial
 
-View Document AMY ORTEGA
+View Document HECTOR LOPEZ LOPEZ
 
-View Document REQUEST FOR SERVICE
+View Document DAN LEUNG
+
+View Document DAL ISSUANCE REQUEST
 
 View Document AFFIDAVIT FOR COST OF ABSTRACT
 

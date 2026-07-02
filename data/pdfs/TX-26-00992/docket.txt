@@ -18,15 +18,15 @@ Case Information
 
 
 
-TX-26-00989 | DALLAS COUNTY et al vs. AMY ORTEGA
+TX-26-00992 | CITY OF GARLAND AND GARLAND INDEPENDENT SCHOOL DISTRICT vs. MISAEL RIVERA MARTINEZ et al
 
 
 
 Case Number
-TX-26-00989
+TX-26-00992
 
 Court
-68th District Court
+162nd District Court
 
 Judicial Officer
 GINSBERG, CARL
@@ -43,7 +43,7 @@ OPEN
 Party
 
 PLAINTIFF
-DALLAS COUNTY
+CITY OF GARLAND AND GARLAND INDEPENDENT SCHOOL DISTRICT
 
  
 
@@ -51,77 +51,27 @@ Active Attorneys
 
 
 Lead Attorney
-JONES, STEPHEN EARL
-
-Retained
-
-PLAINTIFF
-DALLAS INDEPENDENT SCHOOL DISTRICT
-
- 
-
-Active Attorneys
-
-
-Lead Attorney
-JONES, STEPHEN EARL
-
-Retained
-
-PLAINTIFF
-CITY OF DALLAS
-
- 
-
-Active Attorneys
-
-
-Lead Attorney
-JONES, STEPHEN EARL
-
-Retained
-
-PLAINTIFF
-PARKLAND HOSPITAL DISTRICT
-
- 
-
-Active Attorneys
-
-
-Lead Attorney
-JONES, STEPHEN EARL
-
-Retained
-
-PLAINTIFF
-DALLAS COLLEGE
-
- 
-
-Active Attorneys
-
-
-Lead Attorney
-JONES, STEPHEN EARL
-
-Retained
-
-PLAINTIFF
-DALLAS COUNTY SCHOOL EQUALIZATION FUND
-
- 
-
-Active Attorneys
-
-
-Lead Attorney
-JONES, STEPHEN EARL
+REECE, LINDA D.
 
 Retained
 
 DEFENDANT
-ORTEGA, AMY
+RIVERA MARTINEZ, MISAEL
+
+ 
+
+Active Attorneys
+
+
+Pro Se
+
+DEFENDANT
+KEN MY LUONG (IN REM ONLY)
+
+ 
+
+DEFENDANT
+RESOLUTION FINANCE, LLC (IN REM ONLY)
 
  
 Events and Hearings
@@ -137,36 +87,102 @@ View Document ORIGINAL PETITION
 Comment
 - REAL PROPERTY
 
-05/19/2026 REQUEST FOR SERVICE 
+05/26/2026 REQUEST FOR SERVICE 
 
 View Document REQUEST FOR SERVICE
 
 Comment
-CITATION 1
+CITATION 3
 
-05/20/2026 ISSUE CITATION 
+05/27/2026 ISSUE CITATION 
 
-View Document AMY ORTEGA
+View Document RESOLUTION FINANCE, LLC
 
-05/20/2026 CITATION
+View Document MISAEL RIVERA MARTINEZ
 
-Unserved
+View Document KEN MY LUONG
+
+05/27/2026 CITATION
+
+Served
+06/13/2026
 
 Anticipated Server
-PRIVATE PROCESS SERVER
+CONSTABLE 2
 
 Anticipated Method
 
 
 Comment
-1 - TJRC
+1 - DALLAS CO PCT 2
 
-06/25/2026 AFFIDAVIT 
+05/27/2026 CITATION
 
-View Document AFFIDAVIT FOR COST OF ABSTRACT
+Served
+06/02/2026
+
+Anticipated Server
+CONSTABLE 2
+
+Anticipated Method
+
 
 Comment
-AFFIDAVIT FOR COST OF ABSTRACT
+1 - DALLAS CO PCT 2
+
+05/27/2026 CITATION
+
+Served
+06/17/2026
+
+Anticipated Server
+CONSTABLE 5
+
+Anticipated Method
+
+
+Comment
+1 - DALLAS CO PCT 5
+
+06/04/2026 RETURN OF SERVICE 
+
+View Document EXECUTED - KEN MY LUONG (IN REM ONLY) - CITATION
+
+Comment
+EXECUTED CITATION - KEN MY LUONG
+
+06/09/2026 ORIGINAL ANSWER - GENERAL DENIAL 
+
+View Document ANSWER
+
+06/16/2026 RETURN OF SERVICE 
+
+View Document EXECUTED - RIVERA MARTINEZ, MISAEL - CITATION
+
+Comment
+EXECUTED CITATION - MISAEL RIVERA MARTINEZ
+
+06/23/2026 RETURN OF SERVICE 
+
+View Document EXECUTED - RESOLUTION FINANCE, LLC (IN REM ONLY) - CITATION
+
+Comment
+EXECUTED CITATION - RESOLUTION FINANCE, LLC
+
+01/13/2027 Non Jury Trial 
+
+View Document Non Jury Trial PERDUE
+
+View Document Non Jury Trial MISAEL
+
+Judicial Officer
+GINSBERG, CARL
+
+Hearing Time
+12:00 PM
+
+Comment
+MEETING ID 824 1902 1400
 
 01/27/2027 Non Jury Trial 
 
@@ -178,19 +194,25 @@ GINSBERG, CARL
 Hearing Time
 10:05 AM
 
+Cancel Reason
+CASE TRIAL RESET
+
 Financial
 
 
 
-ORTEGA, AMY
+RIVERA MARTINEZ, MISAEL
 
 Total Financial Assessment
-$358.00
+$614.00
 Total Payments and Credits
 $0.00
 
 5/19/2026	Transaction Assessment			$350.00
-5/20/2026	Transaction Assessment			$8.00
+5/27/2026	Transaction Assessment			$24.00
+6/4/2026	Transaction Assessment			$80.00
+6/16/2026	Transaction Assessment			$80.00
+6/23/2026	Transaction Assessment			$80.00
 Documents
 
 
@@ -199,11 +221,25 @@ View Document ORIGINAL PETITION
 
 View Document Non Jury Trial
 
-View Document AMY ORTEGA
+View Document RESOLUTION FINANCE, LLC
+
+View Document MISAEL RIVERA MARTINEZ
+
+View Document KEN MY LUONG
 
 View Document REQUEST FOR SERVICE
 
-View Document AFFIDAVIT FOR COST OF ABSTRACT
+View Document EXECUTED - KEN MY LUONG (IN REM ONLY) - CITATION
+
+View Document ANSWER
+
+View Document Non Jury Trial PERDUE
+
+View Document Non Jury Trial MISAEL
+
+View Document EXECUTED - RIVERA MARTINEZ, MISAEL - CITATION
+
+View Document EXECUTED - RESOLUTION FINANCE, LLC (IN REM ONLY) - CITATION
 
 Print
 

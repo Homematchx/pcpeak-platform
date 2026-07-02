@@ -9,71 +9,171 @@ Smart Search
 
 Search Results
 
-Print
-The search returned 200 cases, but could have returned more. Please narrow the search by entering more precise criteria.
-Cases
- 
+ 
+3
+
+Details
+
+Case Information
+
+
+
+TX-26-00994 | GARLAND INDEPENDENT SCHOOL DISTRICT vs. ANTONIO GRANADOS SOLORZANO et al
+
+
+
 Case Number
-	
+TX-26-00994
+
+Court
+191st District Court
+
+Judicial Officer
+GINSBERG, CARL
+
 File Date
-	
-Type
-	
-Status
-	
-Location
-	
-Party Name
+05/19/2026
 
-TX-26-00817	04/23/2026	TAX DELINQUENCY	OPEN	192nd District Court	RODRIGUEZ, ALICIA FERNANDEZ
+Case Type
+TAX DELINQUENCY
 
+Case Status
+OPEN
 
-TX-26-00802	04/22/2026	TAX DELINQUENCY	CLOSED	95th District Court	SIERRA, JOSE E
+Party
 
+PLAINTIFF
+GARLAND INDEPENDENT SCHOOL DISTRICT
 
-TX-26-00801	04/22/2026	TAX DELINQUENCY	OPEN	101st District Court	CBC RESTAURANT CORP D/B/A CORNER BAKERY CAFE
+ 
 
-
-TX-26-00803	04/22/2026	TAX DELINQUENCY	OPEN	298th District Court	SINGLETARY, MELISSA
+Active Attorneys
 
 
-TX-26-00804	04/22/2026	TAX DELINQUENCY	OPEN	193rd District Court	MARIAM, ZELEKA T.
+Lead Attorney
+REECE, LINDA D.
+
+Retained
+
+DEFENDANT
+SOLORZANO, ANTONIO GRANADOS
+
+ 
+
+DEFENDANT
+PINON, MARIA DELOSANGELES GRANADOS
+
+ 
+Events and Hearings
 
 
-TX-26-00805	04/22/2026	TAX DELINQUENCY	OPEN	14th District Court	PHAM, AI THI
+
+05/19/2026 NEW CASE FILED (OCA) - CIVIL
+
+05/19/2026 ORIGINAL PETITION 
+
+View Document ORIGINAL PETITION
+
+Comment
+- REAL PROPERTY
+
+05/26/2026 REQUEST FOR SERVICE 
+
+View Document REQUEST FOR SERVICE
+
+Comment
+ISSUE CITATIONS- 2
+
+05/26/2026 ISSUE CITATION 
+
+View Document MARIA DELOSANGELES GRANDADOS PINON-CITATION
+
+View Document ANTONIO GRANDADOS SOLARZANO - CITATION
+
+05/26/2026 CITATION
+
+Unserved
+
+Anticipated Server
+CONSTABLE 2
+
+Anticipated Method
 
 
-TX-26-00806	04/22/2026	TAX DELINQUENCY	OPEN	101st District Court	RAMEY, HARDIN R.
+Served
+06/05/2026
+
+Anticipated Server
+CONSTABLE 2
+
+Anticipated Method
 
 
-TX-26-00807	04/22/2026	TAX DELINQUENCY	OPEN	68th District Court	D. DENISE BARNES, A/K/A DEBORAH DENISE BARNES
+Comment
+2 CONSTABLE # 2
+
+06/09/2026 RETURN OF SERVICE 
+
+View Document EXECUTED - PINON, MARIA DELOSANGELES GRANADOS - CITATION
+
+Comment
+EXECUTED CITATION - MARIA DELOSAMGELES GRANADOS PINON
+
+06/30/2026 MISCELLANOUS EVENT 
+
+Comment
+PAYMENT RECEIVED
+
+01/27/2027 Non Jury Trial 
+
+View Document Non Jury Trial
+
+Judicial Officer
+GINSBERG, CARL
+
+Hearing Time
+10:05 AM
+
+Financial
 
 
-TX-26-00835	04/22/2026	TAX CASES (OTHER)	OPEN	68th District Court	MORA, JOSE ANGEL
+
+SOLORZANO, ANTONIO GRANADOS
+
+Total Financial Assessment
+$446.00
+Total Payments and Credits
+$546.00
+
+5/19/2026	Transaction Assessment			$350.00
+5/26/2026	Transaction Assessment			$16.00
+6/8/2026	PAYMENT (CASE FEES)	Receipt # 39254-2026-DCLK	PINON, MARIA DELOSANGELES GRANADOS	($526.00)
+6/9/2026	Transaction Assessment			$80.00
+6/30/2026	CASE FEE PAYMENT-MAINFRAME	Receipt # 45147-2026-DCLK	PINON, MARIA DELOSANGELES GRANADOS	($20.00)
+Documents
 
 
-TX-26-00794	04/21/2026	TAX DELINQUENCY	OPEN	116th District Court	HEIRS AND UNKNOWN HEIRS OF RUBY J. TAYLOR
 
-seek-w
-arrow-w
-...
-11
-12
-13
-14
-15
-16
-17
-18
-19
-20
-arrow-e
-seek-e
-10
-select
-items per page
-191 - 200 of 200 items
+View Document ORIGINAL PETITION
 
+View Document Non Jury Trial
+
+View Document MARIA DELOSANGELES GRANDADOS PINON-CITATION
+
+View Document ANTONIO GRANDADOS SOLARZANO - CITATION
+
+View Document REQUEST FOR SERVICE
+
+View Document EXECUTED - PINON, MARIA DELOSANGELES GRANADOS - CITATION
+
+Print
+
+Case Information
+Party
+Events and Hearings
+Financial
+Documents
+Back to top
 © 2026 Tyler Technologies, Inc. | All Rights Reserved
 
 
