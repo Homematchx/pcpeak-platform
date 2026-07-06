@@ -531,6 +531,7 @@ function platformToV3(pc, events) {
     memo: pc.ai_memo || "",
     uploadedAt: pc.last_agent_run || pc.updated_at || new Date().toISOString(),
     fileNames: ["[Platform Agent — " + (pc.last_agent_run ? new Date(pc.last_agent_run).toLocaleDateString() : "synced") + "]"],
+    property_intel: pc.property_intel || null,
     extracted: {
       caseNumber:               pc.case_number || "",
       court:                    pc.court || "",
