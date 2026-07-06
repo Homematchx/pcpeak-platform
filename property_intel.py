@@ -427,6 +427,117 @@ def analyze_distress(dcad: dict, act: dict) -> dict:
     }
 
 
+async def scrape_dcad_history(account_number: str, browser) -> dict:
+    result = {
+        "ownership_history": [],
+        "owner_changes": [],
+        "is_absentee": False,
+        "estate_flag": False,
+        "mailing_differs_from_property": False,
+        "history_url": "https://www.dallascad.org/AcctHistory.aspx?ID=" + account_number,
+        "error": None
+    }
+    page = None
+    try:
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        )
+        page = await context.new_page()
+        await page.goto(
+            "https://www.dallascad.org/AcctHistory.aspx?ID=" + account_number,
+            wait_until="domcontentloaded", timeout=30000
+        )
+        await asyncio.sleep(2)
+        text = await page.inner_text("body")
+
+        # Each ownership block starts with YEAR\tOWNER
+        # Split on year boundaries
+        blocks = re.split(r"(?=\n[0-9]{4}\t)", "\n" + text)
+
+        prev_owner = None
+        for block in blocks:
+            # Match year and owner name
+            yr_m = re.match(r"\n?([0-9]{4})\t([^\n]+)", block)
+            if not yr_m:
+                continue
+
+            year = int(yr_m.group(1))
+            owner_name = yr_m.group(2).strip()
+
+            # Mailing address — line after owner name
+            lines_b = block.splitlines()
+            mailing_addr = lines_b[1].strip() if len(lines_b) > 1 else ""
+            mailing_city = lines_b[2].strip() if len(lines_b) > 2 else ""
+            # Clean xa0 non-breaking spaces
+            mailing_addr = mailing_addr.replace("\xa0", " ").strip()
+            mailing_city = mailing_city.replace("\xa0", " ").strip()
+
+            # Deed transfer date
+            deed_m = re.search(r"Deed Transfer Date:[\xa0\s]+(\d+/\d+/\d+)", block)
+            deed_date = deed_m.group(1) if deed_m else ""
+
+            record = {
+                "year": year,
+                "owner": owner_name,
+                "mailing_address": mailing_addr,
+                "mailing_city": mailing_city,
+                "deed_transfer_date": deed_date
+            }
+            result["ownership_history"].append(record)
+
+            if prev_owner and owner_name != prev_owner:
+                result["owner_changes"].append({
+                    "year": year,
+                    "from_owner": prev_owner,
+                    "to_owner": owner_name,
+                    "deed_date": deed_date,
+                    "flags": _analyze_owner_change(prev_owner, owner_name)
+                })
+            prev_owner = owner_name
+
+        # Absentee: latest owner mailing address differs from property
+        if result["ownership_history"]:
+            latest = result["ownership_history"][0]
+            mailing = (latest.get("mailing_address") or "").upper()
+            result["is_absentee"] = bool(mailing and "HARRIS" not in mailing and mailing != "")
+            result["mailing_differs_from_property"] = result["is_absentee"]
+
+        all_owners = " ".join(r["owner"] for r in result["ownership_history"])
+        result["estate_flag"] = bool(re.search(r"ESTATE|HEIR|DEVISEE", all_owners, re.I))
+
+    except Exception as e:
+        result["error"] = str(e)
+    finally:
+        if page:
+            try:
+                await page.close()
+                await context.close()
+            except Exception:
+                pass
+    return result
+
+
+def _analyze_owner_change(from_owner: str, to_owner: str) -> list:
+    """Analyze what an ownership change means."""
+    flags = []
+    from_up = from_owner.upper()
+    to_up = to_owner.upper()
+    
+    if "ESTATE OF" in to_up or "HEIR" in to_up:
+        flags.append("DECEASED — estate transfer")
+    if "ESTATE OF" in from_up and "ESTATE OF" not in to_up:
+        flags.append("Estate resolved — new owner")
+    if any(w in to_up for w in ["TRUST", "LLC", "INC", "CORP"]):
+        flags.append("Transferred to entity — investor/trust")
+    if "FEDERAL TITLE" in to_up or "TITLE" in to_up:
+        flags.append("Title company involved — active sale")
+    if from_up.split()[0] == to_up.split()[0]:  # same last name
+        flags.append("Family transfer — same surname")
+    if not flags:
+        flags.append("Arm's length sale")
+    return flags
+
+
 async def enrich_property(account_number: str, address: str, browser,
                            gsv_api_key: str = None) -> dict:
     if not account_number or len(account_number) < 10:
@@ -434,9 +545,10 @@ async def enrich_property(account_number: str, address: str, browser,
 
     print(f"  [intel] Enriching {account_number}...")
 
-    dcad, act = await asyncio.gather(
+    dcad, act, history = await asyncio.gather(
         scrape_dcad(account_number, browser),
-        scrape_dallas_act(account_number, browser)
+        scrape_dallas_act(account_number, browser),
+        scrape_dcad_history(account_number, browser)
     )
 
     distress = analyze_distress(dcad, act)
@@ -496,6 +608,13 @@ async def enrich_property(account_number: str, address: str, browser,
         "street_view_url": sv_url,
         "dcad_url": dcad.get("dcad_url"),
         "act_url": act.get("act_url"),
+        # Ownership history
+        "ownership_history": history.get("ownership_history", []),
+        "owner_changes": history.get("owner_changes", []),
+        "is_absentee": history.get("is_absentee", False),
+        "estate_flag": history.get("estate_flag", False),
+        "mailing_differs_from_property": history.get("mailing_differs_from_property", False),
+        "history_url": history.get("history_url", ""),
         "enriched_at": datetime.now().isoformat(),
         "errors": {"dcad": dcad.get("error"), "act": act.get("error")}
     }

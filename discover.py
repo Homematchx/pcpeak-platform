@@ -662,19 +662,14 @@ class Discoverer:
 
         extracted["caseNumber"] = cn
 
-        # Generate acquisition memo with property intel
-        self.log("  Generating memo...")
-        intel_data = json.loads(extracted.get("_property_intel", "{}")) if extracted.get("_property_intel") else None
-        memo = await claude_memo(extracted, owner, intel_data)
-
-        # Save to database
-        save_to_db(extracted, memo, owner)
+        # Save to database first (without memo)
+        save_to_db(extracted, "", owner)
 
         addr = extracted.get("propertyAddress", "no address extracted")
         debt = extracted.get("totalDueAtFiling", 0)
-        self.log("  Saved " + cn + " | " + addr + " | $" + "{:,.0f}".format(debt))
 
-        # Property Intel enrichment — DCAD + Dallas ACT
+        # Property Intel enrichment — DCAD + Dallas ACT FIRST
+        intel = None
         acct = extracted.get("accountNumber", "")
         if acct and len(acct) >= 10:
             try:
@@ -694,9 +689,22 @@ class Discoverer:
                              " | Balance $" + "{:,.0f}".format(bal))
                     extracted["_property_intel"] = json.dumps(intel)
                 else:
-                    self.log("  Intel: no data returned (ACT/DCAD may have blocked)")
+                    self.log("  Intel: no data returned")
+                    intel = None
             except Exception as ie:
                 self.log("  Intel error: " + str(ie))
+                intel = None
+
+        # Generate acquisition memo AFTER intel — so it uses real values
+        self.log("  Generating memo...")
+        memo = await claude_memo(extracted, owner, intel)
+
+        # Update DB with memo
+        with sqlite3.connect(str(DB_PATH)) as db:
+            db.execute("UPDATE cases SET ai_memo=? WHERE case_number=?", [memo, cn])
+            db.commit()
+
+        self.log("  Saved " + cn + " | " + addr + " | $" + "{:,.0f}".format(debt))
 
         self.stats["processed"] += 1
         return True
