@@ -234,29 +234,39 @@ async def scrape_dallas_act(account_number: str, browser) -> dict:
         text = await page.inner_text("body")
 
         # Parse table rows: date  amount  years  payer
-        lines = text.splitlines()
-        for line in lines:
-            parts = line.strip().split()
-            if not parts: continue
-            # Look for date pattern YYYY-MM-DD
-            date_m = re.match(r'(\d{4}-\d{2}-\d{2})', parts[0]) if parts else None
-            if date_m:
-                try:
-                    date = parts[0]
-                    amount = float(parts[1].replace("$","").replace(",","")) if len(parts) > 1 else 0
-                    # Collect rest as tax_year and payer
-                    rest = " ".join(parts[2:])
-                    years_m = re.search(r'(\d{4}(?:,\s*\d{4})*)', rest)
-                    years = years_m.group(1) if years_m else ""
-                    payer = rest.replace(years, "").strip() if years else rest
-                    result["payment_history"].append({
-                        "date": date,
-                        "amount": amount,
-                        "tax_year": years,
-                        "payer": payer[:50]
-                    })
-                except Exception:
-                    pass
+        # Parse payment table using regex on full text
+        payment_matches = re.findall(
+            r'(\d{4}-\d{2}-\d{2})\s+\$(\d[\d,\.]+)\s+([\d,\s]+?)\s+([A-Z][A-Z\s]+?)(?=\d{4}-|$)',
+            text, re.MULTILINE
+        )
+        for date, amount, years, payer in payment_matches[:15]:
+            try:
+                result["payment_history"].append({
+                    "date": date.strip(),
+                    "amount": float(amount.replace(",","")),
+                    "tax_year": years.strip(),
+                    "payer": payer.strip()[:50]
+                })
+            except Exception:
+                pass
+        # Fallback: find dates and surrounding context
+        if not result["payment_history"]:
+            for line in text.splitlines():
+                m = re.match(r'\s*(\d{4}-\d{2}-\d{2})\s+\$(\d[\d,\.]+)\s+(.*)', line)
+                if m:
+                    try:
+                        rest = m.group(3)
+                        years_m = re.search(r'(\d{4}(?:[,\s]+\d{4})*)', rest)
+                        years = years_m.group(1) if years_m else ""
+                        payer = rest[years_m.end():].strip() if years_m else rest
+                        result["payment_history"].append({
+                            "date": m.group(1),
+                            "amount": float(m.group(2).replace(",","")),
+                            "tax_year": years,
+                            "payer": payer[:50]
+                        })
+                    except Exception:
+                        pass
 
         result["payment_history"] = result["payment_history"][:15]
 

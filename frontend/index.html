@@ -1092,7 +1092,8 @@ function selectCase(id) {
 }
 
 function renderDetail(c) {
-  window._currentCase = c.extracted || {};
+  var merged = Object.assign({}, c.extracted || {}, {property_intel: c.property_intel, accountNumber: c.account_number});
+  window._currentCase = merged;
   const ex = c.extracted, pr = project(c), fl = flags(ex), city = pr.city;
   const hasJ = !!ex.judgmentDate, oosIssued = ex.orderOfSaleIssued;
   const cbdg = {low:"bdg-green",medium:"bdg-amber",high:"bdg-red"}[ex.complexity||"medium"];
