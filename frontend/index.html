@@ -1092,6 +1092,7 @@ function selectCase(id) {
 }
 
 function renderDetail(c) {
+  window._currentCase = c.extracted || {};
   const ex = c.extracted, pr = project(c), fl = flags(ex), city = pr.city;
   const hasJ = !!ex.judgmentDate, oosIssued = ex.orderOfSaleIssued;
   const cbdg = {low:"bdg-green",medium:"bdg-amber",high:"bdg-red"}[ex.complexity||"medium"];
@@ -1256,6 +1257,7 @@ function renderDetail(c) {
         <button class="tb" onclick="swTab(event,'tl')">Timeline</button>
         <button class="tb" onclick="swTab(event,'fin')">Financials</button>
         <button class="tb" onclick="swTab(event,'risk')">Risk Flags</button>
+        <button class="tb" onclick="swTab(event,'def')">Defendants</button>
         <button class="tb" onclick="swTab(event,'city')">City Benchmarks</button>
         <button class="tb" onclick="swTab(event,'known')">Known Cases</button>
         <button class="tb" onclick="swTab(event,'ai')">AI Memo</button>
@@ -1401,7 +1403,10 @@ function renderDetail(c) {
         <div class="alert al-i">&#8505; As Stewart and Hedge OOS dates are confirmed, update KNOWN_CASES in the JS to tighten projections. The engine automatically averages confirmed cases of matching complexity.</div>
       </div>
 
-      <div class="tp" id="tp-ai">
+      <div class="tp" id="tp-def" style="display:none">
+  <div id="def-panel"></div>
+</div>
+<div class="tp" id="tp-ai">
         <div class="aisec"><div class="aihd"><div class="aidot"></div><span class="ailbl">AI Intelligence Memo</span></div>
           <div class="aitxt">${c.memo||"No memo generated."}</div>
         </div>
@@ -1413,11 +1418,70 @@ function renderDetail(c) {
     </div>`;
 }
 
+function renderDefendants(ex) {
+  var defs = ex.allDefendants || [];
+  var el = document.getElementById("def-panel");
+  if (!el) return;
+  if (!defs || defs.length === 0) {
+    el.innerHTML = "<div style='padding:32px;text-align:center;color:var(--text3)'>No defendant data extracted. Run discover.py or re-analyze the petition PDF to populate defendant intelligence.</div>";
+    return;
+  }
+  var html = "<div style='margin-bottom:16px'>";
+  html += "<div style='font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px'>Defendants & Contact Intelligence</div>";
+  for (var i = 0; i < defs.length; i++) {
+    var d = defs[i];
+    if (typeof d === "string") { d = {name:d, address:"", serviceStatus:"unknown", isInRemOnly:false, notes:""}; }
+    var isPrimary = !d.isInRemOnly;
+    var served = (d.serviceStatus||"").toLowerCase() === "served";
+    var svcColor = served ? "#22c55e" : "#ef4444";
+    var svcLabel = served ? "SERVED" : "UNSERVED";
+    var typeColor = isPrimary ? "#3b82f6" : "#6b7280";
+    var typeLabel = d.isInRemOnly ? "IN REM ONLY" : "PRIMARY";
+    var contactIcon = isPrimary && !served ? "🚪 Door knock — decision maker" :
+                      d.isInRemOnly && !served ? "📋 Skip trace / direct mail" :
+                      "✅ Served — monitor only";
+    var outOfState = d.address && (d.address.indexOf(", TX ") < 0) && d.address.length > 5;
+    var stateNote = outOfState ? " <span style='color:#f59e0b;font-size:10px'>OUT OF STATE</span>" : "";
+    html += "<div style='background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:12px'>";
+    html += "<div style='display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px'>";
+    html += "<div>";
+    html += "<div style='font-weight:700;font-size:14px;color:var(--text)'>" + (d.name||"Unknown") + "</div>";
+    html += "<div style='margin-top:4px'>";
+    html += "<span style='background:" + typeColor + "22;color:" + typeColor + ";font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;margin-right:6px'>" + typeLabel + "</span>";
+    html += "<span style='background:" + svcColor + "22;color:" + svcColor + ";font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px'>" + svcLabel + "</span>";
+    html += "</div></div></div>";
+    if (d.address) {
+      html += "<div style='font-size:13px;color:var(--text2);margin-bottom:6px'>📍 " + d.address + stateNote + "</div>";
+    }
+    if (d.serviceMethod) {
+      html += "<div style='font-size:11px;color:var(--text3);margin-bottom:4px'>Service: " + d.serviceMethod + "</div>";
+    }
+    if (d.notes) {
+      html += "<div style='font-size:11px;color:var(--text3);margin-bottom:6px'>" + d.notes + "</div>";
+    }
+    html += "<div style='font-size:12px;color:#f59e0b;font-weight:500;margin-top:8px;padding-top:8px;border-top:1px solid var(--border2)'>" + contactIcon + "</div>";
+    html += "</div>";
+  }
+  // Summary bar
+  var primary = defs.filter(function(d){return typeof d === "object" && !d.isInRemOnly;}).length;
+  var inrem = defs.filter(function(d){return typeof d === "object" && d.isInRemOnly;}).length;
+  var served_count = defs.filter(function(d){return typeof d === "object" && (d.serviceStatus||"").toLowerCase()==="served";}).length;
+  html += "<div style='background:var(--surface2);border-radius:6px;padding:10px 14px;font-size:11px;color:var(--text3);display:flex;gap:20px'>";
+  html += "<span>👤 " + primary + " primary</span>";
+  html += "<span>⚫ " + inrem + " in rem</span>";
+  html += "<span>✅ " + served_count + " served</span>";
+  html += "<span>❌ " + (defs.length - served_count) + " unserved</span>";
+  html += "</div>";
+  html += "</div>";
+  el.innerHTML = html;
+}
+
 function swTab(e, id) {
   document.querySelectorAll(".tb").forEach(b => b.classList.remove("on"));
   document.querySelectorAll(".tp").forEach(p => p.classList.remove("on"));
   e.target.classList.add("on");
   document.getElementById("tp-"+id).classList.add("on");
+  if (id === "def") { renderDefendants(window._currentCase || {}); }
 }
 
 // ═══════════════════════════════════════════
