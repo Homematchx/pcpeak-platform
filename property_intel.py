@@ -92,22 +92,26 @@ async def scrape_dcad(account_number: str, browser) -> dict:
                 return val
             return default
 
-        # Valuation — DCAD shows: Improvement: $X \n Land: +$Y \n Market Value: =$Z
-        # Must parse all three separately
-        imp_m = re.search(r'Improvement[:\s]+\n?\s*\$?([\d,]+)', text)
-        if imp_m:
-            result["improvement_value"] = int(imp_m.group(1).replace(",",""))
-        land_m = re.search(r'Land[:\s]+\n?\s*\+?\$?([\d,]+)', text)
-        if land_m:
-            result["land_value"] = int(land_m.group(1).replace(",",""))
-        # Market value is the = total, or explicit Market Value line
-        mv_m = re.search(r'=\s*\$([\d,]+)', text)
-        if not mv_m:
-            mv_m = re.search(r'Market Value[:\s]+\$?([\d,]+)', text)
-        if mv_m:
-            result["market_value"] = int(mv_m.group(1).replace(",",""))
-        # Taxable value
-        tax_val_m = re.search(r'Taxable Value[\s\t]+\$?([\d,]+)', text)
+        # Valuation — exact DCAD format:
+        # "Improvement:\nLand:\nMarket Value:\t$49,350\n+ $109,480\n=$158,830"
+        # improvement = first dollar amount after "Market Value:\t"
+        # land = amount after "+ $"
+        # market = amount after "="
+        val_section = re.search(
+            r'Market Value:	\$([\d,]+)\n\+\s*\$([\d,]+)\n=\$([\d,]+)',
+            text
+        )
+        if val_section:
+            result["improvement_value"] = int(val_section.group(1).replace(",",""))
+            result["land_value"] = int(val_section.group(2).replace(",",""))
+            result["market_value"] = int(val_section.group(3).replace(",",""))
+        else:
+            # Fallback
+            mv_m = re.search(r'=\$([\d,]+)', text)
+            if mv_m:
+                result["market_value"] = int(mv_m.group(1).replace(",",""))
+        # Taxable value — first value in Estimated Taxes table
+        tax_val_m = re.search(r'Taxable Value\s+\$([\d,]+)', text)
         if tax_val_m:
             result["taxable_value"] = int(tax_val_m.group(1).replace(",",""))
 
@@ -116,8 +120,12 @@ async def scrape_dcad(account_number: str, browser) -> dict:
         result["effective_year_built"] = find(r'Effective Year Built[:\s]+(\d{4})', cast=int)
         result["actual_age"] = find(r'Actual Age[:\s]+(\d+)', cast=int)
         result["building_class"] = find(r'Building Class[:\s]+(\w+)', "")
-        result["construction_type"] = find(r'Construction Type[\s\t]+([A-Z/\s]+?)(?:\n|\t)', "")
-        result["foundation"] = find(r'Foundation[\s\t]+([A-Z\s]+?)(?:\n|\t|Roof)', "")
+        # Physical chars use tabs: "Building Class\t04\tConstruction Type\tFRAME\t..."
+        result["construction_type"] = find(r'Construction Type\t([A-Z\s]+?)(?:\xa0|\t)', "")
+        result["foundation"] = find(r'Foundation\t([A-Z\s]+?)(?:\xa0|\t)', "")
+        result["roof_type"] = find(r'Roof Type\t([A-Z\s]+?)(?:\xa0|\t)', "")
+        result["roof_material"] = find(r'Roof Material\t([A-Z\s]+?)(?:\xa0|\t)', "")
+        result["exterior_wall"] = find(r'Ext\.? Wall Material\t([A-Z\s]+?)(?:\xa0|\t)', "")
         result["roof_type"] = find(r'Roof Type[:\s]+([A-Z/\s]+?)(?:\n|Roof Material)', "")
         result["roof_material"] = find(r'Roof Material[:\s]+([A-Z\s]+?)(?:\n|Fence)', "")
         result["exterior_wall"] = find(r'Ext\.? Wall Material[:\s]+([A-Z\s]+?)(?:\n|Basement|Heating)', "")
@@ -138,26 +146,27 @@ async def scrape_dcad(account_number: str, browser) -> dict:
             result["garage_sqft"] = int(garage.group(1).replace(",",""))
 
         # Land dimensions
-        # Land details — parse from DCAD land table
-        # Format: State Code | Zoning | Frontage | Depth | Area | ... | Unit Price | ... | Adjusted Price
+        # Land table uses TABS:
+        # "1\tSINGLE FAMILY RESIDENCES\tDUPLEX DISTRICT\t85\t92\t7,820.0000 SQUARE FEET\tSTANDARD\t$14.00\t0%\t$109,480\tN"
         land_row = re.search(
-            r'SINGLE FAMILY[^\n]*\n?[^\n]*(DUPLEX|SINGLE FAMILY|COMMERCIAL)[^\n]*',
-            text, re.IGNORECASE
+            r'1\t([^\t]+)\t([^\t]+)\t(\d+)\t(\d+)\t([\d,\.]+) SQUARE FEET\t[^\t]+\t\$([\d,\.]+)\t[^\t]+\t\$([\d,]+)',
+            text
         )
-        result["zoning"] = find(r'(DUPLEX DISTRICT|SINGLE FAMILY [\w\s]+|COMMERCIAL[\w\s]*)', "")
-        result["lot_frontage_ft"] = find(r'Frontage \(ft\)[\s\t]+(\d+)', cast=int)
-        result["lot_depth_ft"] = find(r'Depth \(ft\)[\s\t]+(\d+)', cast=int)
-        lot_area = find(r'([\d,]+\.?\d*)\s*SQUARE FEET', cast=float)
-        if lot_area:
-            result["lot_area_sqft"] = lot_area
-        # Unit price is $/sqft in land table
-        unit_price_m = re.search(r'\$([\d,]+\.\d{2})\s*(?:\t|\s{2})', text)
-        if unit_price_m:
-            result["land_unit_price"] = float(unit_price_m.group(1).replace(",",""))
-        # Adjusted price (actual land value)  
-        adj_m = re.search(r'Adjusted Price[\s\t]+\$?([\d,]+)', text, re.IGNORECASE)
-        if adj_m:
-            result["adjusted_land_price"] = int(adj_m.group(1).replace(",",""))
+        if land_row:
+            result["zoning"] = land_row.group(2).strip()
+            result["lot_frontage_ft"] = int(land_row.group(3))
+            result["lot_depth_ft"] = int(land_row.group(4))
+            result["lot_area_sqft"] = float(land_row.group(5).replace(",",""))
+            result["land_unit_price"] = float(land_row.group(6).replace(",",""))
+            result["adjusted_land_price"] = int(land_row.group(7).replace(",",""))
+        else:
+            # Fallback
+            result["zoning"] = find(r'DUPLEX DISTRICT|SINGLE FAMILY [\w\s]+', "")
+            result["lot_frontage_ft"] = find(r'Frontage \(ft\)[\s\t]+(\d+)', cast=int)
+            result["lot_depth_ft"] = find(r'Depth \(ft\)[\s\t]+(\d+)', cast=int)
+            lot_area = find(r'([\d,]+\.?\d*)\s*SQUARE FEET', cast=float)
+            if lot_area:
+                result["lot_area_sqft"] = lot_area
 
         # Deed transfer
         result["deed_transfer_date"] = find(r'Deed Transfer Date[:\s]+([\d/]+)', "")
