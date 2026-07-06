@@ -1254,6 +1254,7 @@ function renderDetail(c) {
     <div>
       <div class="tbar">
         <button class="tb on" onclick="swTab(event,'ov')">Overview</button>
+        <button class="tb" onclick="swTab(event,'pi')">Property Intel</button>
         <button class="tb" onclick="swTab(event,'tl')">Timeline</button>
         <button class="tb" onclick="swTab(event,'fin')">Financials</button>
         <button class="tb" onclick="swTab(event,'risk')">Risk Flags</button>
@@ -1292,7 +1293,10 @@ function renderDetail(c) {
         <div class="accpanel"><div class="acct">&#128269; Projection data quality</div>${accItems}</div>
       </div>
 
-      <div class="tp" id="tp-tl">
+      <div class="tp" id="tp-pi">
+  <div id="prop-intel-panel" style="padding:16px"></div>
+</div>
+<div class="tp" id="tp-tl">
         <div class="card"><div class="chd"><div class="ct">Complete case timeline</div><div class="cs">All events &middot; Pulsing dot = projected &middot; Source labeled per event</div></div>
           <div class="tlw">${tlHTML}</div>
         </div>
@@ -1574,6 +1578,7 @@ function swTab(e, id) {
   e.target.classList.add("on");
   document.getElementById("tp-"+id).classList.add("on");
   if (id === "def") { renderDefendants(window._currentCase || {}); }
+  if (id === "pi") { renderPropertyIntel(window._currentCase || {}); }
 }
 
 // ═══════════════════════════════════════════
