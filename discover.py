@@ -110,12 +110,14 @@ Return ONLY valid JSON with NO markdown, NO explanation:
 }
 
 CRITICAL EXTRACTION RULES:
-1. totalDueAtFiling: Find "TOTAL DUE AS OF" on the LAST PAGE of the petition. It is a dollar amount like $17,653.39. Extract the TOTAL number only.
-2. allDefendants: List EVERY defendant named in the petition with their address. Find addresses in bold like "Amy Ortega, 1549 Harris Ct., Dallas, TX 75223". Mark IN REM ONLY defendants. Check docket Events for service status (Served/Unserved).
-3. propertyAddress: The physical property address from Exhibit A (e.g. "1549 HARRIS CT, DALLAS, TX 75223-3326").
-4. accountNumber: The DCAD account number from Exhibit A (e.g. "00000153766000000").
-5. defendant: Primary defendant name (first non-IN-REM defendant).
-6. complexity: "low" if single defendant served, "medium" if multiple defendants or service issues, "high" if CBP/Rule106/estate/heir situation."""
+1. totalDueAtFiling: Find "TOTAL DUE AS OF" on the LAST PAGE of the petition PDF. It shows as "TOTAL $X,XXX.XX" after all tax entity breakdowns. Extract the GRAND TOTAL dollar amount only (e.g. 16309.25 not 0).
+2. allDefendants: Extract EVERY defendant from the ORIGINAL PETITION PDF section "DEFENDANT(S)". Each defendant is listed in bold with their address like: "Henry Alexander Borg, Jr., 1116 Hidden Meadow Dr., Burleson, TX 76025". Extract the FULL address for each defendant. Mark defendants with "(In Rem Only)" or "(IN REM ONLY)" in their listing. Use docket Events to determine service status.
+3. propertyAddress: The physical property address from Exhibit A — look for the address after the legal description (e.g. "1530 E. Overton Rd., Dallas, TX 75216-5506").
+4. accountNumber: The DCAD account number from Exhibit A (e.g. "00000302749000000").
+5. defendant: The PRIMARY defendant — find who is listed as "In Personam" (NOT In Rem Only). In the petition, look for "(In Personam as to Tax Years...)" — that person is primary. Never use a Life Estate holder or In Rem defendant as primary.
+8. ADDRESSES: Each defendant in the petition has their OWN unique address listed after their name. Extract each defendant's INDIVIDUAL address — do NOT use the property address for defendants who live elsewhere. Example: "Cirilo S. Uyoa (In Rem Only), 1349 Little Ave., Columbus, OH 43223" — address is 1349 Little Ave., Columbus OH.
+6. complexity: "low" if single defendant served, "medium" if multiple defendants or service issues, "high" if CBP/Rule106/estate/heir situation.
+7. IMPORTANT: The petition PDF text comes after "ORIGINAL PETITION PDF:" in the input. Read it carefully for all defendant addresses and the total due amount."""
 
 async def claude_extract(text):
     if not ANTHROPIC_KEY:
