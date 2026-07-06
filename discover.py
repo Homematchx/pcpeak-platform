@@ -756,6 +756,10 @@ class Discoverer:
             if breakdown:
                 extracted["taxBreakdown"] = breakdown
                 self.log("  Tax breakdown: " + str(len(breakdown)) + " entities parsed from PDF")
+                with sqlite3.connect(str(DB_PATH)) as db:
+                    db.execute("UPDATE cases SET tax_breakdown=? WHERE case_number=?",
+                               [json.dumps(breakdown), cn])
+                    db.commit()
 
         # Generate acquisition memo AFTER intel — so it uses real values
         self.log("  Generating memo...")
