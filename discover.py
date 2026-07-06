@@ -117,18 +117,69 @@ async def claude_extract(text):
                 await asyncio.sleep(5)
     return {}
 
-async def claude_memo(extracted, owner):
+async def claude_memo(extracted, owner, intel=None):
     if not ANTHROPIC_KEY:
         return ""
     try:
+        # Build property intel summary for memo
+        intel_summary = ""
+        if intel and isinstance(intel, dict):
+            mv = intel.get("market_value") or 0
+            bal = intel.get("current_tax_balance") or 0
+            yr = intel.get("year_built") or ""
+            age = intel.get("actual_age") or ""
+            dep = intel.get("depreciation_pct") or ""
+            sqft = intel.get("living_area_sqft") or ""
+            ext_wall = intel.get("exterior_wall") or ""
+            no_hmstd = intel.get("no_homestead", False)
+            deed = intel.get("deed_transfer_date") or ""
+            owners = intel.get("owners", [])
+            payments = intel.get("payment_history", [])
+            distress = intel.get("distress", {})
+
+            # Payment story
+            payer_story = ""
+            if payments:
+                payers = {}
+                for p in payments:
+                    name = p.get("payer","").strip()
+                    yr_p = p.get("tax_year","")
+                    if name and name not in payers:
+                        payers[name] = yr_p
+                payer_story = "Payment history: " + "; ".join(
+                    name + " (paid " + yr_p + ")" for name, yr_p in list(payers.items())[:5]
+                )
+
+            intel_summary = (
+                f"\n\nPROPERTY INTELLIGENCE (DCAD + Dallas ACT live data):\n"
+                f"- Market Value: ${mv:,} | Live Tax Balance: ${bal:,.2f}\n"
+                f"- Year Built: {yr} ({age} yrs old) | Depreciation: {dep}% | Size: {sqft} sqft\n"
+                f"- Exterior: {ext_wall} | Deed Transfer: {deed}\n"
+                f"- Homestead Exemption: {'NONE - likely absentee/non-owner-occupied' if no_hmstd else 'YES - owner occupied'}\n"
+                f"- Ownership: {', '.join(o['name'] + ' ' + str(o['pct']) + '%' for o in owners[:3])}\n"
+                f"- {payer_story}\n"
+                f"- Distress Level: {distress.get('level','').upper()} (Score: {distress.get('score',0)})\n"
+                f"- Distress Signals: {'; '.join(s['label'] for s in distress.get('signals',[])[:4])}\n"
+            )
+
         prompt = (
-            "Acquisition memo for PC Peak Development.\n"
-            "Owner: " + owner["type"] + " -- " + owner["contact"] + "\n"
-            "Write 3 paragraphs: (1) owner situation and debt, "
-            "(2) timeline vs benchmarks TX-23-00042 HIGH 37mo->J 89d->OOS "
-            "and TX-25-00492 LOW 14mo->J, "
-            "(3) acquisition strategy with specific offer range and contact method.\n"
-            "Case: " + json.dumps(extracted, default=str)[:1000]
+            "You are a senior acquisition analyst for PC Peak Development, a Texas real estate investment firm.\n"
+            "Write a deep, specific acquisition intelligence memo for this tax foreclosure case.\n"
+            "Owner type: " + owner["type"] + " | Contact: " + owner["contact"] + "\n\n"
+            "Write 4 paragraphs:\n"
+            "1. PROPERTY & OWNER SITUATION: Physical condition analysis using DCAD data "
+            "(age, depreciation, structure type, lot vs improvement value ratio). "
+            "Is this a land play or structure play? Who are the prior owners and what does payment history reveal?\n"
+            "2. FINANCIAL PICTURE: Current live tax balance vs filing amount, penalty acceleration, "
+            "debt-to-value ratio, what payoff actually costs today.\n"
+            "3. TIMELINE & URGENCY: When does judgment likely hit based on benchmarks "
+            "(TX-23-00042 HIGH 37mo->J 89d->OOS, TX-25-00492 LOW 14mo->J). "
+            "Service status impact. Trial date if any.\n"
+            "4. ACQUISITION STRATEGY: Specific offer range based on market value and debt, "
+            "contact method (door knock/mail/skip trace), key risks, and one actionable next step.\n"
+            "Be specific with dollar amounts. Reference actual data. No generic language.\n\n"
+            "CASE DATA:\n" + json.dumps(extracted, default=str)[:2000] +
+            intel_summary
         )
         async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=30.0)) as c:
             r = await c.post("https://api.anthropic.com/v1/messages",
@@ -611,9 +662,10 @@ class Discoverer:
 
         extracted["caseNumber"] = cn
 
-        # Generate acquisition memo
+        # Generate acquisition memo with property intel
         self.log("  Generating memo...")
-        memo = await claude_memo(extracted, owner)
+        intel_data = json.loads(extracted.get("_property_intel", "{}")) if extracted.get("_property_intel") else None
+        memo = await claude_memo(extracted, owner, intel_data)
 
         # Save to database
         save_to_db(extracted, memo, owner)
@@ -640,6 +692,7 @@ class Discoverer:
                     bal = intel.get("current_tax_balance", 0) or 0
                     self.log("  Intel saved: MV $" + "{:,.0f}".format(mv) +
                              " | Balance $" + "{:,.0f}".format(bal))
+                    extracted["_property_intel"] = json.dumps(intel)
                 else:
                     self.log("  Intel: no data returned (ACT/DCAD may have blocked)")
             except Exception as ie:

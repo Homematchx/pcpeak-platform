@@ -1456,14 +1456,16 @@ function renderPropertyIntel(ex) {
   }
   function vc(label,val,sub,col){return "<div style='background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:12px'><div style='font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px'>"+label+"</div><div style='font-size:18px;font-weight:700;color:"+(col||"var(--text)")+"'>"+val+"</div>"+(sub?"<div style='font-size:10px;color:var(--text3);margin-top:2px'>"+sub+"</div>":"")+"</div>";}
   function pc(label,val){if(!val&&val!==0)return "";return "<div><div style='font-size:10px;color:var(--text3);margin-bottom:2px'>"+label+"</div><div style='font-size:13px;font-weight:600;color:var(--text)'>"+val+"</div></div>";}
+  // Account number header
+  if(acct){html+="<div style='background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:8px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px'><span style='font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em'>DCAD Account</span><span style='font-family:monospace;font-size:13px;font-weight:600;color:var(--text)'>"+acct+"</span><a href='https://www.dallascad.org/AcctDetailRes.aspx?ID="+acct+"' target='_blank' style='font-size:11px;color:var(--accent);text-decoration:none;margin-left:auto'>View on DCAD →</a></div>";}
   html += "<div style='display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px'>";
-  html += vc("Market Value",fmt(intel.market_value),"DCAD 2026");
-  html += vc("Land Value",fmt(intel.land_value),"Lot only");
-  html += vc("Improvement",fmt(intel.improvement_value),intel.depreciation_pct?intel.depreciation_pct+"% depreciated":"");
+  html += vc("Market Value",fmt(intel.market_value),"Total (Impr + Land)");
+  html += vc("Improvement Value",fmt(intel.improvement_value),intel.depreciation_pct?intel.depreciation_pct+"% depreciated":"Structure only");
+  html += vc("Land Value",fmt(intel.land_value),"Lot value only");
   html += vc("Live Tax Balance",fmt(intel.current_tax_balance),"As of today","#ef4444");
   html += "</div><div style='display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px'>";
+  html += vc("Taxable Value",fmt(intel.taxable_value||intel.market_value),"Per DCAD");
   html += vc("Current Levy",fmt(intel.current_levy),"2025 tax year");
-  html += vc("Prior Year Due",fmt(intel.prior_year_due),"Pre-2025");
   html += vc("Est. Annual Tax",fmt(intel.estimated_annual_taxes),"2026 projected");
   html += vc("Deed Transfer",intel.deed_transfer_date||"-",intel.no_homestead?"No homestead exemption":"");
   html += "</div>";
