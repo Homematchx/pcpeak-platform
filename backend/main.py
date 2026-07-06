@@ -121,6 +121,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS agent_runs (
+            output TEXT,
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             started_at      TEXT DEFAULT (datetime('now')),
             finished_at     TEXT,
@@ -441,17 +442,59 @@ async def get_agent_runs(limit: int = 20):
 
 @app.post("/api/agent/run")
 async def trigger_agent_run(background_tasks: BackgroundTasks):
-    """Trigger the agent to run now."""
     with get_db() as db:
-        result = db.execute(
-            "INSERT INTO agent_runs (status) VALUES ('queued')"
-        )
+        result = db.execute("INSERT INTO agent_runs (status) VALUES ('queued')")
         run_id = result.lastrowid
-    
-    # In production this would trigger the agent process
-    # For now return the run ID so the frontend can poll status
     return {"status":"queued","run_id":run_id,
             "message":"Agent run queued. Run `python agent/agent.py` to execute."}
+
+class CaseRunRequest(BaseModel):
+    case_number: str
+    pattern: str = ""
+
+@app.post("/api/agent/run-case")
+async def run_single_case(req: CaseRunRequest, background_tasks: BackgroundTasks):
+    """Run discover.py on a single case number or pattern in the background."""
+    import subprocess, os, threading
+
+    with get_db() as db:
+        result = db.execute(
+            "INSERT INTO agent_runs (status, started_at) VALUES ('running', datetime('now'))"
+        )
+        run_id = result.lastrowid
+
+    def run_discover():
+        try:
+            env = os.environ.copy()
+            if req.case_number:
+                args = ["python3", "discover.py", "--case", req.case_number]
+            else:
+                args = ["python3", "discover.py", "--pattern", req.pattern, "--individuals-only"]
+            
+            proc = subprocess.run(
+                args,
+                capture_output=True, text=True,
+                cwd=BASE_DIR, env=env, timeout=600
+            )
+            status = "completed" if proc.returncode == 0 else "failed"
+            output = (proc.stdout or "") + (proc.stderr or "")
+            
+            with get_db() as db2:
+                db2.execute(
+                    "UPDATE agent_runs SET status=?, completed_at=datetime('now'), output=? WHERE id=?",
+                    [status, output[:2000], run_id]
+                )
+        except Exception as e:
+            with get_db() as db2:
+                db2.execute(
+                    "UPDATE agent_runs SET status='failed', completed_at=datetime('now'), output=? WHERE id=?",
+                    [str(e), run_id]
+                )
+
+    thread = threading.Thread(target=run_discover, daemon=True)
+    thread.start()
+
+    return {"status": "running", "run_id": run_id}
 
 @app.get("/api/agent/runs/{run_id}")
 async def get_run_status(run_id: int):

@@ -261,7 +261,11 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
             <div style="font-size:13px;font-weight:600;color:var(--text)">Auto-Scraper</div>
             <div style="font-size:11px;color:var(--text3)" id="last-run-txt">Last run: never</div>
           </div>
-          <button onclick="triggerAgent()" style="font-family:var(--FB);font-size:12px;font-weight:600;padding:7px 14px;border-radius:var(--rs);cursor:pointer;border:none;background:var(--accent);color:#fff">&#9654; Run Now</button>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">
+            <input id="case-input" type="text" placeholder="TX-26-00989 or TX-26-00" style="font-family:var(--FB);font-size:12px;padding:7px 10px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);width:140px" />
+            <button onclick="triggerCaseRun()" id="run-btn" style="font-family:var(--FB);font-size:12px;font-weight:600;padding:7px 14px;border-radius:var(--rs);cursor:pointer;border:none;background:var(--accent);color:#fff">&#9654; Run</button>
+          </div>
+          <div id="run-status" style="font-size:11px;color:var(--text3);margin-top:4px"></div>
         </div>
         <div style="font-size:11px;color:var(--text3);line-height:1.6">
           Scrapes Dallas County portal, extracts case data, updates all monitored cases automatically.
@@ -684,9 +688,54 @@ async function syncFromPlatform() {
 async function triggerAgent() {
   try {
     await fetch(PLATFORM_API + "/agent/run", {method:"POST"});
-    alert("Agent queued.\n\nRun in Terminal:\n  python3 agent/agent.py\n\nDashboard updates automatically after the run.");
+  } catch(e) {}
+}
+
+async function triggerCaseRun() {
+  var input = document.getElementById("case-input");
+  var btn = document.getElementById("run-btn");
+  var status = document.getElementById("run-status");
+  var val = (input ? input.value : "").trim().toUpperCase();
+  if (!val) { if(status) status.textContent = "Enter a case number or pattern"; return; }
+
+  // Determine if it's a full case number or pattern
+  var isCase = /^TX-\d{2}-\d{5}$/.test(val);
+  var body = isCase ? {case_number: val} : {case_number: "", pattern: val};
+
+  if(btn) { btn.disabled = true; btn.textContent = "Running..."; }
+  if(status) status.textContent = "Starting...";
+
+  try {
+    var r = await fetch(PLATFORM_API + "/agent/run-case", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+    var runId = data.run_id;
+    if(status) status.textContent = "Processing " + val + "...";
+
+    // Poll for completion
+    var poll = setInterval(async function() {
+      try {
+        var pr = await fetch(PLATFORM_API + "/api/agent/runs/" + runId);
+        var run = await pr.json();
+        if(run.status === "completed") {
+          clearInterval(poll);
+          if(btn) { btn.disabled = false; btn.textContent = "▶ Run"; }
+          if(status) status.textContent = "Done! Syncing...";
+          setTimeout(function() { syncPlatform(); }, 1000);
+        } else if(run.status === "failed") {
+          clearInterval(poll);
+          if(btn) { btn.disabled = false; btn.textContent = "▶ Run"; }
+          if(status) status.textContent = "Failed. Check terminal.";
+        }
+      } catch(e) {}
+    }, 3000);
+
   } catch(e) {
-    alert("Cannot reach API.\nStart backend first: python3 backend/main.py");
+    if(btn) { btn.disabled = false; btn.textContent = "▶ Run"; }
+    if(status) status.textContent = "Cannot reach API.";
   }
 }
 
