@@ -723,6 +723,40 @@ class Discoverer:
                 self.log("  Intel error: " + str(ie))
                 intel = None
 
+        # Fix tax breakdown: parse entity totals directly from PDF (no-space format)
+        if pdf_text and (not extracted.get("taxBreakdown") or
+                         all(e.get("taxAmt",0)==0 for e in extracted.get("taxBreakdown",[]))):
+            import re as _re2
+            nospace_pdf = pdf_text.replace(" ","")
+            entities = [
+                ("DALLASCOUNTY", "Dallas County"),
+                ("PARKLANDHOSPITALDISTRICT", "Parkland Hospital District"),
+                ("DALLASCOLLEGE", "Dallas College"),
+                ("DALLASCOUNTYSCHOOLEQUALIZATIONFUND", "Dallas County School Equalization Fund"),
+                ("DALLASINDEPENDENTSCHOOLDISTRICT", "Dallas Independent School District"),
+                ("CITYOFDALLAS", "City of Dallas"),
+            ]
+            breakdown = []
+            for key, label in entities:
+                idx = nospace_pdf.upper().find(key + "ACCT")
+                if idx < 0:
+                    idx = nospace_pdf.upper().find(key)
+                if idx < 0:
+                    continue
+                segment = nospace_pdf[idx:idx+500]
+                # Find TOTAL $X$Y$Z pattern
+                total_m = _re2.search(r'TOTAL\s*\$([\d,]+\.\d{2})\$([\d,]+\.\d{2})\$([\d,]+\.\d{2})', segment)
+                if total_m:
+                    breakdown.append({
+                        "entity": label,
+                        "taxAmt": float(total_m.group(1).replace(",","")),
+                        "penaltyInterest": float(total_m.group(2).replace(",","")),
+                        "total": float(total_m.group(3).replace(",",""))
+                    })
+            if breakdown:
+                extracted["taxBreakdown"] = breakdown
+                self.log("  Tax breakdown: " + str(len(breakdown)) + " entities parsed from PDF")
+
         # Generate acquisition memo AFTER intel — so it uses real values
         self.log("  Generating memo...")
         memo = await claude_memo(extracted, owner, intel)
