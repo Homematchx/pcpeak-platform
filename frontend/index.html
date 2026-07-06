@@ -1418,6 +1418,98 @@ function renderDetail(c) {
     </div>`;
 }
 
+
+function renderPropertyIntel(ex) {
+  var el = document.getElementById("prop-intel-panel");
+  if (!el) return;
+  var intel = ex.property_intel ? (typeof ex.property_intel === "string" ? JSON.parse(ex.property_intel) : ex.property_intel) : null;
+  if (!intel || (!intel.market_value && !intel.current_tax_balance)) {
+    var acct = ex.accountNumber || ex.account_number || "";
+    el.innerHTML = "<div style='padding:40px;text-align:center;color:var(--text3)'>" +
+      "<div style='font-size:32px;margin-bottom:12px'>🏠</div>" +
+      "<div style='font-weight:600;margin-bottom:8px'>Property Intelligence Not Yet Loaded</div>" +
+      "<div style='font-size:13px'>Run discover.py to automatically enrich this case with live DCAD and Dallas ACT data.</div>" +
+      (acct ? "<div style='margin-top:16px'><a href='https://www.dallascad.org/AcctDetailRes.aspx?ID=" + acct + "' target='_blank' style='color:var(--accent)'>View on DCAD →</a> &nbsp; <a href='https://www.dallasact.com/act_webdev/dallas/showdetail2.jsp?can=" + acct + "&ownerno=0' target='_blank' style='color:var(--accent)'>View Tax Balance →</a></div>" : "") +
+      "</div>";
+    return;
+  }
+  var fmt = function(n) { return n ? "$" + Number(n).toLocaleString() : "—"; };
+  var html = "";
+  var distress = intel.distress || {};
+  var dLevel = distress.level || "low";
+  var dColor = dLevel === "critical" ? "#ef4444" : dLevel === "high" ? "#f97316" : dLevel === "moderate" ? "#f59e0b" : "#22c55e";
+  if (distress.signals && distress.signals.length > 0) {
+    html += "<div style='background:" + dColor + "11;border:1px solid " + dColor + "33;border-radius:8px;padding:16px;margin-bottom:16px'>";
+    html += "<div style='font-size:11px;font-weight:700;color:" + dColor + ";text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px'>⚡ Distress — " + dLevel.toUpperCase() + " (Score: " + (distress.score||0) + ")</div>";
+    (distress.signals||[]).forEach(function(s) {
+      var icon = s.severity === "critical" ? "🔴" : s.severity === "warning" ? "🟡" : "🔵";
+      html += "<div style='font-size:12px;margin-top:4px'>" + icon + " " + s.label + "</div>";
+    });
+    html += "</div>";
+  }
+  html += "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px'>";
+  function vb(label,val,sub,col) {
+    return "<div style='background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:14px'><div style='font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px'>" + label + "</div><div style='font-size:20px;font-weight:700;color:" + (col||"var(--text)") + "'>" + (val||"—") + "</div>" + (sub ? "<div style='font-size:11px;color:var(--text3);margin-top:2px'>" + sub + "</div>" : "") + "</div>";
+  }
+  html += vb("Market Value", fmt(intel.market_value), "DCAD 2026");
+  html += vb("Land Value", fmt(intel.land_value), "");
+  html += vb("Improvement Value", fmt(intel.improvement_value), intel.improvement_value < 5000 ? "⚠️ Near-zero — likely vacant" : "");
+  html += vb("Current Tax Balance", fmt(intel.current_tax_balance), "Live today", "#ef4444");
+  html += vb("Current Year Levy", fmt(intel.current_levy), "2025 tax year");
+  html += vb("Prior Year Due", fmt(intel.prior_year_due), "Pre-2025 arrears");
+  html += "</div>";
+  html += "<div style='background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:16px'>";
+  html += "<div style='font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px'>Property Details</div>";
+  html += "<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px'>";
+  if (intel.deed_transfer_date) html += "<div><span style='color:var(--text3)'>Deed Transfer:</span> <b>" + intel.deed_transfer_date + "</b></div>";
+  if (intel.exemptions) html += "<div><span style='color:var(--text3)'>Exemptions:</span> <b>" + intel.exemptions + "</b></div>";
+  if (intel.legal_description) html += "<div style='grid-column:1/-1'><span style='color:var(--text3)'>Legal Desc:</span> " + intel.legal_description.substring(0,120) + "</div>";
+  html += "</div></div>";
+  if (intel.ownership_breakdown && intel.ownership_breakdown.length > 0) {
+    html += "<div style='background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:16px'>";
+    html += "<div style='font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px'>Ownership Breakdown</div>";
+    intel.ownership_breakdown.forEach(function(o) {
+      html += "<div style='display:flex;align-items:center;gap:12px;margin-bottom:8px'>";
+      html += "<div style='flex:1;font-size:13px;font-weight:500'>" + o.name + "</div>";
+      html += "<div style='width:100px;background:var(--border2);border-radius:4px;height:8px'><div style='width:" + (o.pct||0) + "%;background:var(--accent);height:100%;border-radius:4px'></div></div>";
+      html += "<div style='font-size:12px;color:var(--text3);width:32px'>" + (o.pct||0) + "%</div></div>";
+    });
+    html += "</div>";
+  }
+  if (intel.payment_history && intel.payment_history.length > 0) {
+    html += "<div style='background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:16px'>";
+    html += "<div style='font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px'>Payment History</div>";
+    html += "<table style='width:100%;border-collapse:collapse;font-size:12px'><tr style='color:var(--text3);border-bottom:1px solid var(--border2)'><th style='text-align:left;padding:4px 8px'>Date</th><th style='text-align:right;padding:4px 8px'>Amount</th><th style='text-align:left;padding:4px 8px'>Tax Year</th><th style='text-align:left;padding:4px 8px'>Payer</th></tr>";
+    intel.payment_history.slice(0,10).forEach(function(p) {
+      html += "<tr style='border-bottom:1px solid var(--border2)33'><td style='padding:5px 8px;color:var(--text2)'>" + p.date + "</td><td style='padding:5px 8px;text-align:right;font-weight:500'>$" + Number(p.amount).toLocaleString() + "</td><td style='padding:5px 8px;color:var(--text2)'>" + p.tax_year + "</td><td style='padding:5px 8px;color:var(--text2)'>" + p.payer + "</td></tr>";
+    });
+    html += "</table></div>";
+  }
+  if (intel.tax_by_year && intel.tax_by_year.length > 0) {
+    html += "<div style='background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:16px'>";
+    html += "<div style='font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px'>Tax Due by Year</div>";
+    html += "<table style='width:100%;border-collapse:collapse;font-size:12px'><tr style='color:var(--text3);border-bottom:1px solid var(--border2)'><th style='text-align:left;padding:4px 8px'>Year</th><th style='text-align:right;padding:4px 8px'>Base Tax</th><th style='text-align:right;padding:4px 8px'>Penalty+Interest</th><th style='text-align:right;padding:4px 8px'>Total</th></tr>";
+    var maxT = Math.max.apply(null, intel.tax_by_year.map(function(r){return r.total;}));
+    intel.tax_by_year.forEach(function(r) {
+      var bw = maxT > 0 ? Math.round(r.total/maxT*80) : 0;
+      html += "<tr style='border-bottom:1px solid var(--border2)33'><td style='padding:5px 8px;font-weight:600'>" + r.year + "</td><td style='padding:5px 8px;text-align:right;color:var(--text2)'>$" + Number(r.base_tax).toLocaleString() + "</td><td style='padding:5px 8px;text-align:right;color:#ef444499'>$" + Number(r.penalty_interest).toLocaleString() + "</td><td style='padding:5px 8px;text-align:right'><div style='display:flex;align-items:center;gap:6px;justify-content:flex-end'><div style='width:" + bw + "px;background:#ef4444;height:6px;border-radius:2px;min-width:2px'></div><b>$" + Number(r.total).toLocaleString() + "</b></div></td></tr>";
+    });
+    html += "</table></div>";
+  }
+  var acct2 = intel.account_number || ex.accountNumber || ex.account_number || "";
+  html += "<div style='display:flex;gap:8px;flex-wrap:wrap'>";
+  var ls = "display:inline-block;padding:6px 14px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;font-size:12px;color:var(--text2);text-decoration:none;font-weight:500";
+  if (acct2) {
+    html += "<a href='https://www.dallascad.org/AcctDetailRes.aspx?ID=" + acct2 + "' target='_blank' style='" + ls + "'>📊 DCAD</a>";
+    html += "<a href='https://www.dallasact.com/act_webdev/dallas/showdetail2.jsp?can=" + acct2 + "&ownerno=0' target='_blank' style='" + ls + "'>💰 Tax Balance</a>";
+    html += "<a href='https://www.dallasact.com/act_webdev/dallas/reports/taxbyyear.jsp?can=" + acct2 + "&ownerno=0' target='_blank' style='" + ls + "'>📅 Tax by Year</a>";
+    html += "<a href='https://www.dallasact.com/act_webdev/dallas/reports/paymentinfo.jsp?can=" + acct2 + "&ownerno=0' target='_blank' style='" + ls + "'>📋 Payment History</a>";
+    html += "<a href='https://www.google.com/maps/search/" + encodeURIComponent(ex.propertyAddress||"") + "' target='_blank' style='" + ls + "'>🗺️ Street View</a>";
+  }
+  html += "</div>";
+  el.innerHTML = html;
+}
+
 function renderDefendants(ex) {
   var defs = ex.allDefendants || [];
   var el = document.getElementById("def-panel");
