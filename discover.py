@@ -662,6 +662,34 @@ class Discoverer:
 
         extracted["caseNumber"] = cn
 
+        # Fallback: if Claude missed the debt, parse PDF text directly
+        # pypdf removes spaces so "TOTAL DUE AS OF" becomes "TOTALDUEASOF"
+        pdf_text_nospace = pdf_text.replace(" ", "").upper() if pdf_text else ""
+        if not extracted.get("totalDueAtFiling") and pdf_text:
+            import re as _re
+            # Pattern: "TOTAL DUE AS OF [MONTH], [YEAR]\nTOTAL\t$X,XXX.XX\t$X,XXX.XX\t$XX,XXX.XX"
+            # or "TOTAL\s+\$X,XXX.XX\s+\$X,XXX.XX\s+\$XX,XXX.XX"
+            # Try normal spaced text first
+            total_m = _re.search(
+                r'TOTAL DUE AS OF[^\$]+\$([\d,]+\.\d{2})\s*$',
+                pdf_text, _re.IGNORECASE | _re.MULTILINE
+            )
+            if not total_m:
+                # pypdf strips spaces: "TOTALDUEASOFMAY,2026TOTAL $11,405.88$6,247.51$17,653.39"
+                # Find the LAST dollar amount after TOTALDUEASOF
+                nospace = pdf_text.replace(" ", "")
+                ns_idx = nospace.upper().find("TOTALDUEASOF")
+                if ns_idx >= 0:
+                    segment = nospace[ns_idx:]
+                    amounts = _re.findall(r'\$([\d,]+\.\d{2})', segment)
+                    if amounts:
+                        # Last amount is the grand total
+                        extracted["totalDueAtFiling"] = float(amounts[-1].replace(",",""))
+                        self.log("  Debt from PDF (no-space): $" + "{:,.2f}".format(extracted["totalDueAtFiling"]))
+            if not extracted.get("totalDueAtFiling") and total_m:
+                extracted["totalDueAtFiling"] = float(total_m.group(1).replace(",",""))
+                self.log("  Debt from PDF fallback: $" + "{:,.2f}".format(extracted["totalDueAtFiling"]))
+
         # Save to database first (without memo)
         save_to_db(extracted, "", owner)
 
