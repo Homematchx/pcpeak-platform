@@ -64,60 +64,29 @@ def parse_rows_from_text(text):
 
 EXTRACTION_PROMPT = """You are a Texas tax foreclosure analyst for PC Peak Development.
 Extract ALL case data from this Dallas County court docket AND Original Petition PDF.
-Return ONLY valid JSON with NO markdown, NO explanation:
-{
-"caseNumber":"",
-"court":"",
-"judicialOfficer":"",
-"filedDate":"YYYY-MM-DD",
-"caseStatus":"open",
-"judgmentDate":"",
-"judgmentType":"none",
-"defendant":"",
-"allDefendants":[
-  {
-    "name":"",
-    "address":"",
-    "serviceStatus":"unserved",
-    "serviceMethod":"",
-    "isInRemOnly":false,
-    "notes":""
-  }
-],
-"propertyAddress":"",
-"legalDescription":"",
-"accountNumber":"",
-"lawFirm":"LGBS (Linebarger)",
-"plaintiffAttorney":"",
-"totalDueAtFiling":0,
-"delinquencyYears":[],
-"oldestDelinquencyYear":0,
+Return ONLY valid JSON with NO markdown:
+{"caseNumber":"","court":"","judicialOfficer":"","filedDate":"YYYY-MM-DD",
+"caseStatus":"open","judgmentDate":"","judgmentType":"none",
+"defendant":"","allDefendants":[{"name":"","address":"","serviceStatus":"unserved","serviceMethod":"","isInRemOnly":false,"notes":""}],
+"propertyAddress":"","legalDescription":"","accountNumber":"",
+"lawFirm":"LGBS (Linebarger)","plaintiffAttorney":"","totalDueAtFiling":0,
+"delinquencyYears":[],"oldestDelinquencyYear":0,
 "taxBreakdown":[{"entity":"","taxAmt":0,"penaltyInterest":0,"total":0}],
-"defCount":1,
-"citationByPostingRequested":false,
-"rule106SubstituteService":false,
-"priorRelatedSuits":[],
-"estateHeirSituation":false,
-"continuanceCount":0,
-"trialResetCount":0,
-"serviceIssues":"",
-"nextHearingDate":"",
-"orderOfSaleIssued":false,
-"orderOfSaleDate":"",
-"complexity":"low",
-"complexityReason":"",
-"keyDocketEvents":[{"date":"YYYY-MM-DD","event":"","type":"filing"}]
-}
+"defCount":1,"citationByPostingRequested":false,"rule106SubstituteService":false,
+"priorRelatedSuits":[],"estateHeirSituation":false,
+"continuanceCount":0,"trialResetCount":0,"serviceIssues":"",
+"nextHearingDate":"","orderOfSaleIssued":false,"orderOfSaleDate":"",
+"complexity":"low","complexityReason":"",
+"keyDocketEvents":[{"date":"YYYY-MM-DD","event":"","type":"filing"}]}
 
 CRITICAL EXTRACTION RULES:
-1. totalDueAtFiling: Find "TOTAL DUE AS OF" on the LAST PAGE of the petition PDF. It shows as "TOTAL $X,XXX.XX" after all tax entity breakdowns. Extract the GRAND TOTAL dollar amount only (e.g. 16309.25 not 0).
-2. allDefendants: Extract EVERY defendant from the ORIGINAL PETITION PDF section "DEFENDANT(S)". Each defendant is listed in bold with their address like: "Henry Alexander Borg, Jr., 1116 Hidden Meadow Dr., Burleson, TX 76025". Extract the FULL address for each defendant. Mark defendants with "(In Rem Only)" or "(IN REM ONLY)" in their listing. Use docket Events to determine service status.
-3. propertyAddress: The physical property address from Exhibit A — look for the address after the legal description (e.g. "1530 E. Overton Rd., Dallas, TX 75216-5506").
+1. totalDueAtFiling: Find "TOTAL DUE AS OF" on the LAST PAGE of the petition PDF. It shows as "TOTAL $X,XXX.XX" after all tax entity breakdowns. Extract the GRAND TOTAL dollar amount only.
+2. allDefendants: Extract EVERY defendant from the ORIGINAL PETITION PDF section "DEFENDANT(S)". Each defendant is listed in bold with their address like: "Henry Alexander Borg, Jr., 1116 Hidden Meadow Dr., Burleson, TX 76025". Extract the FULL individual address for each defendant — NOT the property address. Mark defendants with "(In Rem Only)" or "(IN REM ONLY)". Use docket Events for service status.
+3. propertyAddress: The physical property address from Exhibit A (e.g. "1530 E. Overton Rd., Dallas, TX 75216-5506").
 4. accountNumber: The DCAD account number from Exhibit A (e.g. "00000302749000000").
-5. defendant: The PRIMARY defendant — find who is listed as "In Personam" (NOT In Rem Only). In the petition, look for "(In Personam as to Tax Years...)" — that person is primary. Never use a Life Estate holder or In Rem defendant as primary.
-8. ADDRESSES: Each defendant in the petition has their OWN unique address listed after their name. Extract each defendant's INDIVIDUAL address — do NOT use the property address for defendants who live elsewhere. Example: "Cirilo S. Uyoa (In Rem Only), 1349 Little Ave., Columbus, OH 43223" — address is 1349 Little Ave., Columbus OH.
-6. complexity: "low" if single defendant served, "medium" if multiple defendants or service issues, "high" if CBP/Rule106/estate/heir situation.
-7. IMPORTANT: The petition PDF text comes after "ORIGINAL PETITION PDF:" in the input. Read it carefully for all defendant addresses and the total due amount."""
+5. defendant: The PRIMARY defendant — find who is listed as "In Personam". Never use a Life Estate holder or In Rem Only defendant as primary.
+6. complexity: "low" if single defendant served, "medium" if multiple or service issues, "high" if CBP/Rule106/estate/heir.
+7. IMPORTANT: The petition PDF text comes after "ORIGINAL PETITION PDF:" in the input. Read it carefully for all defendant addresses and total due."""
 
 async def claude_extract(text):
     if not ANTHROPIC_KEY:
@@ -180,7 +149,7 @@ def save_to_db(extracted, memo, owner):
     now = datetime.now().isoformat()
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(DB_PATH)) as db:
-        for col in ["owner_type TEXT", "owner_priority TEXT"]:
+        for col in ["owner_type TEXT", "owner_priority TEXT", "property_intel TEXT", "legal_description TEXT"]:
             try:
                 db.execute("ALTER TABLE cases ADD COLUMN " + col)
             except Exception:
@@ -193,7 +162,6 @@ def save_to_db(extracted, memo, owner):
             "case_status": extracted.get("caseStatus", "OPEN").upper(),
             "defendant": extracted.get("defendant", ""),
             "all_defendants": json.dumps(extracted.get("allDefendants", [])),
-            "legal_description": extracted.get("legalDescription", ""),
             "property_address": extracted.get("propertyAddress", ""),
             "account_number": extracted.get("accountNumber", ""),
             "law_firm": extracted.get("lawFirm", "LGBS"),
@@ -225,6 +193,8 @@ def save_to_db(extracted, memo, owner):
             "last_agent_run": now,
             "updated_at": now,
             "monitored": 1,
+            "property_intel": extracted.get("_property_intel", ""),
+            "legal_description": extracted.get("legalDescription", ""),
         }
         exists = db.execute(
             "SELECT id FROM cases WHERE case_number=?", [cn]).fetchone()
@@ -424,9 +394,6 @@ class Discoverer:
                 "})()")
             found_hrefs = sum(1 for r in rows if hrefs.get(r["caseNumber"]))
             self.log("  hrefs captured: " + str(found_hrefs) + "/" + str(len(rows)))
-            # Debug: show first 2 hrefs
-            for cn, href in list(hrefs.items())[:2]:
-                self.log("  HREF[" + cn + "]: " + str(href)[:80])
             for row in rows:
                 row["href"] = hrefs.get(row["caseNumber"], "")
         except Exception:
@@ -436,19 +403,11 @@ class Discoverer:
 
     async def click_into_case(self, case_number, href=""):
         """
-        Navigate to case detail page (Tab 3).
-        
-        CORRECT FLOW (confirmed from session):
-          href → intermediate party page (~1373 chars)
-          click case number link → real docket (~2128+ chars with case number in text)
-        
-        KEY FIX: After PDF download corrupts browser state, we always re-navigate
-        from scratch using page.goto(href) before attempting to find the docket.
-        We verify success by checking that case_number appears in page text.
+        Navigate to case detail page. Confirms by checking case_number AND
+        "Events and Hearings" both appear in page text.
+        Uses breadcrumb navigation back to search results between cases.
         """
-        # Navigate to search results first, then click the case number
-        # hrefs are all "#" (SPA), so goto(href) doesn't work
-        # Instead: click Search Results breadcrumb to return to Tab 2
+        # Navigate back to search results first via breadcrumb
         self.log("  Going to Search Results...")
         back_clicked = await self.page.evaluate(
             "(function(){"
@@ -464,25 +423,23 @@ class Discoverer:
         self.log("  Back to results: " + str(back_clicked))
         await asyncio.sleep(3)
 
-        # Now click through to the actual case detail page
-        # We know we're on the right page when case_number appears in body text
+        # Click through to case detail — verify BOTH case_number AND Events in text
         for attempt in range(5):
             try:
                 text = await self.page.inner_text("body")
                 self.log("  Attempt " + str(attempt+1) + ": " + str(len(text)) + " chars")
 
-                # SUCCESS: case number is visible AND page has case detail content
                 if case_number in text and "Events and Hearings" in text:
                     self.log("  Correct docket confirmed: " + case_number)
                     return True
 
-                # On intermediate page — click the case number link
                 js = (
                     "(function(){"
                     "var links=document.querySelectorAll('a');"
                     "for(var i=0;i<links.length;i++){"
                     "var t=(links[i].innerText||links[i].textContent||'').trim();"
-                    "if(t==='" + case_number + "'){links[i].click();return 'clicked-exact';}"
+                    "if(t==='" + case_number + "')"
+                    "{links[i].click();return 'clicked-exact';}"
                     "}"
                     "var cd=document.querySelector('a[href*=CaseDetail]');"
                     "if(cd){cd.click();return 'clicked-detail';}"
@@ -491,21 +448,13 @@ class Discoverer:
                 )
                 result = await self.page.evaluate(js)
                 self.log("  Click result: " + str(result))
-
                 if not result:
-                    # Nothing to click — try re-navigating via href
-                    if href and href.startswith("http"):
-                        self.log("  Re-navigating via href...")
-                        await self.page.goto(href, wait_until="domcontentloaded", timeout=20000)
-                    else:
-                        break
+                    break
                 await asyncio.sleep(3)
-
             except Exception as e:
                 self.log("  Attempt " + str(attempt+1) + " error: " + str(e))
                 await asyncio.sleep(2)
 
-        # Final check
         try:
             text = await self.page.inner_text("body")
             if case_number in text and len(text) > 1600:
@@ -630,7 +579,7 @@ class Discoverer:
                         try:
                             await dl_page.goto(petition_href)
                         except Exception:
-                            pass  # Download starting error expected
+                            pass
                     dl = await dl_info.value
                     pdf_path = case_dir / "petition.pdf"
                     await dl.save_as(pdf_path)
@@ -645,29 +594,9 @@ class Discoverer:
                 finally:
                     await dl_page.close()
                     await dl_ctx.close()
-                # Re-navigate main page back to case docket after PDF download
-                if href and href.startswith("http"):
-                    try:
-                        await self.page.goto(href,
-                            wait_until="domcontentloaded", timeout=20000)
-                        await asyncio.sleep(2)
-                        rejs = (
-                            "(function(){"
-                            "var links=document.querySelectorAll('a');"
-                            "for(var i=0;i<links.length;i++){"
-                            "var t=(links[i].innerText||links[i].textContent||'').trim();"
-                            "if(t==='" + cn + "'){links[i].click();return true;}"
-                            "}return false;"
-                            "})()"
-                        )
-                        await self.page.evaluate(rejs)
-                        await asyncio.sleep(2)
-                    except Exception:
-                        pass
         except Exception as e:
             self.log("  PDF error: " + str(e))
 
-        # Combine docket + petition PDF for Claude
         full_text = docket_text
         if pdf_text:
             full_text = docket_text + "\n\nORIGINAL PETITION PDF:\n" + pdf_text
@@ -692,6 +621,30 @@ class Discoverer:
         addr = extracted.get("propertyAddress", "no address extracted")
         debt = extracted.get("totalDueAtFiling", 0)
         self.log("  Saved " + cn + " | " + addr + " | $" + "{:,.0f}".format(debt))
+
+        # Property Intel enrichment — DCAD + Dallas ACT
+        acct = extracted.get("accountNumber", "")
+        if acct and len(acct) >= 10:
+            try:
+                from property_intel import enrich_property
+                self.log("  Enriching property intel: " + acct)
+                intel = await enrich_property(acct, addr, self.browser)
+                if intel and (intel.get("market_value") or intel.get("current_tax_balance")):
+                    with sqlite3.connect(str(DB_PATH)) as db:
+                        db.execute(
+                            "UPDATE cases SET property_intel=? WHERE case_number=?",
+                            [json.dumps(intel), cn]
+                        )
+                        db.commit()
+                    mv = intel.get("market_value", 0) or 0
+                    bal = intel.get("current_tax_balance", 0) or 0
+                    self.log("  Intel saved: MV $" + "{:,.0f}".format(mv) +
+                             " | Balance $" + "{:,.0f}".format(bal))
+                else:
+                    self.log("  Intel: no data returned (ACT/DCAD may have blocked)")
+            except Exception as ie:
+                self.log("  Intel error: " + str(ie))
+
         self.stats["processed"] += 1
         return True
 
