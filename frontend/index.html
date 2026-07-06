@@ -1092,8 +1092,15 @@ function selectCase(id) {
 }
 
 function renderDetail(c) {
-  var merged = Object.assign({}, c.extracted || {}, {property_intel: c.property_intel, accountNumber: c.account_number});
+  var merged = Object.assign({}, c.extracted || {}, {property_intel: c.property_intel, accountNumber: c.account_number || (c.extracted && c.extracted.accountNumber)});
   window._currentCase = merged;
+  // Also attach property_intel directly for platform cases
+  if (!window._currentCase.property_intel && c.property_intel) {
+    window._currentCase.property_intel = c.property_intel;
+  }
+  if (!window._currentCase.accountNumber && c.account_number) {
+    window._currentCase.accountNumber = c.account_number;
+  }
   const ex = c.extracted, pr = project(c), fl = flags(ex), city = pr.city;
   const hasJ = !!ex.judgmentDate, oosIssued = ex.orderOfSaleIssued;
   const cbdg = {low:"bdg-green",medium:"bdg-amber",high:"bdg-red"}[ex.complexity||"medium"];
