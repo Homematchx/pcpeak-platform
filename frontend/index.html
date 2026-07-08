@@ -1736,20 +1736,6 @@ function swTab(e, id) {
 // CASE LIST
 // ═══════════════════════════════════════════
 function renderList() {
-  if (window._cityFilter) {
-    var _orig = cases.slice();
-    cases = cases.filter(function(c){
-      var city = (c.city||'').toLowerCase();
-      var addr = ((c.extracted&&c.extracted.propertyAddress)||'').toLowerCase();
-      return city.indexOf(window._cityFilter)>=0 || addr.indexOf(window._cityFilter)>=0;
-    });
-    _doRenderList();
-    cases = _orig;
-    return;
-  }
-  _doRenderList();
-}
-function _doRenderList() {
   const list = document.getElementById("clist");
   const cnt  = document.getElementById("cct");
   cnt.textContent = `${cases.length} saved`;
