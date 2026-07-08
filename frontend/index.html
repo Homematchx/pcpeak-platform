@@ -1149,6 +1149,7 @@ function selectCase(id) {
 }
 
 function renderDetail(c) {
+  window._currentRawCase = c;
   var merged = Object.assign({}, c.extracted || {}, {property_intel: c.property_intel, accountNumber: c.account_number || (c.extracted && c.extracted.accountNumber)});
   window._currentCase = merged;
   // Also attach property_intel directly for platform cases
