@@ -1690,7 +1690,23 @@ function openPetitionPDF(c) {
   var ex = c.extracted || {};
   var intel = c.property_intel ? (typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel) : {};
   var cn = c.id.replace("_platform","");
-  var pdfUrl = "https://pcpeak-platform-production.up.railway.app/api/petition/" + cn;
+  var pdfUrl = "";
+  // Fetch petition URL from backend
+  fetch("https://pcpeak-platform-production.up.railway.app/api/petition/" + cn)
+    .then(function(r){return r.json();})
+    .then(function(data){
+      pdfUrl = data.url || "";
+      var dl = document.getElementById("petition-download");
+      var fs = document.getElementById("petition-fullscreen");
+      if(dl && pdfUrl){ dl.href=pdfUrl; dl.style.display="inline-block"; }
+      if(fs && pdfUrl){ fs.href=pdfUrl; fs.style.display="inline-block"; }
+    }).catch(function(){
+      var dl = document.getElementById("petition-download");
+      var fs = document.getElementById("petition-fullscreen");
+      if(dl) dl.style.display="none";
+      if(fs) fs.style.display="none";
+    });
+  var pdfUrl = "";
   var acct = ex.accountNumber || "";
   var fmt = function(n){return n?"$"+Math.round(Number(n)).toLocaleString():"—";};
 

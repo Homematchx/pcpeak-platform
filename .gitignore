@@ -1,0 +1,3 @@
+data/db/pcpeak.db
+data/db/*.db-shm
+data/db/*.db-wal

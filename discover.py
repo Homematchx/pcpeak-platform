@@ -622,6 +622,14 @@ class Discoverer:
                 "return first?first.href:null;"
                 "})()")
             if petition_href:
+                # Save the petition URL to DB for later download
+                with sqlite3.connect(str(DB_PATH)) as _db:
+                    try:
+                        _db.execute("UPDATE cases SET petition_href=? WHERE case_number=?",
+                                   [petition_href, cn])
+                        _db.commit()
+                    except Exception:
+                        pass
                 self.log("  Downloading Original Petition...")
                 dl_ctx = await self.browser.new_context(accept_downloads=True)
                 dl_page = await dl_ctx.new_page()
