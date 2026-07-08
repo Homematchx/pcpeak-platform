@@ -1694,7 +1694,8 @@ function openPetitionPDF(c) {
     '<div style="font-family:var(--FD);font-size:26px;font-weight:600;color:#7a1e1e">' + debt + '</div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:3px">Taxes + penalty and interest as of filing date</div>' +
     '</div></div></div>';
-  swTab({target:document.querySelector('.tb[onclick*="petition"]')}, 'petition');
+  var petBtn = Array.from(document.querySelectorAll('.tb')).find(function(b){return b.getAttribute('onclick')&&b.getAttribute('onclick').indexOf('petition')>=0;});
+  if(petBtn) swTab({target:petBtn}, 'petition');
 }
 
 function assignRep(caseId, repName) {
@@ -1730,6 +1731,7 @@ function swTab(e, id) {
   document.getElementById("tp-"+id).classList.add("on");
   if (id === "def") { renderDefendants(window._currentCase || {}); }
   if (id === "pi") { renderPropertyIntel(window._currentCase || {}); }
+  if (id === "petition") { if(window._currentRawCase) openPetitionPDF(window._currentRawCase); }
 }
 
 // ═══════════════════════════════════════════
