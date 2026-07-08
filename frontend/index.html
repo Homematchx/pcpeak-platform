@@ -1315,19 +1315,24 @@ function renderDetail(c) {
           ${hasJ?`<span class="bdg ${ex.judgmentType==="default"?"bdg-green":"bdg-amber"}">${ex.judgmentType==="default"?"Default Judgment":"Non-Jury Judgment"}</span>`:""}
         </div>
       </div>
-      <button class="btn btn-g btn-sm" onclick="delCase('${c.id}')">&#128465; Remove</button>
-      <button onclick="openPetitionPDF(c)" style="font-family:var(--FB);font-size:12px;font-weight:600;padding:6px 14px;border-radius:var(--rs);cursor:pointer;border:none;background:var(--accent);color:#fff">&#128196; View petition</button>
-      <span style="display:flex;align-items:center;gap:6px;margin-left:8px">
-        <span style="font-size:11px;color:var(--text3)">Rep:</span>
-        <div id="rep-av-${c.id}" style="width:24px;height:24px;border-radius:50%;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff">${c.repAssigned?c.repAssigned.split(" ").map(function(w){return w[0]||""}).join("").toUpperCase().slice(0,2):"--"}</div>
-        <select onchange="assignRep(c.id,this.value)" style="font-size:11px;padding:4px 8px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer">
-          <option value="">Assign rep…</option>
-          <option value="Stephen Lewis" ${c.repAssigned==="Stephen Lewis"?"selected":""}>Stephen Lewis</option>
-          <option value="James Davis" ${c.repAssigned==="James Davis"?"selected":""}>James Davis</option>
-          <option value="Maria Chen" ${c.repAssigned==="Maria Chen"?"selected":""}>Maria Chen</option>
-          <option value="Unassigned">Unassigned</option>
-        </select>
-      </span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px">
+        <button onclick="swTab({target:Array.from(document.querySelectorAll('.tb')).find(function(b){return b.getAttribute('onclick')&&b.getAttribute('onclick').indexOf('petition')>=0;})}, 'petition')" style="font-family:var(--FB);font-size:12px;font-weight:600;padding:6px 14px;border-radius:var(--rs);cursor:pointer;border:none;background:var(--accent);color:#fff">&#128196; View Petition</button>
+        ${ex.accountNumber?`<a href="https://www.dallascad.org/AcctDetailRes.aspx?ID=${ex.accountNumber}" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">DCAD Detail</a>`:""}
+        ${ex.accountNumber?`<a href="https://www.dallasact.com/act_webdev/dallas/showdetail2.jsp?can=${ex.accountNumber}&ownerno=0" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Tax Balance</a>`:""}
+        ${ex.accountNumber?`<a href="https://www.dallasact.com/act_webdev/dallas/reports/taxbyyear.jsp?can=${ex.accountNumber}&ownerno=0" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Tax by Year</a>`:""}
+        ${ex.accountNumber?`<a href="https://www.dallasact.com/act_webdev/dallas/reports/paymentinfo.jsp?can=${ex.accountNumber}&ownerno=0" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Payment History</a>`:""}
+        ${ex.propertyAddress?`<a href="https://www.google.com/maps/search/${encodeURIComponent(ex.propertyAddress)}" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Street View</a>`:""}
+        <button onclick="delCase('${c.id}')" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text3)">&#128465; Remove</button>
+        <span style="display:flex;align-items:center;gap:6px;margin-left:auto">
+          <div id="rep-av-${c.id}" style="width:24px;height:24px;border-radius:50%;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff">${c.repAssigned?c.repAssigned.split(" ").map(function(w){return w[0]||""}).join("").toUpperCase().slice(0,2):"--"}</div>
+          <select onchange="assignRep('${c.id}',this.value)" style="font-size:11px;padding:4px 8px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer">
+            <option value="">Assign rep…</option>
+            ${(window._reps||["Stephen Lewis","James Davis","Maria Chen"]).map(function(r){return '<option value="'+r+'" '+(c.repAssigned===r?'selected':'')+'>'+r+'</option>';}).join("")}
+            <option value="__add__">+ Add new rep…</option>
+            <option value="Unassigned">Unassigned</option>
+          </select>
+        </span>
+      </div>
     </div>
 
     <div>
@@ -1388,8 +1393,20 @@ function renderDetail(c) {
   <div id="prop-intel-panel" style="padding:16px"></div>
 </div>
 <div class="tp" id="tp-petition">
-  <div id="petition-panel" style="padding:16px"></div>
+  <div style="padding:16px" id="petition-panel">
+    <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden">
+      <div style="background:var(--accent);padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:13px;font-weight:600;color:#fff">Original Petition</div>
+        <div style="display:flex;gap:6px">
+          <a id="petition-download" href="#" download style="font-size:11px;font-weight:500;padding:5px 12px;border-radius:var(--rs);background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;text-decoration:none">&#8681; Download</a>
+          <a id="petition-fullscreen" href="#" target="_blank" style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:var(--rs);background:#fff;border:1px solid #fff;color:var(--accent);text-decoration:none">&#8599; Full Screen</a>
+        </div>
+      </div>
+      <div id="petition-brief" style="padding:16px"></div>
+    </div>
+  </div>
 </div>
+
 <div class="tp" id="tp-tl">
         <div class="card"><div class="chd"><div class="ct">Complete case timeline</div><div class="cs">All events &middot; Pulsing dot = projected &middot; Source labeled per event</div></div>
           <div class="tlw">${tlHTML}</div>
@@ -1670,33 +1687,105 @@ function renderDefendants(ex) {
 }
 
 function openPetitionPDF(c) {
-  var cn = c.id.replace('_platform','');
-  var acct = c.extracted && c.extracted.accountNumber ? c.extracted.accountNumber : '';
-  var addr = c.extracted && c.extracted.propertyAddress ? c.extracted.propertyAddress : '';
-  var debt = c.extracted && c.extracted.totalDueAtFiling ? '$' + Number(c.extracted.totalDueAtFiling).toLocaleString() : '—';
-  var defendant = c.extracted && c.extracted.defendant ? c.extracted.defendant : '';
-  var el = document.getElementById('petition-panel');
-  if (!el) return;
-  var pdfUrl = 'https://pcpeak-platform-production.up.railway.app/api/petition/' + cn;
-  el.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);padding:16px">' +
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
-    '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)">Original Petition — ' + cn + '</div>' +
-    '<div style="display:flex;gap:6px">' +
-    '<a href="' + pdfUrl + '" target="_blank" style="font-size:11px;font-weight:500;padding:5px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none;display:flex;align-items:center;gap:4px">&#8681; Download</a>' +
-    '<a href="' + pdfUrl + '" target="_blank" style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:var(--rs);border:none;background:var(--accent);color:#fff;text-decoration:none;display:flex;align-items:center;gap:4px">&#8599; Open PDF</a>' +
-    '</div></div>' +
-    '<div style="background:var(--surface2);border-radius:var(--rs);padding:14px;border:1px solid var(--border2);font-size:12px;color:var(--text2);line-height:1.7">' +
-    '<div style="font-weight:700;text-align:center;margin-bottom:6px;font-size:13px">ORIGINAL PETITION</div>' +
-    '<div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:10px">Dallas County, ET AL vs. ' + defendant + '</div>' +
-    '<div style="margin-bottom:5px"><strong>Defendant:</strong> ' + defendant + ' — <strong>' + addr + '</strong></div>' +
-    (acct ? '<div style="margin-bottom:5px"><strong>DCAD Account:</strong> ' + acct + '</div>' : '') +
-    '<div style="background:var(--surface);border-radius:var(--rs);padding:12px;border:1px solid var(--border2);margin-top:10px;text-align:center">' +
-    '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:6px">Total due at filing</div>' +
-    '<div style="font-family:var(--FD);font-size:26px;font-weight:600;color:#7a1e1e">' + debt + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:3px">Taxes + penalty and interest as of filing date</div>' +
-    '</div></div></div>';
-  var petBtn = Array.from(document.querySelectorAll('.tb')).find(function(b){return b.getAttribute('onclick')&&b.getAttribute('onclick').indexOf('petition')>=0;});
-  if(petBtn) swTab({target:petBtn}, 'petition');
+  var ex = c.extracted || {};
+  var intel = c.property_intel ? (typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel) : {};
+  var cn = c.id.replace("_platform","");
+  var pdfUrl = "https://pcpeak-platform-production.up.railway.app/api/petition/" + cn;
+  var acct = ex.accountNumber || "";
+  var fmt = function(n){return n?"$"+Math.round(Number(n)).toLocaleString():"—";};
+
+  // Set download + fullscreen links
+  var dl = document.getElementById("petition-download");
+  var fs = document.getElementById("petition-fullscreen");
+  if(dl){ dl.href = pdfUrl; dl.setAttribute("download", cn+"_petition.pdf"); }
+  if(fs){ fs.href = pdfUrl; }
+
+  var brief = document.getElementById("petition-brief");
+  if(!brief) return;
+
+  // Petition header
+  var html = "<div style='margin-bottom:14px'>";
+  html += "<div style='font-size:11px;color:var(--text3);margin-bottom:8px'>"+cn+" · Filed "+ex.filedDate+" · "+ex.court+"</div>";
+  html += "<div style='font-size:12px;color:var(--text2);margin-bottom:6px'><strong>Defendant:</strong> "+(ex.defendant||"")+" — <strong>"+(ex.propertyAddress||"")+"</strong></div>";
+  if(acct) html += "<div style='font-size:12px;color:var(--text2);margin-bottom:6px'><strong>DCAD Account:</strong> "+acct+"</div>";
+  html += "<div style='font-size:12px;color:var(--text2);margin-bottom:10px'><strong>Court:</strong> "+(ex.court||"")+" · Judge: "+(ex.judicialOfficer||"")+"</div>";
+  // Total due
+  html += "<div style='background:var(--surface2);border-radius:var(--rs);padding:12px 16px;border:1px solid var(--border2);text-align:center;margin-bottom:14px'>";
+  html += "<div style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:4px'>Total due at filing</div>";
+  html += "<div style='font-family:var(--FD);font-size:28px;font-weight:600;color:#7a1e1e'>"+fmt(ex.totalDueAtFiling)+"</div>";
+  html += "<div style='font-size:11px;color:var(--text3);margin-top:2px'>Taxes + penalty and interest as of filing date</div>";
+  html += "</div></div>";
+
+  // Distress
+  if(intel.distress&&intel.distress.signals&&intel.distress.signals.length){
+    html += "<div style='background:#fdeaea;border:1px solid #e08080;border-radius:var(--rs);padding:12px 14px;margin-bottom:14px'>";
+    html += "<div style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#7a1e1e;margin-bottom:8px'>Distress intelligence — "+(intel.distress.level||"").toUpperCase()+" (score "+(intel.distress.score||0)+")</div>";
+    html += "<div style='display:grid;grid-template-columns:1fr 1fr;gap:3px'>";
+    intel.distress.signals.forEach(function(s){
+      var icon=s.severity==="critical"?"[!]":s.severity==="warning"?"[~]":"[i]";
+      html+="<div style='font-size:11px;color:#5c5a54'>"+icon+" "+s.label+"</div>";
+    });
+    html += "</div></div>";
+  }
+
+  // Intel cards
+  if(intel.market_value){
+    html += "<div style='display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px'>";
+    html += "<div style='background:#fdeaea;border-radius:var(--rs);padding:10px 12px;border:1px solid #e08080'><div style='font-family:var(--FD);font-size:18px;color:#7a1e1e'>"+fmt(intel.current_tax_balance)+"</div><div style='font-size:9px;color:#c08080;text-transform:uppercase;letter-spacing:.07em;margin-top:3px'>Live balance</div></div>";
+    html += "<div style='background:var(--surface2);border-radius:var(--rs);padding:10px 12px'><div style='font-family:var(--FD);font-size:18px;color:var(--accent)'>"+fmt(intel.market_value)+"</div><div style='font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-top:3px'>Market value</div></div>";
+    html += "<div style='background:var(--surface2);border-radius:var(--rs);padding:10px 12px'><div style='font-family:var(--FD);font-size:18px;color:var(--accent)'>"+(intel.year_built||"—")+"</div><div style='font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-top:3px'>Year built</div></div>";
+    html += "<div style='background:var(--surface2);border-radius:var(--rs);padding:10px 12px'><div style='font-family:var(--FD);font-size:18px;color:var(--accent)'>"+(intel.living_area_sqft?Number(intel.living_area_sqft).toLocaleString()+" sqft":"—")+"</div><div style='font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-top:3px'>Living area</div></div>";
+    html += "</div>";
+  }
+
+  // Ownership history
+  if(intel.ownership_history&&intel.ownership_history.length){
+    html += "<div style='background:var(--surface);border:1px solid var(--border2);border-radius:var(--rs);padding:12px 14px;margin-bottom:14px'>";
+    html += "<div style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px'>Ownership history</div>";
+    var prev="";
+    intel.ownership_history.forEach(function(r){
+      if(r.owner===prev)return; prev=r.owner;
+      html+="<div style='display:flex;gap:10px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.05)'>";
+      html+="<div style='font-size:11px;font-family:var(--FM);color:var(--text3);width:52px;flex-shrink:0'>"+r.year+"</div>";
+      html+="<div><div style='font-size:12px;font-weight:500;color:var(--text)'>"+r.owner+"</div>";
+      if(r.mailing_address)html+="<div style='font-size:11px;color:var(--text3)'>"+r.mailing_address+"</div>";
+      if(r.deed_transfer_date)html+="<div style='font-size:10px;color:var(--text3)'>Deed: "+r.deed_transfer_date+"</div>";
+      html+="</div></div>";
+    });
+    html += "</div>";
+  }
+
+  // Defendants
+  var defs = ex.allDefendants||[];
+  if(defs.length){
+    html += "<div style='background:var(--surface);border:1px solid var(--border2);border-radius:var(--rs);padding:12px 14px;margin-bottom:14px'>";
+    html += "<div style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px'>Defendants and service status</div>";
+    defs.forEach(function(d){
+      if(typeof d==="string")return;
+      var served=(d.serviceStatus||"").toLowerCase()==="served";
+      html+="<div style='padding:8px 0;border-bottom:1px solid rgba(0,0,0,.05)'>";
+      html+="<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:3px'>";
+      html+="<div style='font-size:12px;font-weight:500;color:var(--text)'>"+d.name+"</div>";
+      html+="<div style='display:flex;gap:4px'>";
+      html+="<span style='font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd)'>"+(d.isInRemOnly?"In rem":"Primary")+"</span>";
+      html+="<span style='font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:"+(served?"var(--green-bg)":"var(--red-bg)")+";color:"+(served?"var(--green)":"var(--red)")+";border:1px solid "+(served?"var(--green-bd)":"var(--red-bd)")+"'>"+(served?"SERVED":"UNSERVED")+"</span>";
+      html+="</div></div>";
+      if(d.address)html+="<div style='font-size:11px;color:var(--text2)'>"+d.address+"</div>";
+      if(!d.isInRemOnly&&!served)html+="<div style='font-size:11px;font-weight:500;color:var(--amber);margin-top:4px'>Door knock — decision maker</div>";
+      html+="</div>";
+    });
+    html += "</div>";
+  }
+
+  // AI Memo
+  if(c.memo){
+    html += "<div style='background:var(--surface);border:1px solid var(--border2);border-radius:var(--rs);padding:12px 14px'>";
+    html += "<div style='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px'>AI acquisition memo</div>";
+    html += "<div style='font-size:12px;color:var(--text);line-height:1.7;white-space:pre-wrap'>"+c.memo+"</div>";
+    html += "</div>";
+  }
+
+  brief.innerHTML = html;
 }
 
 function assignRep(caseId, repName) {
