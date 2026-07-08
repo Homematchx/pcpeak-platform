@@ -280,7 +280,14 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
         <span>Platform Cases</span>
         <button id="sync-btn" onclick="syncFromPlatform()" style="font-family:var(--FB);font-size:10px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">&#8635; Sync</button>
       </div>
-      <div id="platform-status" style="font-size:11px;color:var(--text3)">Connecting to platform...</div>
+      <div style="padding:8px 16px 6px;border-bottom:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap" id="city-filter-bar">
+  <button onclick="filterCity('')" class="city-pill on" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">All</button>
+  <button onclick="filterCity('dallas')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Dallas</button>
+  <button onclick="filterCity('garland')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Garland</button>
+  <button onclick="filterCity('carrollton')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Carrollton</button>
+  <button onclick="filterCity('plano')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Plano</button>
+</div>
+<div id="platform-status" style="font-size:11px;color:var(--text3)">Connecting to platform...</div>
     </div>
 
     <div class="sbs" id="api-key-section">
@@ -1298,6 +1305,7 @@ function renderDetail(c) {
         <div style="font-family:var(--FD);font-size:26px;color:var(--accent);line-height:1.1">${ex.caseNumber||"Case Analysis"}</div>
         <div style="font-size:14px;color:var(--text2);margin-top:4px">${ex.defendant||""}</div>
         <div style="font-size:12px;color:var(--text3);margin-top:2px">${ex.propertyAddress||""}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;font-family:var(--FM)">${ex.accountNumber?"DCAD Account: "+ex.accountNumber:""}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
           ${statusBdg}
           <span class="bdg ${cbdg}">${(ex.complexity||"medium").toUpperCase()} complexity</span>
@@ -1307,6 +1315,18 @@ function renderDetail(c) {
         </div>
       </div>
       <button class="btn btn-g btn-sm" onclick="delCase('${c.id}')">&#128465; Remove</button>
+      <button onclick="openPetitionPDF(c)" style="font-family:var(--FB);font-size:12px;font-weight:600;padding:6px 14px;border-radius:var(--rs);cursor:pointer;border:none;background:var(--accent);color:#fff">&#128196; View petition</button>
+      <span style="display:flex;align-items:center;gap:6px;margin-left:8px">
+        <span style="font-size:11px;color:var(--text3)">Rep:</span>
+        <div id="rep-av-${c.id}" style="width:24px;height:24px;border-radius:50%;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff">${c.repAssigned?c.repAssigned.split(" ").map(function(w){return w[0]||""}).join("").toUpperCase().slice(0,2):"--"}</div>
+        <select onchange="assignRep(c.id,this.value)" style="font-size:11px;padding:4px 8px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer">
+          <option value="">Assign rep…</option>
+          <option value="Stephen Lewis" ${c.repAssigned==="Stephen Lewis"?"selected":""}>Stephen Lewis</option>
+          <option value="James Davis" ${c.repAssigned==="James Davis"?"selected":""}>James Davis</option>
+          <option value="Maria Chen" ${c.repAssigned==="Maria Chen"?"selected":""}>Maria Chen</option>
+          <option value="Unassigned">Unassigned</option>
+        </select>
+      </span>
     </div>
 
     <div>
@@ -1320,9 +1340,21 @@ function renderDetail(c) {
         <button class="tb" onclick="swTab(event,'city')">City Benchmarks</button>
         <button class="tb" onclick="swTab(event,'known')">Known Cases</button>
         <button class="tb" onclick="swTab(event,'ai')">AI Memo</button>
+        <button class="tb" onclick="swTab(event,'petition')">Petition PDF</button>
       </div>
 
       <div class="tp on" id="tp-ov">
+        <!-- Equity position card -->
+        ${(function(){
+          var mv = (c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel||{}).market_value||0;
+          var debt = (c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel||{}).current_tax_balance||ex.totalDueAtFiling||0;
+          if(!mv) return "";
+          var equity = mv - debt;
+          var debtPct = Math.round(debt/mv*100);
+          var eqPct = 100-debtPct;
+          var fmtC = function(n){return n?"$"+Math.round(n).toLocaleString():"—"};
+          return `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);padding:14px 18px;margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)">Equity position</div><div style="font-size:10px;color:var(--text3)">DCAD 2026 · Live ACT balance</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;margin-bottom:12px"><div><div style="font-family:var(--FD);font-size:20px;font-weight:600;color:var(--accent)">${fmtC(mv)}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-top:3px">Market value</div></div><div><div style="font-family:var(--FD);font-size:20px;font-weight:600;color:#7a1e1e">${fmtC(debt)}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-top:3px">Live debt</div></div><div><div style="font-family:var(--FD);font-size:20px;font-weight:600;color:#1e5c30">${fmtC(equity)}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-top:3px">Est. equity</div></div></div><div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden;position:relative"><div style="position:absolute;left:0;top:0;height:100%;width:${debtPct}%;background:#e08080;border-radius:5px"></div><div style="position:absolute;left:${debtPct}%;top:0;height:100%;right:0;background:#6ec890;border-radius:0 5px 5px 0"></div></div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px"><span style="color:#c08080">Debt ${debtPct}% of value</span><span style="color:#1e5c30;font-weight:600">${eqPct}% equity cushion</span></div></div>`;
+        })()} 
         <div class="sgrid">
           <div class="sbox"><div class="slbl">Filed</div><div class="sval" style="font-size:16px">${fmt(ex.filedDate)}</div></div>
           <div class="sbox"><div class="slbl">Judgment</div><div class="sval" style="font-size:16px">${hasJ?fmt(ex.judgmentDate):"Pending"}</div></div>
@@ -1353,6 +1385,9 @@ function renderDetail(c) {
 
       <div class="tp" id="tp-pi">
   <div id="prop-intel-panel" style="padding:16px"></div>
+</div>
+<div class="tp" id="tp-petition">
+  <div id="petition-panel" style="padding:16px"></div>
 </div>
 <div class="tp" id="tp-tl">
         <div class="card"><div class="chd"><div class="ct">Complete case timeline</div><div class="cs">All events &middot; Pulsing dot = projected &middot; Source labeled per event</div></div>
@@ -1633,6 +1668,61 @@ function renderDefendants(ex) {
   el.innerHTML = html;
 }
 
+function openPetitionPDF(c) {
+  var cn = c.id.replace('_platform','');
+  var acct = c.extracted && c.extracted.accountNumber ? c.extracted.accountNumber : '';
+  var addr = c.extracted && c.extracted.propertyAddress ? c.extracted.propertyAddress : '';
+  var debt = c.extracted && c.extracted.totalDueAtFiling ? '$' + Number(c.extracted.totalDueAtFiling).toLocaleString() : '—';
+  var defendant = c.extracted && c.extracted.defendant ? c.extracted.defendant : '';
+  var el = document.getElementById('petition-panel');
+  if (!el) return;
+  var pdfUrl = 'https://pcpeak-platform-production.up.railway.app/api/petition/' + cn;
+  el.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);padding:16px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+    '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)">Original Petition — ' + cn + '</div>' +
+    '<div style="display:flex;gap:6px">' +
+    '<a href="' + pdfUrl + '" target="_blank" style="font-size:11px;font-weight:500;padding:5px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none;display:flex;align-items:center;gap:4px">&#8681; Download</a>' +
+    '<a href="' + pdfUrl + '" target="_blank" style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:var(--rs);border:none;background:var(--accent);color:#fff;text-decoration:none;display:flex;align-items:center;gap:4px">&#8599; Open PDF</a>' +
+    '</div></div>' +
+    '<div style="background:var(--surface2);border-radius:var(--rs);padding:14px;border:1px solid var(--border2);font-size:12px;color:var(--text2);line-height:1.7">' +
+    '<div style="font-weight:700;text-align:center;margin-bottom:6px;font-size:13px">ORIGINAL PETITION</div>' +
+    '<div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:10px">Dallas County, ET AL vs. ' + defendant + '</div>' +
+    '<div style="margin-bottom:5px"><strong>Defendant:</strong> ' + defendant + ' — <strong>' + addr + '</strong></div>' +
+    (acct ? '<div style="margin-bottom:5px"><strong>DCAD Account:</strong> ' + acct + '</div>' : '') +
+    '<div style="background:var(--surface);border-radius:var(--rs);padding:12px;border:1px solid var(--border2);margin-top:10px;text-align:center">' +
+    '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:6px">Total due at filing</div>' +
+    '<div style="font-family:var(--FD);font-size:26px;font-weight:600;color:#7a1e1e">' + debt + '</div>' +
+    '<div style="font-size:11px;color:var(--text3);margin-top:3px">Taxes + penalty and interest as of filing date</div>' +
+    '</div></div></div>';
+  swTab({target:document.querySelector('.tb[onclick*="petition"]')}, 'petition');
+}
+
+function assignRep(caseId, repName) {
+  var c = cases.find(function(x){return x.id===caseId;});
+  if (!c) return;
+  c.repAssigned = repName;
+  save();
+  var av = document.getElementById('rep-av-' + caseId);
+  if (av) {
+    var initials = repName ? repName.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2) : '--';
+    av.textContent = initials;
+  }
+  renderList();
+}
+
+function filterCity(city) {
+  document.querySelectorAll('.city-pill').forEach(function(p){
+    p.style.background = 'var(--surface)';
+    p.style.color = 'var(--text2)';
+    p.style.borderColor = 'var(--border2)';
+  });
+  event.target.style.background = 'var(--accent)';
+  event.target.style.color = '#fff';
+  event.target.style.borderColor = 'var(--accent)';
+  window._cityFilter = city;
+  renderList();
+}
+
 function swTab(e, id) {
   document.querySelectorAll(".tb").forEach(b => b.classList.remove("on"));
   document.querySelectorAll(".tp").forEach(p => p.classList.remove("on"));
@@ -1646,6 +1736,20 @@ function swTab(e, id) {
 // CASE LIST
 // ═══════════════════════════════════════════
 function renderList() {
+  if (window._cityFilter) {
+    var _orig = cases.slice();
+    cases = cases.filter(function(c){
+      var city = (c.city||'').toLowerCase();
+      var addr = ((c.extracted&&c.extracted.propertyAddress)||'').toLowerCase();
+      return city.indexOf(window._cityFilter)>=0 || addr.indexOf(window._cityFilter)>=0;
+    });
+    _doRenderList();
+    cases = _orig;
+    return;
+  }
+  _doRenderList();
+}
+function _doRenderList() {
   const list = document.getElementById("clist");
   const cnt  = document.getElementById("cct");
   cnt.textContent = `${cases.length} saved`;
@@ -1676,6 +1780,8 @@ function renderList() {
       <button class="cdel" onclick="delCase('${c.id}',event)">&#215;</button>
     </div>`;
   }).join("");
+}
+
 }
 
 function renderCaseLog() {
