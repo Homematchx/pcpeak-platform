@@ -504,8 +504,20 @@ async def get_petition_pdf(case_number: str):
     pdf_path = BASE_DIR / "data" / "pdfs" / case_number / "petition.pdf"
     if pdf_path.exists():
         return FileResponse(str(pdf_path), media_type="application/pdf",
-                          filename=f"{case_number}_petition.pdf")
-    raise HTTPException(status_code=404, detail="Petition PDF not found")
+                          headers={"Content-Disposition": "inline"})
+    # Try DB
+    with get_db() as db:
+        try:
+            row = db.execute("SELECT petition_pdf FROM cases WHERE case_number=?", [case_number]).fetchone()
+            if row and row[0]:
+                import base64
+                from fastapi.responses import Response
+                pdf_bytes = base64.b64decode(row[0])
+                return Response(content=pdf_bytes, media_type="application/pdf",
+                               headers={"Content-Disposition": "inline"})
+        except Exception:
+            pass
+    raise HTTPException(status_code=404, detail="Petition PDF not found. Run discover.py to download.")
 
 @app.get("/api/agent/runs/{run_id}")
 async def get_run_status(run_id: int):
