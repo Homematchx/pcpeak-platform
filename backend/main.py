@@ -496,6 +496,17 @@ async def run_single_case(req: CaseRunRequest, background_tasks: BackgroundTasks
 
     return {"status": "running", "run_id": run_id}
 
+@app.get("/api/petition/{case_number}")
+async def get_petition_pdf(case_number: str):
+    """Serve the original petition PDF for a case."""
+    from fastapi.responses import FileResponse
+    import os
+    pdf_path = BASE_DIR / "data" / "pdfs" / case_number / "petition.pdf"
+    if pdf_path.exists():
+        return FileResponse(str(pdf_path), media_type="application/pdf",
+                          filename=f"{case_number}_petition.pdf")
+    raise HTTPException(status_code=404, detail="Petition PDF not found")
+
 @app.get("/api/agent/runs/{run_id}")
 async def get_run_status(run_id: int):
     with get_db() as db:
