@@ -531,7 +531,14 @@ async def scrape_dcad_history(account_number: str, browser, property_address: st
             cand = [c for c in (text.find(e, si) for e in ends) if c != -1]
             return text[si:min(cand)] if cand else text[si:]
 
-        owner_sec = _slice("Year\tOwner\tLegal Description",
+        # Residential accounts head the ownership table with
+        # "Year\tOwner\tLegal Description"; Business Personal Property
+        # (99-prefix) accounts use "Year\tLegal Owner\tDoing Business As (DBA)".
+        # Accept whichever is present.
+        owner_hdr = "Year\tOwner\tLegal Description"
+        if owner_hdr not in text:
+            owner_hdr = "Year\tLegal Owner\tDoing Business As (DBA)"
+        owner_sec = _slice(owner_hdr,
                            ["Market Value", "Taxable Value", "\nExemptions", "Exemption Details History"])
         market_sec = _slice("Year\tImprovement\tLand",
                             ["Taxable Value", "\nExemptions", "Exemption Details History"])
