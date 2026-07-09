@@ -374,6 +374,12 @@ async def create_case(data: dict):
     data["updated_at"] = datetime.now().isoformat()
     
     with get_db() as db:
+        # Keep only real table columns. compute_projection() adds transient
+        # display fields (filing_to_judgment_months, days_to_oos) that aren't
+        # columns; without this filter the INSERT/UPDATE 500s with
+        # "table cases has no column named ...".
+        valid_cols = {r[1] for r in db.execute("PRAGMA table_info(cases)").fetchall()}
+        data = {k: v for k, v in data.items() if k in valid_cols}
         existing = db.execute("SELECT id FROM cases WHERE case_number=?", [cn]).fetchone()
         if existing:
             sets = ", ".join([f"{k}=?" for k in data if k != "case_number"])
