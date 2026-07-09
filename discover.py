@@ -101,7 +101,7 @@ async def claude_extract(text):
                     json={"model": "claude-sonnet-4-5", "max_tokens": 2000,
                           "system": EXTRACTION_PROMPT,
                           "messages": [{"role": "user",
-                                        "content": "Extract:\n\n" + text[:5000]}]})
+                                        "content": "Extract:\n\n" + text[:16000]}]})
                 d = r.json()
                 if d.get("error"):
                     await asyncio.sleep(5)
@@ -656,9 +656,10 @@ class Discoverer:
         except Exception as e:
             self.log("  PDF error: " + str(e))
 
-        full_text = docket_text
+        # Prioritize PDF content — docket truncated to 4000, PDF gets 12000
+        full_text = docket_text[:4000]
         if pdf_text:
-            full_text = docket_text + "\n\nORIGINAL PETITION PDF:\n" + pdf_text
+            full_text = full_text + "\n\nORIGINAL PETITION PDF:\n" + pdf_text[:12000]
 
         # Claude extraction
         self.log("  Running Claude extraction...")

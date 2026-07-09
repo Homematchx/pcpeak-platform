@@ -94,6 +94,7 @@ def init_db():
             confidence_pct  INTEGER,
             city            TEXT DEFAULT 'dallas',
             petition_pdf_path TEXT,
+            petition_href       TEXT,
             tax_breakdown   TEXT,  -- JSON array
             ai_memo         TEXT,
             similar_benchmark TEXT,
@@ -168,6 +169,19 @@ def init_db():
         """)
     
     # Seed known benchmarks
+    # Migration: add columns that may not exist in older DBs
+    with get_db() as db:
+        cols = [r[1] for r in db.execute("PRAGMA table_info(cases)").fetchall()]
+        for col, typedef in [
+            ("petition_href", "TEXT"),
+            ("property_intel", "TEXT"),
+            ("legal_description", "TEXT"),
+            ("petition_pdf", "TEXT"),
+        ]:
+            if col not in cols:
+                db.execute(f"ALTER TABLE cases ADD COLUMN {col} {typedef}")
+                print(f"Migration: added {col}")
+        db.commit()
     _seed_benchmarks()
     print(f"Database initialized: {DB_PATH}")
 
