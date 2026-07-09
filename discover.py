@@ -98,7 +98,7 @@ async def claude_extract(text):
                     headers={"x-api-key": ANTHROPIC_KEY,
                              "anthropic-version": "2023-06-01",
                              "Content-Type": "application/json"},
-                    json={"model": "claude-sonnet-4-5", "max_tokens": 2000,
+                    json={"model": "claude-sonnet-4-6", "max_tokens": 4000,
                           "system": EXTRACTION_PROMPT,
                           "messages": [{"role": "user",
                                         "content": "Extract:\n\n" + text[:16000]}]})
@@ -186,7 +186,7 @@ async def claude_memo(extracted, owner, intel=None):
                 headers={"x-api-key": ANTHROPIC_KEY,
                          "anthropic-version": "2023-06-01",
                          "Content-Type": "application/json"},
-                json={"model": "claude-sonnet-4-5", "max_tokens": 600,
+                json={"model": "claude-sonnet-4-6", "max_tokens": 600,
                       "messages": [{"role": "user", "content": prompt}]})
             return next((b["text"] for b in r.json().get("content", [])
                          if b["type"] == "text"), "")
