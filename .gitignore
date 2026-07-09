@@ -1,3 +1,6 @@
 data/db/pcpeak.db
 data/db/*.db-shm
 data/db/*.db-wal
+
+# Installer artifacts should never land in the repo (e.g. accidental 310MB Claude.dmg)
+*.dmg

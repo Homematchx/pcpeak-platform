@@ -731,7 +731,7 @@ async function triggerCaseRun() {
           clearInterval(poll);
           if(btn) { btn.disabled = false; btn.textContent = "▶ Run"; }
           if(status) status.textContent = "Done! Syncing...";
-          setTimeout(function() { syncPlatform(); }, 1000);
+          setTimeout(function() { syncFromPlatform(); }, 1000);
         } else if(run.status === "failed") {
           clearInterval(poll);
           if(btn) { btn.disabled = false; btn.textContent = "▶ Run"; }
@@ -1317,10 +1317,25 @@ function renderDetail(c) {
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px">
         <button onclick="swTab({target:Array.from(document.querySelectorAll('.tb')).find(function(b){return b.getAttribute('onclick')&&b.getAttribute('onclick').indexOf('petition')>=0;})}, 'petition')" style="font-family:var(--FB);font-size:12px;font-weight:600;padding:6px 14px;border-radius:var(--rs);cursor:pointer;border:none;background:var(--accent);color:#fff">&#128196; View Petition</button>
-        ${ex.accountNumber?`<a href="https://www.dallascad.org/AcctDetailRes.aspx?ID=${ex.accountNumber}" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">DCAD Detail</a>`:""}
-        ${ex.accountNumber?`<a href="https://www.dallasact.com/act_webdev/dallas/showdetail2.jsp?can=${ex.accountNumber}&ownerno=0" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Tax Balance</a>`:""}
-        ${ex.accountNumber?`<a href="https://www.dallasact.com/act_webdev/dallas/reports/taxbyyear.jsp?can=${ex.accountNumber}&ownerno=0" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Tax by Year</a>`:""}
-        ${ex.accountNumber?`<a href="https://www.dallasact.com/act_webdev/dallas/reports/paymentinfo.jsp?can=${ex.accountNumber}&ownerno=0" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Payment History</a>`:""}
+        ${(function(){
+          // Multi-tract petitions carry a comma-separated accountNumber
+          // (e.g. "00000685651000000, 00000685645000000"). Building one
+          // link from that raw string sends the browser to a malformed
+          // DCAD/ACT URL with a literal comma in the ID. Split it and
+          // render one set of buttons per tract instead.
+          var accts = (ex.accountNumber||"").split(/[,;]/).map(function(a){return a.trim();}).filter(function(a){return a.length>=10;});
+          if(!accts.length) return "";
+          var abtn = function(label, urlFn){
+            return accts.map(function(a,i){
+              var suffix = accts.length>1 ? " ("+(i+1)+")" : "";
+              return '<a href="'+urlFn(a)+'" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">'+label+suffix+'</a>';
+            }).join("");
+          };
+          return abtn("DCAD Detail", function(a){return "https://www.dallascad.org/AcctDetailRes.aspx?ID="+a;})
+               + abtn("Tax Balance", function(a){return "https://www.dallasact.com/act_webdev/dallas/showdetail2.jsp?can="+a+"&ownerno=0";})
+               + abtn("Tax by Year", function(a){return "https://www.dallasact.com/act_webdev/dallas/reports/taxbyyear.jsp?can="+a+"&ownerno=0";})
+               + abtn("Payment History", function(a){return "https://www.dallasact.com/act_webdev/dallas/reports/paymentinfo.jsp?can="+a+"&ownerno=0";});
+        })()}
         ${ex.propertyAddress?`<a href="https://www.google.com/maps/search/${encodeURIComponent(ex.propertyAddress)}" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Street View</a>`:""}
         <button onclick="delCase('${c.id}')" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text3)">&#128465; Remove</button>
         <span style="display:flex;align-items:center;gap:6px;margin-left:auto">
@@ -1698,7 +1713,7 @@ function openPetitionPDF(c) {
       pdfUrl = data.url || "";
       var dl = document.getElementById("petition-download");
       var fs = document.getElementById("petition-fullscreen");
-      if(dl && pdfUrl){ dl.href=pdfUrl; dl.style.display="inline-block"; }
+      if(dl && pdfUrl){ dl.href=pdfUrl; dl.setAttribute("download", cn+"_petition.pdf"); dl.style.display="inline-block"; }
       if(fs && pdfUrl){ fs.href=pdfUrl; fs.style.display="inline-block"; }
     }).catch(function(){
       var dl = document.getElementById("petition-download");
@@ -1706,15 +1721,8 @@ function openPetitionPDF(c) {
       if(dl) dl.style.display="none";
       if(fs) fs.style.display="none";
     });
-  var pdfUrl = "";
   var acct = ex.accountNumber || "";
   var fmt = function(n){return n?"$"+Math.round(Number(n)).toLocaleString():"—";};
-
-  // Set download + fullscreen links
-  var dl = document.getElementById("petition-download");
-  var fs = document.getElementById("petition-fullscreen");
-  if(dl){ dl.href = pdfUrl; dl.setAttribute("download", cn+"_petition.pdf"); }
-  if(fs){ fs.href = pdfUrl; }
 
   var brief = document.getElementById("petition-brief");
   if(!brief) return;

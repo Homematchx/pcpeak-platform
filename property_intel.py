@@ -538,8 +538,8 @@ def _analyze_owner_change(from_owner: str, to_owner: str) -> list:
     return flags
 
 
-async def enrich_property(account_number: str, address: str, browser,
-                           gsv_api_key: str = None) -> dict:
+async def _enrich_single_account(account_number: str, address: str, browser,
+                                  gsv_api_key: str = None) -> dict:
     if not account_number or len(account_number) < 10:
         return {}
 
@@ -624,6 +624,80 @@ async def enrich_property(account_number: str, address: str, browser,
     print(f"  [intel] {account_number} | MV: {mv} | Balance: {bal} | Distress: {distress['level'].upper()}")
 
     return result
+
+
+# Fields that represent a dollar amount or an area and can be correctly summed
+# across multiple tracts on the same petition (e.g. a lot split into 4A/4C).
+_SUMMABLE_FIELDS = [
+    "market_value", "land_value", "improvement_value", "estimated_annual_taxes",
+    "current_tax_balance", "current_levy", "prior_year_due", "lot_area_sqft",
+]
+
+
+def _aggregate_multi_tract(results: list, account_numbers: list) -> dict:
+    """Combine per-tract enrich_property() results into one property-level
+    record. Financial/area fields are summed; everything else (physical
+    characteristics, ownership, etc.) is taken from the tract with the
+    highest market value, since that's usually the improved/primary parcel."""
+    valid = [r for r in results if r]
+    if not valid:
+        return {}
+
+    primary = max(valid, key=lambda r: (r.get("market_value") or 0))
+    combined = dict(primary)  # start from the primary tract, then overwrite sums below
+
+    for field in _SUMMABLE_FIELDS:
+        total = 0
+        any_value = False
+        for r in valid:
+            v = r.get(field)
+            if v is not None:
+                total += v
+                any_value = True
+        combined[field] = total if any_value else None
+
+    combined["account_number"] = ", ".join(account_numbers)
+    combined["tract_count"] = len(valid)
+    combined["tracts"] = valid  # full per-tract detail preserved for auditing
+    combined["dcad_url"] = [r.get("dcad_url") for r in valid]
+    combined["act_url"] = [r.get("act_url") for r in valid]
+    # Re-run distress analysis using the primary tract's full physical/payment
+    # data (analyze_distress doesn't key off raw dollar totals directly, so
+    # this stays accurate even though the dollar fields above are now summed).
+    combined["distress"] = analyze_distress(primary, primary)
+    return combined
+
+
+async def enrich_property(account_number: str, address: str, browser,
+                           gsv_api_key: str = None) -> dict:
+    """Public entry point. Handles both the normal single-account case and
+    petitions that list multiple DCAD account numbers for one property
+    (comma- or semicolon-separated). Previously a multi-account string was
+    passed straight through as a single malformed ID — this splits it,
+    enriches each tract independently, and sums the financial fields."""
+    if not account_number:
+        return {}
+
+    accounts = [a.strip() for a in re.split(r"[,;]", account_number)
+                if a.strip() and len(a.strip()) >= 10]
+    if not accounts:
+        return {}
+
+    if len(accounts) == 1:
+        return await _enrich_single_account(accounts[0], address, browser, gsv_api_key)
+
+    print(f"  [intel] Multi-tract petition detected — {len(accounts)} accounts: {', '.join(accounts)}")
+    results = await asyncio.gather(*[
+        _enrich_single_account(a, address, browser, gsv_api_key) for a in accounts
+    ])
+    combined = _aggregate_multi_tract(list(results), accounts)
+
+    mv = f"${combined.get('market_value',0):,}" if combined.get("market_value") else "unknown"
+    bal = f"${combined.get('current_tax_balance',0):,}" if combined.get("current_tax_balance") else "unknown"
+    dist = combined.get("distress", {}).get("level", "unknown")
+    print(f"  [intel] {account_number} | {len(accounts)} tracts combined | MV: {mv} | Balance: {bal} | Distress: {dist.upper()}")
+
+    return combined
 
 
 async def main():

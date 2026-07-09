@@ -21,14 +21,18 @@ TWO_CAPTCHA_KEY = os.environ.get("TWO_CAPTCHA_KEY", "e6b154c8fad025b44a18d395ba6
 
 BUSINESS_WORDS = ["LLC","INC","CORP","LTD","TRUST","PROPERTIES","HOLDINGS",
     "INVESTMENTS","GROUP","REALTY","ASSOCIATES","MANAGEMENT","DEVELOPMENT",
-    "SERVICES","COMPANY","DBA","FUND","FUNERAL","CHURCH","FOUNDATION"]
+    "SERVICES","COMPANY","CO","DBA","FUND","FUNERAL","CHURCH","FOUNDATION",
+    "ENTERPRISES","PARTNERS","PARTNERSHIP","LP","LLP","BANK","CONSTRUCTION",
+    "BUILDERS","TITLE","TILE","GRANITE","AUTO","MOTORS"]
 ESTATE_WORDS = ["EST OF","ESTATE OF","ESTATE","HEIR","LIFE ESTATE"]
 
 def classify(name):
     n = name.upper()
     if any(w in n for w in ESTATE_WORDS):
         return {"type":"estate","priority":"high","contact":"Contact estate administrator"}
-    if any(w in n for w in BUSINESS_WORDS):
+    # Word-boundary match so short abbreviations (CO, LP) don't false-positive
+    # on substrings inside individual names (e.g. "COOK", "SCOTT", "NICOLE").
+    if any(re.search(r'(?<![A-Z])' + re.escape(w) + r'(?![A-Z])', n) for w in BUSINESS_WORDS):
         return {"type":"business","priority":"medium","contact":"Formal letter to registered agent"}
     return {"type":"individual","priority":"high","contact":"Door knock first, then direct mail"}
 
@@ -845,8 +849,14 @@ class Discoverer:
                                if "OPEN" in r.get("status","").upper()
                                or r.get("status","") == ""]
                     if self.skip_biz:
+                        pre_filter_count = len(targets)
                         targets = [r for r in targets
                                    if classify(r["partyName"])["type"] != "business"]
+                        biz_excluded = pre_filter_count - len(targets)
+                        if biz_excluded:
+                            self.stats["skipped"] += biz_excluded
+                            self.log("  (" + str(biz_excluded) +
+                                     " business entities excluded by --individuals-only)")
 
                     self.log("")
                     self.log("Page " + str(page_num) + ": " +

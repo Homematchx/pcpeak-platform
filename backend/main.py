@@ -495,13 +495,13 @@ async def run_single_case(req: CaseRunRequest, background_tasks: BackgroundTasks
             
             with get_db() as db2:
                 db2.execute(
-                    "UPDATE agent_runs SET status=?, completed_at=datetime('now'), output=? WHERE id=?",
+                    "UPDATE agent_runs SET status=?, finished_at=datetime('now'), output=? WHERE id=?",
                     [status, output[:2000], run_id]
                 )
         except Exception as e:
             with get_db() as db2:
                 db2.execute(
-                    "UPDATE agent_runs SET status='failed', completed_at=datetime('now'), output=? WHERE id=?",
+                    "UPDATE agent_runs SET status='failed', finished_at=datetime('now'), output=? WHERE id=?",
                     [str(e), run_id]
                 )
 
