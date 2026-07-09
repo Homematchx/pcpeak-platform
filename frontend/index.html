@@ -725,7 +725,7 @@ async function triggerCaseRun() {
     // Poll for completion
     var poll = setInterval(async function() {
       try {
-        var pr = await fetch(PLATFORM_API + "/api/agent/runs/" + runId);
+        var pr = await fetch(PLATFORM_API + "/agent/runs/" + runId);
         var run = await pr.json();
         if(run.status === "completed") {
           clearInterval(poll);
