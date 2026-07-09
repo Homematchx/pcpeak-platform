@@ -172,3 +172,34 @@ These are still outstanding; do not assume resolved:
       exposed in terminal output; remove the hardcoded default too.
 - [ ] Rotate the **Anthropic key** if it was ever pasted in plaintext; keep it in env
       only (it is no longer in Railway).
+
+## Roadmap progress
+
+### Step 1 — Sidebar UI — DONE & verified (2026-07-09)
+Built in `frontend/index.html`, directly above the case list:
+- Search box (case #, defendant, address — client-side substring).
+- Filter dropdowns: complexity, stage, rep + the city pills (the city filter was
+  previously a no-op — `filterCity` set a var `renderList` never read; now wired).
+- Sort: days to OOS, total due, filed date.
+- Pagination, 15/page; count shows "N of M" when filtered.
+- `renderList()` now runs filter → sort → paginate; helpers `getFilteredCases`,
+  `setSearch/setFilter/setSort/gotoPage`, `caseStage`.
+- **Rep assignment**: standardized on `rep_assigned` (new DB column, added to the boot
+  migration), persisted to the platform via `POST /api/cases` (was localStorage-only),
+  shown as a chip on each card and as a filter option.
+Verified in a real browser against the 48 live cases (search/filter/sort/paginate/rep
+assign all work) and on the live site (rep persists).
+
+Bug found & fixed along the way: `POST /api/cases` ran `compute_projection` on the raw
+payload, so partial updates (property_intel-only, rep-only) nulled stored
+`projected_oos`/`confidence_pct`. Now merges the payload onto the existing row before
+projecting. Restored projections for all 48 cases. (Note: the frontend recomputes
+projection client-side via `project()`, so this was silent, not user-visible.)
+
+Deferred from step 1: virtualized rendering (pagination is enough at this scale);
+server-side filtering (client-side is fine while all cases load in one `/api/cases`).
+
+### Steps 2-5 — not started
+Backfill closed 2024/2025 cases, deed/lien-index research, geocoding + legal parsing,
+nearest-neighbor benchmark matching. Harden account extraction (Garland 5-digit /
+Carrollton empty accounts) at the FRONT of step 2 before backfilling more.
