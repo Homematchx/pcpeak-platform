@@ -199,6 +199,24 @@ projection client-side via `project()`, so this was silent, not user-visible.)
 Deferred from step 1: virtualized rendering (pagination is enough at this scale);
 server-side filtering (client-side is fine while all cases load in one `/api/cases`).
 
+**Rep roster (upgraded from free-text to a managed entity):** the first rep control
+was free-text with an implied roster (no remove, hardcoded undeletable defaults, typo
+fragmentation). Rebuilt as a server-side `reps` table (the single source of truth):
+- Endpoints: `GET /api/reps` (with per-rep `case_count`), `POST` (add/reactivate),
+  `PATCH /api/reps/{id}` (rename → cascades to every case that rep owns, or toggle
+  `active`), `DELETE` (soft-delete = deactivate, keeps history), `POST /api/reps/reassign`
+  ({from_rep,to_rep} — move a rep's cases or unassign). `create_case` registers any
+  assigned rep so the roster ⊇ all assignments. Seeded from existing assignments.
+- Remove semantics (per decision): **deactivate (keep history) + separate reassign** to
+  move the book. One owner per case.
+- Frontend: "Manage Reps" modal (gear by the rep filter) — add, inline rename,
+  remove/restore, reassign, live case-counts. `allReps()` (assignment picker) sources
+  from the **active roster ONLY**, so a removed rep can't reappear even if a case still
+  carries their name; the sidebar filter unions active-roster + anyone-with-cases so a
+  removed rep's remaining cases stay findable/reassignable. Handlers are id-based (names
+  never inlined into HTML). Verified: backend lifecycle via TestClient; frontend wiring
+  + deactivate-exclusion in-browser.
+
 ### Steps 2-5 — not started
 Backfill closed 2024/2025 cases, deed/lien-index research, geocoding + legal parsing,
 nearest-neighbor benchmark matching. Harden account extraction (Garland 5-digit /
