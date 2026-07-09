@@ -179,6 +179,7 @@ def init_db():
             ("petition_pdf", "TEXT"),
             ("owner_type", "TEXT"),
             ("owner_priority", "TEXT"),
+            ("rep_assigned", "TEXT"),
         ]:
             if col not in cols:
                 db.execute(f"ALTER TABLE cases ADD COLUMN {col} {typedef}")
@@ -357,40 +358,45 @@ async def get_case(case_number: str):
 
 @app.post("/api/cases")
 async def create_case(data: dict):
-    """Upsert a case (from agent or manual entry)."""
+    """Upsert a case. A partial payload (e.g. just property_intel or
+    rep_assigned) is merged onto the existing row BEFORE the projection is
+    recomputed, so partial updates never clobber stored fields like
+    projected_oos/confidence_pct with nulls computed from missing dates."""
     cn = data.get("case_number")
     if not cn:
         raise HTTPException(400, "case_number required")
-    
-    # Compute projection
-    proj = compute_projection(data)
-    data.update(proj)
-    
-    # Serialize JSON fields
+
+    # Serialize incoming JSON list fields
     for field in ["all_defendants","delinquency_years","prior_suits","tax_breakdown"]:
         if isinstance(data.get(field), list):
             data[field] = json.dumps(data[field])
-    
-    data["updated_at"] = datetime.now().isoformat()
-    
+
     with get_db() as db:
-        # Keep only real table columns. compute_projection() adds transient
-        # display fields (filing_to_judgment_months, days_to_oos) that aren't
-        # columns; without this filter the INSERT/UPDATE 500s with
-        # "table cases has no column named ...".
+        # compute_projection() also emits transient fields (filing_to_judgment_months,
+        # days_to_oos) that aren't columns; filtering to real columns avoids
+        # "table cases has no column named ..." on write.
         valid_cols = {r[1] for r in db.execute("PRAGMA table_info(cases)").fetchall()}
-        data = {k: v for k, v in data.items() if k in valid_cols}
-        existing = db.execute("SELECT id FROM cases WHERE case_number=?", [cn]).fetchone()
+        existing = db.execute("SELECT * FROM cases WHERE case_number=?", [cn]).fetchone()
+
+        # Merge the incoming payload onto the existing row, then recompute the
+        # projection from that complete picture.
+        merged = dict(existing) if existing else {}
+        merged.update({k: v for k, v in data.items() if k in valid_cols})
+        merged.update(compute_projection(merged))
+
+        write = {k: v for k, v in merged.items() if k in valid_cols and k not in ("case_number", "id")}
+        write["updated_at"] = datetime.now().isoformat()
+
         if existing:
-            sets = ", ".join([f"{k}=?" for k in data if k != "case_number"])
-            vals = [data[k] for k in data if k != "case_number"] + [cn]
-            db.execute(f"UPDATE cases SET {sets} WHERE case_number=?", vals)
+            sets = ", ".join([f"{k}=?" for k in write])
+            db.execute(f"UPDATE cases SET {sets} WHERE case_number=?", list(write.values()) + [cn])
         else:
-            data["created_at"] = datetime.now().isoformat()
-            cols = ", ".join(data.keys())
-            placeholders = ", ".join(["?" for _ in data])
-            db.execute(f"INSERT INTO cases ({cols}) VALUES ({placeholders})", list(data.values()))
-    
+            write["case_number"] = cn
+            write["created_at"] = datetime.now().isoformat()
+            cols = ", ".join(write.keys())
+            placeholders = ", ".join(["?" for _ in write])
+            db.execute(f"INSERT INTO cases ({cols}) VALUES ({placeholders})", list(write.values()))
+
     return {"status":"ok","case_number":cn}
 
 @app.patch("/api/cases/{case_number}")
