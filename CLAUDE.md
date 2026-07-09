@@ -139,6 +139,30 @@ because nothing bad has happened yet.
   read and under concurrent multi-tract loads. Now polls for the valuation to render,
   uses a whitespace-tolerant regex, and enriches tracts sequentially.
 
+### Ownership-history parser rebuilt (2026-07-09)
+`scrape_dcad_history` was splitting the whole AcctHistory.aspx page on any
+`YEAR\t` boundary, merging its FOUR stacked tables (Owner/Legal, Market Value,
+Taxable Value, Exemptions) into `ownership_history` — ~80 junk "owners" ($0,
+No Exemptions) per case across 39 cases. Now slices the page by table header
+first; parses ownership from its section only; the other three tables go to
+`market_value_history` / `taxable_value_history` / `exemptions_history`. Also
+fixed: mailing-address off-by-one, `owner_changes` reversed direction/year
+(now chronological via `_derive_owner_signals`), `is_absentee` hard-coded
+"HARRIS" (now compares owner mailing city vs property city), and BPP (99-prefix)
+accounts whose header is `Year\tLegal Owner\tDoing Business As (DBA)`. All 45
+enriched cases backfilled + verified live (0 contaminated).
+
+### OPEN — 4 un-enrichable cases (data-source issues, NOT code)
+These have no usable DCAD data; the account or county is the problem:
+- `TX-26-00899` — empty account, property in **Carrollton** (likely Denton
+  County, outside Dallas DCAD).
+- `TX-26-00995` (`29323`), `TX-26-00992` (`43270`) — malformed **5-digit**
+  accounts, properties in **Garland**. Extraction likely captured a wrong ID;
+  Dallas DCAD uses 17-digit accounts.
+- `TX-25-01777` (`00008496024000000`) — valid-format account but DCAD returns
+  "No Owner History / No Market History" (retired/merged/invalid account).
+Fixing these means correcting the source account numbers, not the scraper.
+
 ### OPEN — credential rotations (tracked, NOT done)
 These are still outstanding; do not assume resolved:
 - [ ] Rotate the **GitHub PAT** embedded in the `origin` remote URL (`ghp_…`); switch
