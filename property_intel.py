@@ -439,6 +439,9 @@ async def scrape_dcad_history(account_number: str, browser) -> dict:
     result = {
         "ownership_history": [],
         "owner_changes": [],
+        "market_value_history": [],
+        "taxable_value_history": [],
+        "exemptions_history": [],
         "is_absentee": False,
         "estate_flag": False,
         "mailing_differs_from_property": False,
@@ -458,13 +461,32 @@ async def scrape_dcad_history(account_number: str, browser) -> dict:
         await asyncio.sleep(2)
         text = await page.inner_text("body")
 
-        # Each ownership block starts with YEAR\tOWNER
-        # Split on year boundaries
-        blocks = re.split(r"(?=\n[0-9]{4}\t)", "\n" + text)
+        # AcctHistory.aspx stacks FOUR year-indexed tables that ALL start rows
+        # with "YEAR\t":  Owner/Legal Description, Market Value, Taxable Value,
+        # and Exemptions. Splitting the whole page on year boundaries merged
+        # every table's rows into ownership_history (duplicate + junk "owners"
+        # like "$0", "No Exemptions"). Slice the page into its sections by their
+        # header lines FIRST, then parse each table on its own.
+        def _slice(start, ends):
+            si = text.find(start)
+            if si == -1:
+                return ""
+            si += len(start)
+            cand = [c for c in (text.find(e, si) for e in ends) if c != -1]
+            return text[si:min(cand)] if cand else text[si:]
 
+        owner_sec = _slice("Year\tOwner\tLegal Description",
+                           ["Market Value", "Taxable Value", "\nExemptions", "Exemption Details History"])
+        market_sec = _slice("Year\tImprovement\tLand",
+                            ["Taxable Value", "\nExemptions", "Exemption Details History"])
+        taxable_sec = _slice("Year\tCity\tISD",
+                             ["\nExemptions", "Exemption Details History"])
+        exempt_sec = _slice("\nExemptions\n",
+                            ["Exemption Details History", "© 20"])
+
+        # --- Ownership / Legal Description table (the real ownership history) ---
         prev_owner = None
-        for block in blocks:
-            # Match year and owner name
+        for block in re.split(r"(?=\n[0-9]{4}\t)", "\n" + owner_sec):
             yr_m = re.match(r"\n?([0-9]{4})\t([^\n]+)", block)
             if not yr_m:
                 continue
@@ -472,13 +494,11 @@ async def scrape_dcad_history(account_number: str, browser) -> dict:
             year = int(yr_m.group(1))
             owner_name = yr_m.group(2).strip()
 
-            # Mailing address — line after owner name
-            lines_b = block.splitlines()
-            mailing_addr = lines_b[1].strip() if len(lines_b) > 1 else ""
-            mailing_city = lines_b[2].strip() if len(lines_b) > 2 else ""
-            # Clean xa0 non-breaking spaces
-            mailing_addr = mailing_addr.replace("\xa0", " ").strip()
-            mailing_city = mailing_city.replace("\xa0", " ").strip()
+            # Mailing address + city are the two lines after the year/owner line.
+            lines_b = block.split("\n")
+            yi = next((k for k, l in enumerate(lines_b) if re.match(r"[0-9]{4}\t", l)), 0)
+            mailing_addr = lines_b[yi + 1].replace("\xa0", " ").strip() if yi + 1 < len(lines_b) else ""
+            mailing_city = lines_b[yi + 2].replace("\xa0", " ").strip() if yi + 2 < len(lines_b) else ""
 
             # Deed transfer date
             deed_m = re.search(r"Deed Transfer Date:[\xa0\s]+(\d+/\d+/\d+)", block)
@@ -502,6 +522,26 @@ async def scrape_dcad_history(account_number: str, browser) -> dict:
                     "flags": _analyze_owner_change(prev_owner, owner_name)
                 })
             prev_owner = owner_name
+
+        # --- Value / exemption tables, each into its own list (not ownership) ---
+        def _year_table(sec, cols):
+            out = []
+            for line in sec.splitlines():
+                m = re.match(r"([0-9]{4})\t(.+)", line)
+                if not m:
+                    continue
+                vals = [v.strip() for v in m.group(2).split("\t")]
+                rec = {"year": int(m.group(1))}
+                for idx, name in enumerate(cols):
+                    rec[name] = vals[idx] if idx < len(vals) else ""
+                out.append(rec)
+            return out
+
+        result["market_value_history"] = _year_table(
+            market_sec, ["improvement", "land", "total_market", "homestead_capped"])
+        result["taxable_value_history"] = _year_table(
+            taxable_sec, ["city", "isd", "county", "college", "hospital", "special_district"])
+        result["exemptions_history"] = _year_table(exempt_sec, ["exemptions"])
 
         # Absentee: latest owner mailing address differs from property
         if result["ownership_history"]:
@@ -619,6 +659,9 @@ async def _enrich_single_account(account_number: str, address: str, browser,
         # Ownership history
         "ownership_history": history.get("ownership_history", []),
         "owner_changes": history.get("owner_changes", []),
+        "market_value_history": history.get("market_value_history", []),
+        "taxable_value_history": history.get("taxable_value_history", []),
+        "exemptions_history": history.get("exemptions_history", []),
         "is_absentee": history.get("is_absentee", False),
         "estate_flag": history.get("estate_flag", False),
         "mailing_differs_from_property": history.get("mailing_differs_from_property", False),
