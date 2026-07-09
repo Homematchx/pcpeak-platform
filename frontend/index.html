@@ -409,7 +409,6 @@ Events:
           <select id="filter-rep" class="lc-sel" onchange="setFilter('rep',this.value,this)">
             <option value="">Rep: All</option><option value="__unassigned__">Unassigned</option>
           </select>
-          <button onclick="openRepMgr()" title="Add / rename / remove reps" style="flex:0 0 auto;font-family:var(--FB);font-size:11px;font-weight:600;padding:4px 11px;border-radius:var(--rs);border:1px solid var(--accent);background:var(--surface);color:var(--accent);cursor:pointer;white-space:nowrap">&#9881; Reps</button>
           <select id="sort-by" class="lc-sel" onchange="setSort(this.value,this)">
             <option value="">Sort: Default</option><option value="daysToOOS">Days to OOS</option><option value="totalDue">Total due</option><option value="filedDate">Filed date</option>
           </select>
@@ -1384,14 +1383,14 @@ function renderDetail(c) {
         })()}
         ${ex.propertyAddress?`<a href="https://www.google.com/maps/search/${encodeURIComponent(ex.propertyAddress)}" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Street View</a>`:""}
         <button onclick="delCase('${c.id}')" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text3)">&#128465; Remove</button>
-        <span style="display:flex;align-items:center;gap:6px;margin-left:auto">
-          <div id="rep-av-${c.id}" style="width:24px;height:24px;border-radius:50%;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff">${c.rep_assigned?c.rep_assigned.split(" ").map(function(w){return w[0]||""}).join("").toUpperCase().slice(0,2):"--"}</div>
-          <input id="rep-input-${c.id}" list="rep-datalist" value="${(c.rep_assigned||'').replace(/"/g,'&quot;')}" placeholder="Assign rep — type a name&hellip;"
-            onchange="assignRep('${c.id}', this.value)" onkeydown="if(event.key==='Enter'){this.blur();}"
-            style="font-size:11px;padding:5px 9px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);width:160px;outline:none">
-          <datalist id="rep-datalist">${allReps().map(function(r){return '<option value="'+r.replace(/"/g,'&quot;')+'"></option>';}).join('')}</datalist>
-          <button onclick="assignRep('${c.id}','')" title="Unassign" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;line-height:1;padding:0 2px;${c.rep_assigned?'':'visibility:hidden'}">&times;</button>
-          <button onclick="openRepMgr()" title="Manage the rep roster — add, rename, remove, reassign" style="font-family:var(--FB);font-size:11px;font-weight:600;padding:5px 10px;border-radius:var(--rs);border:1px solid var(--accent);background:var(--surface);color:var(--accent);cursor:pointer;white-space:nowrap">&#9881; Manage reps</button>
+        <span style="display:flex;align-items:center;gap:8px;margin-left:auto">
+          <div id="rep-av-${c.id}" style="width:26px;height:26px;border-radius:50%;background:${c.rep_assigned?'var(--accent2)':'var(--surface3)'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${c.rep_assigned?'#fff':'var(--text3)'};flex:0 0 auto">${repInitials(c.rep_assigned)}</div>
+          <select id="rep-sel-${c.id}" onchange="assignRep('${c.id}', this.value)" title="Assign this case to a rep"
+            style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 10px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer;min-width:150px;outline:none">
+            <option value=""${c.rep_assigned?'':' selected'}>Unassigned</option>
+            ${repOptionsHtml(c.rep_assigned)}
+          </select>
+          <button onclick="openRepMgr()" title="Add, rename, remove, or reassign reps" style="font-family:var(--FB);font-size:11px;font-weight:600;padding:6px 11px;border-radius:var(--rs);border:1px solid var(--accent);background:var(--surface);color:var(--accent);cursor:pointer;white-space:nowrap">&#9881; Manage reps</button>
         </span>
       </div>
     </div>
@@ -1878,32 +1877,55 @@ function localRepRename(oldName, newName){
   cases.forEach(function(c){ if((c.rep_assigned||"")===oldName) c.rep_assigned=newName; });
   save();
 }
+function repInitials(name){
+  name=(name||"").trim();
+  if(!name) return "";
+  return name.split(/\s+/).map(function(w){return w[0]||"";}).join("").toUpperCase().slice(0,2);
+}
+// <option>s for the per-case rep <select>: active roster, plus the case's current
+// rep even if it's since been removed from the roster (shown as "(removed)").
+function repOptionsHtml(current){
+  current=(current||"").trim();
+  var esc=function(s){return (s||"").replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
+  var names=allReps();
+  var extra = (current && names.indexOf(current)<0) ? [current] : [];
+  return names.concat(extra).map(function(n){
+    var removed = allReps().indexOf(n)<0;
+    return '<option value="'+esc(n)+'"'+(n===current?' selected':'')+'>'+esc(n)+(removed?' (removed)':'')+'</option>';
+  }).join('');
+}
+// Rebuild the open case's rep <select> after the roster changes elsewhere.
+function refreshOpenRepSelect(){
+  if(typeof activeId==='undefined' || !activeId) return;
+  var c=cases.find(function(x){return x.id===activeId;});
+  var sel=document.getElementById('rep-sel-'+activeId);
+  if(c && sel){ sel.innerHTML='<option value="">Unassigned</option>'+repOptionsHtml(c.rep_assigned); sel.value=c.rep_assigned||""; }
+}
 
 function assignRep(caseId, repName) {
   var c = cases.find(function(x){return x.id===caseId;});
   if (!c) return;
   repName = (repName || "").trim();
-  if (repName === (c.rep_assigned||"")) return;          // no-op (e.g. blur without change)
-  var isNew = repName && !allReps().some(function(n){return n.toLowerCase()===repName.toLowerCase();});
+  if (repName === (c.rep_assigned||"")) return;          // no-op
   c.rep_assigned = repName;
   save();
-  // Persist to the platform (shared). create_case also registers a new rep in
-  // the roster, so a typed-in name becomes a real roster entry.
+  // Persist to the platform (shared).
   var cn = (c.extracted && c.extracted.caseNumber) || "";
   if (cn) {
     fetch(PLATFORM_API + "/cases", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({case_number: cn, rep_assigned: repName})
-    }).then(function(){ if(isNew) reloadReps(); }).catch(function(){});
+    }).catch(function(){});
   }
-  // Reflect immediately in the detail control (list re-renders below).
+  // Reflect immediately in the detail avatar (list re-renders below).
   var av = document.getElementById('rep-av-' + caseId);
-  if (av) av.textContent = repName ? repName.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2) : '--';
-  var inp = document.getElementById('rep-input-' + caseId);
-  if (inp && inp.value !== repName) inp.value = repName;
-  var clr = inp && inp.parentNode ? inp.parentNode.querySelector('button[title="Unassign"]') : null;
-  if (clr) clr.style.visibility = repName ? 'visible' : 'hidden';
-  if (isNew && repName) window._repRoster = (window._repRoster||[]).concat([{id:null,name:repName,active:1,case_count:1}]);
+  if (av) {
+    av.textContent = repInitials(repName);
+    av.style.background = repName ? 'var(--accent2)' : 'var(--surface3)';
+    av.style.color = repName ? '#fff' : 'var(--text3)';
+  }
+  var sel = document.getElementById('rep-sel-' + caseId);
+  if (sel && sel.value !== repName) sel.value = repName;
   renderList();
 }
 
@@ -1946,7 +1968,7 @@ function renderRepMgr(){
 function repMgrAdd(){
   var inp=document.getElementById("rep-mgr-add"); var name=(inp.value||"").trim(); if(!name) return;
   fetch(PLATFORM_API+"/reps",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name})})
-    .then(function(){ inp.value=""; return reloadReps(); }).then(function(){ renderRepMgr(); renderList(); });
+    .then(function(){ inp.value=""; return reloadReps(); }).then(function(){ renderRepMgr(); renderList(); refreshOpenRepSelect(); });
 }
 function repRename(id, newName){
   var r=getRep(id); if(!r) return;
@@ -1956,7 +1978,7 @@ function repRename(id, newName){
     .then(function(resp){
       if(resp.status===409){ alert('A rep named "'+newName+'" already exists.'); return null; }
       localRepRename(oldName,newName); return reloadReps();
-    }).then(function(x){ renderRepMgr(); if(x!==null) renderList(); });
+    }).then(function(x){ renderRepMgr(); if(x!==null){ renderList(); refreshOpenRepSelect(); } });
 }
 function repRemove(id){
   var r=getRep(id); if(!r) return;
@@ -1964,11 +1986,11 @@ function repRemove(id){
     ? 'Remove "'+r.name+'" from the roster?\n\nTheir '+r.case_count+' case'+(r.case_count===1?'':'s')+' keep the assignment (history preserved). Use Reassign first if someone else should take them.'
     : 'Remove "'+r.name+'" from the roster?';
   if(!confirm(msg)) return;
-  fetch(PLATFORM_API+"/reps/"+id,{method:"DELETE"}).then(function(){ return reloadReps(); }).then(function(){ renderRepMgr(); renderList(); });
+  fetch(PLATFORM_API+"/reps/"+id,{method:"DELETE"}).then(function(){ return reloadReps(); }).then(function(){ renderRepMgr(); renderList(); refreshOpenRepSelect(); });
 }
 function repRestore(id){
   fetch(PLATFORM_API+"/reps/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({active:1})})
-    .then(function(){ return reloadReps(); }).then(function(){ renderRepMgr(); renderList(); });
+    .then(function(){ return reloadReps(); }).then(function(){ renderRepMgr(); renderList(); refreshOpenRepSelect(); });
 }
 function repReassign(fromId, toValue){
   if(!toValue) return;
@@ -1976,7 +1998,7 @@ function repReassign(fromId, toValue){
   var toName = toValue==="__unassign__" ? "" : toValue;
   fetch(PLATFORM_API+"/reps/reassign",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({from_rep:r.name,to_rep:toName})})
     .then(function(){ localRepRename(r.name,toName); return reloadReps(); })
-    .then(function(){ renderRepMgr(); renderList(); });
+    .then(function(){ renderRepMgr(); renderList(); refreshOpenRepSelect(); });
 }
 
 function filterCity(city) {
