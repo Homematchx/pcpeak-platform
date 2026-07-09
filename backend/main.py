@@ -177,6 +177,8 @@ def init_db():
             ("property_intel", "TEXT"),
             ("legal_description", "TEXT"),
             ("petition_pdf", "TEXT"),
+            ("owner_type", "TEXT"),
+            ("owner_priority", "TEXT"),
         ]:
             if col not in cols:
                 db.execute(f"ALTER TABLE cases ADD COLUMN {col} {typedef}")
