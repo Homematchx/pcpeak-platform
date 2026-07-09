@@ -280,13 +280,6 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
         <span>Platform Cases</span>
         <button id="sync-btn" onclick="syncFromPlatform()" style="font-family:var(--FB);font-size:10px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">&#8635; Sync</button>
       </div>
-      <div style="padding:8px 16px 6px;border-bottom:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap" id="city-filter-bar">
-  <button onclick="filterCity('')" class="city-pill on" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">All</button>
-  <button onclick="filterCity('dallas')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Dallas</button>
-  <button onclick="filterCity('garland')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Garland</button>
-  <button onclick="filterCity('carrollton')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Carrollton</button>
-  <button onclick="filterCity('plano')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Plano</button>
-</div>
 <div id="platform-status" style="font-size:11px;color:var(--text3)">Connecting to platform...</div>
     </div>
 
@@ -380,7 +373,39 @@ Events:
 
     <div class="sbs" style="flex:1">
       <div class="sbl">Analyzed Cases <span id="cct" style="font-size:11px;color:var(--text3);font-weight:400;letter-spacing:0;text-transform:none">0 saved</span></div>
+      <style>
+        .lc-sel{font-family:var(--FB);font-size:11px;font-weight:500;padding:4px 8px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer;outline:none;flex:1;min-width:0}
+        #case-controls select.lc-sel.act{border-color:var(--accent);color:var(--text)}
+      </style>
+      <div id="case-controls" style="padding:2px 0 8px;margin-bottom:8px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px">
+        <input id="case-search" type="text" placeholder="&#128269; Search case #, defendant, address&hellip;" oninput="setSearch(this.value)"
+          style="width:100%;box-sizing:border-box;font-family:var(--FB);font-size:12px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none">
+        <div style="display:flex;gap:5px">
+          <select id="filter-complexity" class="lc-sel" onchange="setFilter('complexity',this.value,this)">
+            <option value="">Complexity</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+          </select>
+          <select id="filter-stage" class="lc-sel" onchange="setFilter('stage',this.value,this)">
+            <option value="">Stage</option><option value="pre_judgment">Pre-judgment</option><option value="judgment_entered">Judgment</option><option value="oos_issued">OOS issued</option><option value="sale_pulled">Sale pulled</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:5px">
+          <select id="filter-rep" class="lc-sel" onchange="setFilter('rep',this.value,this)">
+            <option value="">Rep: All</option><option value="__unassigned__">Unassigned</option>
+          </select>
+          <select id="sort-by" class="lc-sel" onchange="setSort(this.value,this)">
+            <option value="">Sort: Default</option><option value="daysToOOS">Days to OOS</option><option value="totalDue">Total due</option><option value="filedDate">Filed date</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap" id="city-filter-bar">
+          <button onclick="filterCity('')" class="city-pill on" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">All</button>
+          <button onclick="filterCity('dallas')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Dallas</button>
+          <button onclick="filterCity('garland')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Garland</button>
+          <button onclick="filterCity('carrollton')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Carrollton</button>
+          <button onclick="filterCity('plano')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Plano</button>
+        </div>
+      </div>
       <div class="clist" id="clist"><div style="font-size:12px;color:var(--text3);padding:6px 0">No cases yet.</div></div>
+      <div id="cpage" style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 0 2px"></div>
     </div>
 
     <div class="sbs">
@@ -539,6 +564,7 @@ function platformToV3(pc, events) {
   return {
     id: pc.case_number + "_platform",
     city: pc.city || "dallas",
+    rep_assigned: pc.rep_assigned || "",
     memo: pc.ai_memo || "",
     uploadedAt: pc.last_agent_run || pc.updated_at || new Date().toISOString(),
     fileNames: ["[Platform Agent — " + (pc.last_agent_run ? new Date(pc.last_agent_run).toLocaleDateString() : "synced") + "]"],
@@ -1339,10 +1365,10 @@ function renderDetail(c) {
         ${ex.propertyAddress?`<a href="https://www.google.com/maps/search/${encodeURIComponent(ex.propertyAddress)}" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Street View</a>`:""}
         <button onclick="delCase('${c.id}')" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text3)">&#128465; Remove</button>
         <span style="display:flex;align-items:center;gap:6px;margin-left:auto">
-          <div id="rep-av-${c.id}" style="width:24px;height:24px;border-radius:50%;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff">${c.repAssigned?c.repAssigned.split(" ").map(function(w){return w[0]||""}).join("").toUpperCase().slice(0,2):"--"}</div>
+          <div id="rep-av-${c.id}" style="width:24px;height:24px;border-radius:50%;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff">${c.rep_assigned?c.rep_assigned.split(" ").map(function(w){return w[0]||""}).join("").toUpperCase().slice(0,2):"--"}</div>
           <select onchange="assignRep('${c.id}',this.value)" style="font-size:11px;padding:4px 8px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer">
             <option value="">Assign rep…</option>
-            ${(window._reps||["Stephen Lewis","James Davis","Maria Chen"]).map(function(r){return '<option value="'+r+'" '+(c.repAssigned===r?'selected':'')+'>'+r+'</option>';}).join("")}
+            ${allReps().map(function(r){return '<option value="'+r+'" '+(c.rep_assigned===r?'selected':'')+'>'+r+'</option>';}).join("")}
             <option value="__add__">+ Add new rep…</option>
             <option value="Unassigned">Unassigned</option>
           </select>
@@ -1812,16 +1838,36 @@ function openPetitionPDF(c) {
   brief.innerHTML = html;
 }
 
+function allReps(){
+  var base = window._reps || (window._reps = ["Stephen Lewis","James Davis","Maria Chen"]);
+  var assigned = cases.map(function(c){return (c.rep_assigned||"").trim();}).filter(Boolean);
+  return Array.from(new Set(base.concat(assigned))).sort();
+}
+
 function assignRep(caseId, repName) {
   var c = cases.find(function(x){return x.id===caseId;});
   if (!c) return;
-  c.repAssigned = repName;
-  save();
-  var av = document.getElementById('rep-av-' + caseId);
-  if (av) {
-    var initials = repName ? repName.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2) : '--';
-    av.textContent = initials;
+  if (repName === "__add__") {
+    var nm = (prompt("New rep name:") || "").trim();
+    if (!nm) { renderDetail(c); return; }
+    window._reps = window._reps || ["Stephen Lewis","James Davis","Maria Chen"];
+    if (window._reps.indexOf(nm) < 0) window._reps.push(nm);
+    repName = nm;
   }
+  if (repName === "Unassigned") repName = "";
+  c.rep_assigned = repName;
+  save();
+  // Persist to the platform so the assignment is shared, not just local.
+  var cn = (c.extracted && c.extracted.caseNumber) || "";
+  if (cn) {
+    fetch(PLATFORM_API + "/cases", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({case_number: cn, rep_assigned: repName})
+    }).catch(function(){});
+  }
+  var av = document.getElementById('rep-av-' + caseId);
+  if (av) av.textContent = repName ? repName.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2) : '--';
   renderList();
 }
 
@@ -1835,6 +1881,7 @@ function filterCity(city) {
   event.target.style.color = '#fff';
   event.target.style.borderColor = 'var(--accent)';
   window._cityFilter = city;
+  window._page = 1;
   renderList();
 }
 
@@ -1851,23 +1898,103 @@ function swTab(e, id) {
 // ═══════════════════════════════════════════
 // CASE LIST
 // ═══════════════════════════════════════════
+// ── filter / search / sort / pagination state ──
+window._search = window._search || "";
+window._cityFilter = window._cityFilter || "";
+window._filters = window._filters || {complexity:"", stage:"", rep:""};
+window._sort = window._sort || "";
+window._page = window._page || 1;
+var LIST_PAGE_SIZE = 15;
+
+function caseStage(ex){
+  return ex.orderOfSaleIssued ? "oos_issued"
+       : ex.judgmentDate ? "judgment_entered"
+       : ex.stage === "sale_pulled" ? "sale_pulled"
+       : "pre_judgment";
+}
+
+function getFilteredCases(){
+  var q = (window._search||"").trim().toLowerCase();
+  var f = window._filters||{};
+  var list = cases.filter(function(c){
+    var ex = c.extracted||{};
+    if(window._cityFilter && (c.city||"dallas")!==window._cityFilter) return false;
+    if(f.complexity && (ex.complexity||"medium")!==f.complexity) return false;
+    if(f.stage && caseStage(ex)!==f.stage) return false;
+    if(f.rep){
+      var rep=(c.rep_assigned||"").trim();
+      if(f.rep==="__unassigned__"){ if(rep) return false; }
+      else if(rep!==f.rep) return false;
+    }
+    if(q){
+      var hay=((ex.caseNumber||"")+" "+(ex.defendant||"")+" "+(ex.propertyAddress||"")).toLowerCase();
+      if(hay.indexOf(q)<0) return false;
+    }
+    return true;
+  });
+  var s=window._sort;
+  if(s){
+    list=list.slice().sort(function(a,b){
+      var ea=a.extracted||{}, eb=b.extracted||{};
+      if(s==="daysToOOS"){
+        var da=project(a).daysToOOS, db=project(b).daysToOOS;
+        da=(da===null||da===undefined)?Infinity:da; db=(db===null||db===undefined)?Infinity:db;
+        return da-db;
+      }
+      if(s==="totalDue") return (eb.totalDueAtFiling||0)-(ea.totalDueAtFiling||0);
+      if(s==="filedDate") return (eb.filedDate||"").localeCompare(ea.filedDate||"");
+      return 0;
+    });
+  }
+  return list;
+}
+
+function refreshRepFilterOptions(){
+  var sel=document.getElementById("filter-rep");
+  if(!sel) return;
+  var reps=Array.from(new Set(cases.map(function(c){return (c.rep_assigned||"").trim();}).filter(Boolean))).sort();
+  var cur=(window._filters.rep)||"";
+  sel.innerHTML='<option value="">Rep: All</option><option value="__unassigned__">Unassigned</option>'+
+    reps.map(function(r){var e=r.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');return '<option value="'+e+'">'+e+'</option>';}).join("");
+  sel.value=cur;
+  sel.classList.toggle("act", !!cur);
+}
+
+function setSearch(v){ window._search=v; window._page=1; renderList(); }
+function setFilter(k,v,el){ window._filters[k]=v; window._page=1; if(el) el.classList.toggle("act", !!v); renderList(); }
+function setSort(v,el){ window._sort=v; window._page=1; if(el) el.classList.toggle("act", !!v); renderList(); }
+function gotoPage(p){ window._page=p; renderList(); var l=document.getElementById("clist"); if(l) l.scrollTop=0; }
+
 function renderList() {
   const list = document.getElementById("clist");
   const cnt  = document.getElementById("cct");
-  cnt.textContent = `${cases.length} saved`;
+  const pageEl = document.getElementById("cpage");
   updateHdr();
+  refreshRepFilterOptions();
   if (!cases.length) {
+    cnt.textContent = "0 saved";
     list.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:6px 0">No cases yet.</div>`;
-    return;
+    if(pageEl) pageEl.innerHTML=""; return;
   }
-  const sc = {Faster:"var(--green)",Moderate:"var(--amber)",Slower:"var(--red)",Varies:"var(--blue)"};
-  list.innerHTML = cases.map(c => {
+  const filtered = getFilteredCases();
+  const total = cases.length, shown = filtered.length;
+  cnt.textContent = (shown===total) ? `${total} saved` : `${shown} of ${total}`;
+  if (!shown) {
+    list.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:6px 0">No cases match your filters.</div>`;
+    if(pageEl) pageEl.innerHTML=""; return;
+  }
+  const pages = Math.max(1, Math.ceil(shown / LIST_PAGE_SIZE));
+  if(window._page>pages) window._page=pages;
+  if(window._page<1) window._page=1;
+  const start=(window._page-1)*LIST_PAGE_SIZE;
+  const pageItems = filtered.slice(start, start+LIST_PAGE_SIZE);
+  list.innerHTML = pageItems.map(c => {
     const ex = c.extracted, city = CITIES[c.city]||CITIES.dallas, pr = project(c);
     const hasJ = !!ex.judgmentDate, oos = ex.orderOfSaleIssued;
-    const dot = oos?"var(--green)":hasJ?"var(--amber)":"var(--blue)";
     const ds = pr.daysToOOS!==null ? (pr.daysToOOS>0?`~${pr.daysToOOS}d to OOS`:"OOS due") : "";
     const acq = getAcqPriority(ex);
     const acqDot = oos?"var(--red)":hasJ?"var(--amber)":ex.stage==="sale_pulled"?"#7a1e7a":"var(--blue)";
+    const rep = (c.rep_assigned||"").trim();
     return `<div class="cchip${activeId===c.id?" on":""}" data-id="${c.id}" onclick="selectCase('${c.id}')">
       <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:${acqDot};border-radius:3px 0 0 3px"></div>
       <div class="cchip-b">
@@ -1877,11 +2004,21 @@ function renderList() {
         <div class="cchip-m" style="margin-top:5px">
           <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${acq.bg};color:${acq.color};border:1px solid ${acq.border}">${acq.icon} ${acq.label}</span>
           ${ds?`<span style="font-size:10px;color:${acqDot};font-weight:600">${ds}</span>`:""}
+          ${rep?`<span style="font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text2);border:1px solid var(--border2)">&#128100; ${rep}</span>`:""}
         </div>
       </div>
       <button class="cdel" onclick="delCase('${c.id}',event)">&#215;</button>
     </div>`;
   }).join("");
+  if(pageEl){
+    if(pages<=1){ pageEl.innerHTML=""; }
+    else {
+      const b=(lbl,pg,dis)=>`<button ${dis?'disabled':''} onclick="gotoPage(${pg})" style="font-family:var(--FB);font-size:11px;padding:4px 9px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:${dis?'var(--text3)':'var(--text2)'};cursor:${dis?'default':'pointer'}">${lbl}</button>`;
+      pageEl.innerHTML = b("&#8249; Prev", window._page-1, window._page<=1)
+        + `<span style="font-size:11px;color:var(--text3)">Page ${window._page} / ${pages} &middot; ${shown}</span>`
+        + b("Next &#8250;", window._page+1, window._page>=pages);
+    }
+  }
 }
 
 function renderCaseLog() {
