@@ -435,7 +435,63 @@ def analyze_distress(dcad: dict, act: dict) -> dict:
     }
 
 
-async def scrape_dcad_history(account_number: str, browser) -> dict:
+def _city_of(address: str) -> str:
+    """Extract the city from a property address, e.g.
+    '3625 Crane St, Dallas, TX 75212' -> 'Dallas'."""
+    if not address:
+        return ""
+    parts = [p.strip() for p in address.split(",")]
+    for i, p in enumerate(parts):
+        if i > 0 and re.search(r"\b(TX|TEXAS)\b", p, re.I):
+            return parts[i - 1]
+    return parts[1] if len(parts) > 1 else ""
+
+
+def _derive_owner_signals(ownership_history: list, property_address: str = "") -> dict:
+    """Derive owner_changes / is_absentee / estate_flag from an ownership_history
+    list (stored newest-first). Pure function of its inputs so it can be recomputed
+    from stored data without re-scraping.
+
+    owner_changes iterates oldest -> newest so from/to and year reflect the real
+    direction of each transfer (the newest-first list would otherwise report every
+    change backwards)."""
+    changes = []
+    prev = None
+    for rec in reversed(ownership_history):
+        owner = rec.get("owner", "")
+        if prev and owner != prev.get("owner", ""):
+            changes.append({
+                "year": rec.get("year"),
+                "from_owner": prev.get("owner", ""),
+                "to_owner": owner,
+                "deed_date": rec.get("deed_transfer_date", ""),
+                "flags": _analyze_owner_change(prev.get("owner", ""), owner),
+            })
+        prev = rec
+
+    # Absentee: latest owner mails to a different city than the property.
+    is_absentee = False
+    if ownership_history:
+        mail_token = (ownership_history[0].get("mailing_city") or "").upper().split(",")[0].strip()
+        prop_city = _city_of(property_address).upper().strip()
+        if mail_token and prop_city:
+            is_absentee = mail_token not in prop_city and prop_city not in mail_token
+        elif mail_token:
+            # No property city to compare; this is a Dallas-county tool, so an
+            # owner mailing outside Dallas is treated as absentee.
+            is_absentee = mail_token != "DALLAS"
+
+    estate = bool(re.search(r"ESTATE|HEIR|DEVISEE",
+                            " ".join(r.get("owner", "") for r in ownership_history), re.I))
+    return {
+        "owner_changes": changes,
+        "is_absentee": is_absentee,
+        "mailing_differs_from_property": is_absentee,
+        "estate_flag": estate,
+    }
+
+
+async def scrape_dcad_history(account_number: str, browser, property_address: str = "") -> dict:
     result = {
         "ownership_history": [],
         "owner_changes": [],
@@ -485,7 +541,6 @@ async def scrape_dcad_history(account_number: str, browser) -> dict:
                             ["Exemption Details History", "© 20"])
 
         # --- Ownership / Legal Description table (the real ownership history) ---
-        prev_owner = None
         for block in re.split(r"(?=\n[0-9]{4}\t)", "\n" + owner_sec):
             yr_m = re.match(r"\n?([0-9]{4})\t([^\n]+)", block)
             if not yr_m:
@@ -513,16 +568,6 @@ async def scrape_dcad_history(account_number: str, browser) -> dict:
             }
             result["ownership_history"].append(record)
 
-            if prev_owner and owner_name != prev_owner:
-                result["owner_changes"].append({
-                    "year": year,
-                    "from_owner": prev_owner,
-                    "to_owner": owner_name,
-                    "deed_date": deed_date,
-                    "flags": _analyze_owner_change(prev_owner, owner_name)
-                })
-            prev_owner = owner_name
-
         # --- Value / exemption tables, each into its own list (not ownership) ---
         def _year_table(sec, cols):
             out = []
@@ -543,15 +588,8 @@ async def scrape_dcad_history(account_number: str, browser) -> dict:
             taxable_sec, ["city", "isd", "county", "college", "hospital", "special_district"])
         result["exemptions_history"] = _year_table(exempt_sec, ["exemptions"])
 
-        # Absentee: latest owner mailing address differs from property
-        if result["ownership_history"]:
-            latest = result["ownership_history"][0]
-            mailing = (latest.get("mailing_address") or "").upper()
-            result["is_absentee"] = bool(mailing and "HARRIS" not in mailing and mailing != "")
-            result["mailing_differs_from_property"] = result["is_absentee"]
-
-        all_owners = " ".join(r["owner"] for r in result["ownership_history"])
-        result["estate_flag"] = bool(re.search(r"ESTATE|HEIR|DEVISEE", all_owners, re.I))
+        # Derived owner signals: chronological owner_changes, absentee, estate.
+        result.update(_derive_owner_signals(result["ownership_history"], property_address))
 
     except Exception as e:
         result["error"] = str(e)
@@ -596,7 +634,7 @@ async def _enrich_single_account(account_number: str, address: str, browser,
     dcad, act, history = await asyncio.gather(
         scrape_dcad(account_number, browser),
         scrape_dallas_act(account_number, browser),
-        scrape_dcad_history(account_number, browser)
+        scrape_dcad_history(account_number, browser, address)
     )
 
     distress = analyze_distress(dcad, act)
