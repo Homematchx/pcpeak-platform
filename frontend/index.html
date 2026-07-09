@@ -1366,12 +1366,11 @@ function renderDetail(c) {
         <button onclick="delCase('${c.id}')" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text3)">&#128465; Remove</button>
         <span style="display:flex;align-items:center;gap:6px;margin-left:auto">
           <div id="rep-av-${c.id}" style="width:24px;height:24px;border-radius:50%;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff">${c.rep_assigned?c.rep_assigned.split(" ").map(function(w){return w[0]||""}).join("").toUpperCase().slice(0,2):"--"}</div>
-          <select onchange="assignRep('${c.id}',this.value)" style="font-size:11px;padding:4px 8px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer">
-            <option value="">Assign rep…</option>
-            ${allReps().map(function(r){return '<option value="'+r+'" '+(c.rep_assigned===r?'selected':'')+'>'+r+'</option>';}).join("")}
-            <option value="__add__">+ Add new rep…</option>
-            <option value="Unassigned">Unassigned</option>
-          </select>
+          <input id="rep-input-${c.id}" list="rep-datalist" value="${(c.rep_assigned||'').replace(/"/g,'&quot;')}" placeholder="Assign rep — type a name&hellip;"
+            onchange="assignRep('${c.id}', this.value)" onkeydown="if(event.key==='Enter'){this.blur();}"
+            style="font-size:11px;padding:5px 9px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);width:160px;outline:none">
+          <datalist id="rep-datalist">${allReps().map(function(r){return '<option value="'+r.replace(/"/g,'&quot;')+'"></option>';}).join('')}</datalist>
+          <button onclick="assignRep('${c.id}','')" title="Unassign" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;line-height:1;padding:0 2px;${c.rep_assigned?'':'visibility:hidden'}">&times;</button>
         </span>
       </div>
     </div>
@@ -1847,14 +1846,10 @@ function allReps(){
 function assignRep(caseId, repName) {
   var c = cases.find(function(x){return x.id===caseId;});
   if (!c) return;
-  if (repName === "__add__") {
-    var nm = (prompt("New rep name:") || "").trim();
-    if (!nm) { renderDetail(c); return; }
-    window._reps = window._reps || ["Stephen Lewis","James Davis","Maria Chen"];
-    if (window._reps.indexOf(nm) < 0) window._reps.push(nm);
-    repName = nm;
-  }
-  if (repName === "Unassigned") repName = "";
+  repName = (repName || "").trim();
+  if (repName === c.rep_assigned) return;               // no-op (e.g. blur without change)
+  window._reps = window._reps || ["Stephen Lewis","James Davis","Maria Chen"];
+  if (repName && window._reps.indexOf(repName) < 0) window._reps.push(repName);  // remember new reps
   c.rep_assigned = repName;
   save();
   // Persist to the platform so the assignment is shared, not just local.
@@ -1866,8 +1861,13 @@ function assignRep(caseId, repName) {
       body: JSON.stringify({case_number: cn, rep_assigned: repName})
     }).catch(function(){});
   }
+  // Reflect immediately in the detail control (list re-renders below).
   var av = document.getElementById('rep-av-' + caseId);
   if (av) av.textContent = repName ? repName.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2) : '--';
+  var inp = document.getElementById('rep-input-' + caseId);
+  if (inp && inp.value !== repName) inp.value = repName;
+  var clr = inp && inp.parentNode ? inp.parentNode.querySelector('button[title="Unassign"]') : null;
+  if (clr) clr.style.visibility = repName ? 'visible' : 'hidden';
   renderList();
 }
 
