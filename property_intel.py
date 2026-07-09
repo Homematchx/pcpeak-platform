@@ -79,8 +79,16 @@ async def scrape_dcad(account_number: str, browser) -> dict:
             f"https://www.dallascad.org/AcctDetailRes.aspx?ID={account_number}",
             wait_until="domcontentloaded", timeout=30000
         )
-        await asyncio.sleep(2)
-        text = await page.inner_text("body")
+        # DCAD's valuation block can finish rendering slightly after
+        # domcontentloaded, especially when several tract pages load
+        # concurrently (multi-tract petitions). A single fixed-delay read then
+        # silently misses market_value. Poll until the valuation line appears.
+        text = ""
+        for _ in range(5):
+            await asyncio.sleep(1.5)
+            text = await page.inner_text("body")
+            if re.search(r'Market Value:\s*\$[\d,]+\s*\+\s*\$[\d,]+\s*=\s*\$[\d,]+', text):
+                break
 
         def find(pattern, default=None, cast=None):
             m = re.search(pattern, text, re.IGNORECASE)
@@ -98,7 +106,7 @@ async def scrape_dcad(account_number: str, browser) -> dict:
         # land = amount after "+ $"
         # market = amount after "="
         val_section = re.search(
-            r'Market Value:	\$([\d,]+)\n\+\s*\$([\d,]+)\n=\$([\d,]+)',
+            r'Market Value:\s*\$([\d,]+)\s*\+\s*\$([\d,]+)\s*=\s*\$([\d,]+)',
             text
         )
         if val_section:
@@ -687,9 +695,13 @@ async def enrich_property(account_number: str, address: str, browser,
         return await _enrich_single_account(accounts[0], address, browser, gsv_api_key)
 
     print(f"  [intel] Multi-tract petition detected — {len(accounts)} accounts: {', '.join(accounts)}")
-    results = await asyncio.gather(*[
-        _enrich_single_account(a, address, browser, gsv_api_key) for a in accounts
-    ])
+    # Enrich tracts sequentially, not concurrently: firing every tract's DCAD
+    # requests in parallel (accounts x detail+history) throttles dallascad.org
+    # and non-deterministically drops market_value on the throttled page. A
+    # couple of extra seconds per tract buys reliable reads.
+    results = []
+    for a in accounts:
+        results.append(await _enrich_single_account(a, address, browser, gsv_api_key))
     combined = _aggregate_multi_tract(list(results), accounts)
 
     mv = f"${combined.get('market_value',0):,}" if combined.get("market_value") else "unknown"
