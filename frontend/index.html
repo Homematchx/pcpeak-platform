@@ -207,6 +207,23 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
   </div>
 </div>
 
+<!-- MANAGE REPS -->
+<div id="rep-mgr" style="display:none;position:fixed;inset:0;background:rgba(28,27,24,.55);z-index:300;align-items:center;justify-content:center" onclick="if(event.target===this)closeRepMgr()">
+  <div style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;width:min(460px,92vw);max-height:82vh;overflow:auto;padding:18px 20px;box-shadow:0 12px 40px rgba(0,0,0,.35)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div style="font-family:var(--FB);font-size:15px;font-weight:700;color:var(--text)">Manage Reps</div>
+      <button onclick="closeRepMgr()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:20px;line-height:1">&times;</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px">Rename cascades to all their cases. Remove keeps history — reassign first if someone else should take the cases.</div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <input id="rep-mgr-add" placeholder="Add a rep&hellip;" onkeydown="if(event.key==='Enter')repMgrAdd()"
+        style="flex:1;font-family:var(--FB);font-size:12px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface);color:var(--text);outline:none">
+      <button onclick="repMgrAdd()" style="font-family:var(--FB);font-size:12px;font-weight:600;padding:7px 14px;border-radius:var(--rs);border:none;background:var(--accent);color:#fff;cursor:pointer">Add</button>
+    </div>
+    <div id="rep-mgr-list"></div>
+  </div>
+</div>
+
 <header class="hdr">
   <div class="hdr-brand">
     <div class="hdr-logo">&#9878;</div>
@@ -392,6 +409,7 @@ Events:
           <select id="filter-rep" class="lc-sel" onchange="setFilter('rep',this.value,this)">
             <option value="">Rep: All</option><option value="__unassigned__">Unassigned</option>
           </select>
+          <button onclick="openRepMgr()" title="Manage reps" style="flex:0 0 auto;font-size:12px;padding:4px 9px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">&#9881;</button>
           <select id="sort-by" class="lc-sel" onchange="setSort(this.value,this)">
             <option value="">Sort: Default</option><option value="daysToOOS">Days to OOS</option><option value="totalDue">Total due</option><option value="filedDate">Filed date</option>
           </select>
@@ -672,13 +690,15 @@ async function syncFromPlatform() {
   const status = document.getElementById("platform-status");
   if (btn) { btn.textContent = "Syncing..."; btn.disabled = true; }
   try {
-    const [cr, sr] = await Promise.all([
+    const [cr, sr, rr] = await Promise.all([
       fetch(PLATFORM_API + "/cases"),
       fetch(PLATFORM_API + "/stats"),
+      fetch(PLATFORM_API + "/reps").catch(function(){return {ok:false};}),
     ]);
     if (!cr.ok) throw new Error("API offline");
     const platformCases = await cr.json();
     const stats = await sr.json();
+    window._repRoster = (rr && rr.ok) ? await rr.json() : (window._repRoster || []);
 
     // Update portfolio stats
     const set = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val!==undefined?val:"—"; };
@@ -1837,29 +1857,41 @@ function openPetitionPDF(c) {
   brief.innerHTML = html;
 }
 
+// ── REP ROSTER (server-side source of truth) ──
+function activeRoster(){ return (window._repRoster||[]).filter(function(r){return r.active;}); }
 function allReps(){
-  var base = window._reps || (window._reps = ["Stephen Lewis","James Davis","Maria Chen"]);
+  // Active roster + any name currently on a case (defensive), sorted.
+  var names = activeRoster().map(function(r){return r.name;});
   var assigned = cases.map(function(c){return (c.rep_assigned||"").trim();}).filter(Boolean);
-  return Array.from(new Set(base.concat(assigned))).sort();
+  return Array.from(new Set(names.concat(assigned))).sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;});
+}
+function reloadReps(){
+  return fetch(PLATFORM_API + "/reps").then(function(r){return r.ok?r.json():[];})
+    .then(function(list){ window._repRoster = list; return list; })
+    .catch(function(){ return window._repRoster||[]; });
+}
+// Apply a rep name change across the local case list (mirrors the server cascade).
+function localRepRename(oldName, newName){
+  cases.forEach(function(c){ if((c.rep_assigned||"")===oldName) c.rep_assigned=newName; });
+  save();
 }
 
 function assignRep(caseId, repName) {
   var c = cases.find(function(x){return x.id===caseId;});
   if (!c) return;
   repName = (repName || "").trim();
-  if (repName === c.rep_assigned) return;               // no-op (e.g. blur without change)
-  window._reps = window._reps || ["Stephen Lewis","James Davis","Maria Chen"];
-  if (repName && window._reps.indexOf(repName) < 0) window._reps.push(repName);  // remember new reps
+  if (repName === (c.rep_assigned||"")) return;          // no-op (e.g. blur without change)
+  var isNew = repName && !allReps().some(function(n){return n.toLowerCase()===repName.toLowerCase();});
   c.rep_assigned = repName;
   save();
-  // Persist to the platform so the assignment is shared, not just local.
+  // Persist to the platform (shared). create_case also registers a new rep in
+  // the roster, so a typed-in name becomes a real roster entry.
   var cn = (c.extracted && c.extracted.caseNumber) || "";
   if (cn) {
     fetch(PLATFORM_API + "/cases", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
+      method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({case_number: cn, rep_assigned: repName})
-    }).catch(function(){});
+    }).then(function(){ if(isNew) reloadReps(); }).catch(function(){});
   }
   // Reflect immediately in the detail control (list re-renders below).
   var av = document.getElementById('rep-av-' + caseId);
@@ -1868,7 +1900,80 @@ function assignRep(caseId, repName) {
   if (inp && inp.value !== repName) inp.value = repName;
   var clr = inp && inp.parentNode ? inp.parentNode.querySelector('button[title="Unassign"]') : null;
   if (clr) clr.style.visibility = repName ? 'visible' : 'hidden';
+  if (isNew && repName) window._repRoster = (window._repRoster||[]).concat([{id:null,name:repName,active:1,case_count:1}]);
   renderList();
+}
+
+// ── Manage Reps panel (id-based handlers; names never inlined into HTML) ──
+function getRep(id){ return (window._repRoster||[]).find(function(r){return r.id===id;}); }
+
+function openRepMgr(){
+  var m = document.getElementById("rep-mgr"); if(!m) return;
+  m.style.display = "flex";
+  document.getElementById("rep-mgr-list").innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">Loading&hellip;</div>';
+  reloadReps().then(renderRepMgr);
+}
+function closeRepMgr(){ var m=document.getElementById("rep-mgr"); if(m) m.style.display="none"; }
+
+function renderRepMgr(){
+  var box = document.getElementById("rep-mgr-list"); if(!box) return;
+  var roster = (window._repRoster||[]).slice();
+  if(!roster.length){ box.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">No reps yet. Add one above.</div>'; return; }
+  var esc=function(s){return (s||"").replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
+  box.innerHTML = roster.map(function(r){
+    var reassignSel = r.case_count>0
+      ? '<select onchange="repReassign('+r.id+',this.value);this.selectedIndex=0" style="font-size:11px;padding:3px 6px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text2)">'
+          + '<option value="">Reassign '+r.case_count+'&hellip;</option>'
+          + activeRoster().filter(function(o){return o.id!==r.id;}).map(function(o){return '<option value="'+esc(o.name)+'">&rarr; '+esc(o.name)+'</option>';}).join('')
+          + '<option value="__unassign__">&rarr; Unassign</option></select>'
+      : '';
+    var action = r.active
+      ? '<button onclick="repRemove('+r.id+')" title="Remove from roster (keeps case history)" style="font-size:11px;padding:3px 8px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--red);cursor:pointer">Remove</button>'
+      : '<button onclick="repRestore('+r.id+')" style="font-size:11px;padding:3px 8px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--green);cursor:pointer">Restore</button>';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);'+(r.active?'':'opacity:.55')+'">'
+      + '<input value="'+esc(r.name)+'" '+(r.active?'':'disabled')+' onchange="repRename('+r.id+',this.value)" '
+        + 'style="flex:1;min-width:0;font-size:12px;font-weight:500;padding:5px 8px;border-radius:var(--rs);border:1px solid transparent;background:transparent;color:var(--text)" '
+        + 'onfocus="this.style.borderColor=\'var(--border2)\';this.style.background=\'var(--surface)\'" onblur="this.style.borderColor=\'transparent\';this.style.background=\'transparent\'">'
+      + '<span style="font-size:10px;color:var(--text3);white-space:nowrap">'+r.case_count+' case'+(r.case_count===1?'':'s')+(r.active?'':' &middot; off')+'</span>'
+      + reassignSel + action
+      + '</div>';
+  }).join('');
+}
+
+function repMgrAdd(){
+  var inp=document.getElementById("rep-mgr-add"); var name=(inp.value||"").trim(); if(!name) return;
+  fetch(PLATFORM_API+"/reps",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name})})
+    .then(function(){ inp.value=""; return reloadReps(); }).then(function(){ renderRepMgr(); renderList(); });
+}
+function repRename(id, newName){
+  var r=getRep(id); if(!r) return;
+  var oldName=r.name; newName=(newName||"").trim();
+  if(!newName || newName===oldName){ renderRepMgr(); return; }
+  fetch(PLATFORM_API+"/reps/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:newName})})
+    .then(function(resp){
+      if(resp.status===409){ alert('A rep named "'+newName+'" already exists.'); return null; }
+      localRepRename(oldName,newName); return reloadReps();
+    }).then(function(x){ renderRepMgr(); if(x!==null) renderList(); });
+}
+function repRemove(id){
+  var r=getRep(id); if(!r) return;
+  var msg = r.case_count>0
+    ? 'Remove "'+r.name+'" from the roster?\n\nTheir '+r.case_count+' case'+(r.case_count===1?'':'s')+' keep the assignment (history preserved). Use Reassign first if someone else should take them.'
+    : 'Remove "'+r.name+'" from the roster?';
+  if(!confirm(msg)) return;
+  fetch(PLATFORM_API+"/reps/"+id,{method:"DELETE"}).then(function(){ return reloadReps(); }).then(function(){ renderRepMgr(); renderList(); });
+}
+function repRestore(id){
+  fetch(PLATFORM_API+"/reps/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({active:1})})
+    .then(function(){ return reloadReps(); }).then(function(){ renderRepMgr(); renderList(); });
+}
+function repReassign(fromId, toValue){
+  if(!toValue) return;
+  var r=getRep(fromId); if(!r) return;
+  var toName = toValue==="__unassign__" ? "" : toValue;
+  fetch(PLATFORM_API+"/reps/reassign",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({from_rep:r.name,to_rep:toName})})
+    .then(function(){ localRepRename(r.name,toName); return reloadReps(); })
+    .then(function(){ renderRepMgr(); renderList(); });
 }
 
 function filterCity(city) {

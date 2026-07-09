@@ -163,6 +163,13 @@ def init_db():
             is_confirmed    INTEGER DEFAULT 0
         );
 
+        CREATE TABLE IF NOT EXISTS reps (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT UNIQUE NOT NULL,
+            active     INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(case_status);
         CREATE INDEX IF NOT EXISTS idx_cases_stage ON cases(stage);
         CREATE INDEX IF NOT EXISTS idx_events_case ON docket_events(case_number);
@@ -184,6 +191,10 @@ def init_db():
             if col not in cols:
                 db.execute(f"ALTER TABLE cases ADD COLUMN {col} {typedef}")
                 print(f"Migration: added {col}")
+        # Seed the rep roster from any rep already assigned to a case, so the
+        # roster starts as the real source of truth (no hardcoded placeholders).
+        db.execute("INSERT OR IGNORE INTO reps (name) SELECT DISTINCT rep_assigned FROM cases "
+                   "WHERE rep_assigned IS NOT NULL AND TRIM(rep_assigned) != ''")
         db.commit()
     _seed_benchmarks()
     print(f"Database initialized: {DB_PATH}")
@@ -397,6 +408,11 @@ async def create_case(data: dict):
             placeholders = ", ".join(["?" for _ in write])
             db.execute(f"INSERT INTO cases ({cols}) VALUES ({placeholders})", list(write.values()))
 
+        # Invariant: any rep assigned to a case exists in the roster.
+        rep = (write.get("rep_assigned") or "").strip()
+        if rep:
+            db.execute("INSERT OR IGNORE INTO reps (name) VALUES (?)", [rep])
+
     return {"status":"ok","case_number":cn}
 
 @app.patch("/api/cases/{case_number}")
@@ -408,6 +424,89 @@ async def update_case(case_number: str, data: CaseUpdate):
         db.execute(f"UPDATE cases SET {sets} WHERE case_number=?",
                    list(updates.values()) + [case_number])
     return {"status":"ok"}
+
+# ─── REP ROSTER ───────────────────────────────────────────────
+# The reps table is the source of truth for the assignable-rep list. Cases
+# store the rep NAME (denormalized) for display; rename cascades to cases, and
+# removal is a soft-delete (active=0) that preserves history — a separate
+# reassign moves a rep's cases to someone else.
+
+class RepIn(BaseModel):
+    name: str
+
+class RepPatch(BaseModel):
+    name: Optional[str] = None
+    active: Optional[int] = None
+
+class Reassign(BaseModel):
+    from_rep: str
+    to_rep: str = ""   # "" = unassign
+
+@app.get("/api/reps")
+async def list_reps():
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT r.id, r.name, r.active, "
+            "(SELECT COUNT(*) FROM cases c WHERE c.rep_assigned = r.name) AS case_count "
+            "FROM reps r ORDER BY r.active DESC, r.name COLLATE NOCASE"
+        ).fetchall()
+        return [dict(x) for x in rows]
+
+@app.post("/api/reps")
+async def add_rep(r: RepIn):
+    name = (r.name or "").strip()
+    if not name:
+        raise HTTPException(400, "name required")
+    with get_db() as db:
+        existing = db.execute("SELECT id FROM reps WHERE name=? COLLATE NOCASE", [name]).fetchone()
+        if existing:
+            db.execute("UPDATE reps SET active=1 WHERE id=?", [existing["id"]])  # reactivate
+            return {"status":"ok", "id": existing["id"], "name": name}
+        cur = db.execute("INSERT INTO reps (name) VALUES (?)", [name])
+        return {"status":"ok", "id": cur.lastrowid, "name": name}
+
+@app.patch("/api/reps/{rep_id}")
+async def update_rep(rep_id: int, u: RepPatch):
+    with get_db() as db:
+        row = db.execute("SELECT name FROM reps WHERE id=?", [rep_id]).fetchone()
+        if not row:
+            raise HTTPException(404, "rep not found")
+        old = row["name"]
+        if u.name is not None and u.name.strip() and u.name.strip() != old:
+            new = u.name.strip()
+            clash = db.execute("SELECT 1 FROM reps WHERE name=? COLLATE NOCASE AND id!=?", [new, rep_id]).fetchone()
+            if clash:
+                raise HTTPException(409, "a rep with that name already exists")
+            db.execute("UPDATE reps SET name=? WHERE id=?", [new, rep_id])
+            # cascade the rename to every case that rep owns
+            db.execute("UPDATE cases SET rep_assigned=?, updated_at=datetime('now') WHERE rep_assigned=?", [new, old])
+        if u.active is not None:
+            db.execute("UPDATE reps SET active=? WHERE id=?", [1 if u.active else 0, rep_id])
+    return {"status":"ok"}
+
+@app.delete("/api/reps/{rep_id}")
+async def deactivate_rep(rep_id: int):
+    # Soft-delete: keep the rep row + their case history; just remove them from
+    # the assignable roster. Reassign separately if their cases need a new owner.
+    with get_db() as db:
+        if not db.execute("SELECT 1 FROM reps WHERE id=?", [rep_id]).fetchone():
+            raise HTTPException(404, "rep not found")
+        db.execute("UPDATE reps SET active=0 WHERE id=?", [rep_id])
+    return {"status":"ok"}
+
+@app.post("/api/reps/reassign")
+async def reassign_cases(r: Reassign):
+    src = (r.from_rep or "").strip()
+    dst = (r.to_rep or "").strip()
+    if not src:
+        raise HTTPException(400, "from_rep required")
+    with get_db() as db:
+        cur = db.execute("UPDATE cases SET rep_assigned=?, updated_at=datetime('now') WHERE rep_assigned=?", [dst, src])
+        moved = cur.rowcount
+        if dst:
+            db.execute("INSERT OR IGNORE INTO reps (name) VALUES (?)", [dst])
+            db.execute("UPDATE reps SET active=1 WHERE name=? COLLATE NOCASE", [dst])
+    return {"status":"ok", "moved": moved, "from": src, "to": dst}
 
 @app.get("/api/events/{case_number}")
 async def get_events(case_number: str):
