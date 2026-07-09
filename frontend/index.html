@@ -1860,10 +1860,12 @@ function openPetitionPDF(c) {
 // ── REP ROSTER (server-side source of truth) ──
 function activeRoster(){ return (window._repRoster||[]).filter(function(r){return r.active;}); }
 function allReps(){
-  // Active roster + any name currently on a case (defensive), sorted.
-  var names = activeRoster().map(function(r){return r.name;});
-  var assigned = cases.map(function(c){return (c.rep_assigned||"").trim();}).filter(Boolean);
-  return Array.from(new Set(names.concat(assigned))).sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;});
+  // Active roster ONLY — the roster is the single source of truth for who can
+  // be assigned. A deactivated (removed) rep is intentionally NOT offered here,
+  // even if some case still carries their name; you reassign such cases from the
+  // active list. (Assignment picker + autocomplete use this.)
+  return activeRoster().map(function(r){return r.name;})
+    .sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;});
 }
 function reloadReps(){
   return fetch(PLATFORM_API + "/reps").then(function(r){return r.ok?r.json():[];})
@@ -2057,7 +2059,11 @@ function getFilteredCases(){
 function refreshRepFilterOptions(){
   var sel=document.getElementById("filter-rep");
   if(!sel) return;
-  var reps=Array.from(new Set(cases.map(function(c){return (c.rep_assigned||"").trim();}).filter(Boolean))).sort();
+  // Filter offers active roster reps PLUS anyone still holding cases (even if
+  // deactivated) so you can find and reassign a removed rep's remaining cases.
+  var names=activeRoster().map(function(r){return r.name;});
+  var withCases=cases.map(function(c){return (c.rep_assigned||"").trim();}).filter(Boolean);
+  var reps=Array.from(new Set(names.concat(withCases))).sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1;});
   var cur=(window._filters.rep)||"";
   sel.innerHTML='<option value="">Rep: All</option><option value="__unassigned__">Unassigned</option>'+
     reps.map(function(r){var e=r.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');return '<option value="'+e+'">'+e+'</option>';}).join("");
