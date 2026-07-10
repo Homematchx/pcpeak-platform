@@ -2038,15 +2038,19 @@ function caseStage(ex){
        : ex.stage === "sale_pulled" ? "sale_pulled"
        : "pre_judgment";
 }
-// Estate / heirs = a HIGH-VALUE lead type (deceased owner, absent/unknown heirs,
-// clouded title competitors avoid, usually long delinquency).
-function caseIsEstate(c){
+// Estate / heirs = a HIGH-VALUE lead type. Tiered by conviction:
+//  "unknown-heirs" — owner died, heirs unidentifiable (suit names UNKNOWN HEIRS):
+//     maximum title chaos, no one managing the property → the strongest signal.
+//  "estate" — a known estate / deceased owner / life estate.
+function caseEstateType(c){
   var ex = c.extracted || {};
   var names = (ex.defendant||"") + " " +
     ((ex.allDefendants||[]).map(function(x){return x.name||"";}).join(" "));
-  if (/\bHEIRS?\b|ESTATE OF|\bEST OF\b|DECEASED|DEVISEE|LIFE ESTATE/i.test(names)) return true;
-  return !!ex.estateHeirSituation;
+  if (/UNKNOWN HEIRS|HEIRS AND UNKNOWN/i.test(names)) return "unknown-heirs";
+  if (/\bHEIRS?\b|ESTATE OF|\bEST OF\b|DECEASED|DEVISEE|LIFE ESTATE/i.test(names)) return "estate";
+  return ex.estateHeirSituation ? "estate" : "";
 }
+function caseIsEstate(c){ return !!caseEstateType(c); }
 
 function getFilteredCases(){
   var q = (window._search||"").trim().toLowerCase();
@@ -2151,7 +2155,9 @@ function renderList() {
         <div style="font-size:11px;color:var(--text3);margin-top:1px">${ex.defendant||""}</div>
         <div class="cchip-m" style="margin-top:5px">
           <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${acq.bg};color:${acq.color};border:1px solid ${acq.border}">${acq.icon} ${acq.label}</span>
-          ${caseIsEstate(c)?`<span title="Estate / heirs — high-value acquisition target" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:#5b2a86;color:#fff;border:1px solid #5b2a86">&#9906; ESTATE</span>`:""}
+          ${(function(){var et=caseEstateType(c); if(!et) return "";
+            var uh=et==="unknown-heirs";
+            return `<span title="${uh?'Unknown heirs — deceased owner, heirs unidentifiable; highest-conviction target':'Estate / deceased owner — high-value target'}" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${uh?'#7a1e7a':'#5b2a86'};color:#fff;border:1px solid ${uh?'#7a1e7a':'#5b2a86'}">&#9906; ${uh?'UNKNOWN HEIRS':'ESTATE'}</span>`;})()}
           ${ds?`<span style="font-size:10px;color:${acqDot};font-weight:600">${ds}</span>`:""}
           ${rep?`<span style="font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text2);border:1px solid var(--border2)">&#128100; ${rep}</span>`:""}
         </div>
