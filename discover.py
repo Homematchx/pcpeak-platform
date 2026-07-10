@@ -949,6 +949,24 @@ class Discoverer:
                              str(len(page_rows)) + " cases | " +
                              str(len(targets)) + " to process")
 
+                    if os.environ.get("SCRAPE_DEBUG"):
+                        try:
+                            pager = await self.page.evaluate(
+                                "(function(){var o=[];"
+                                "var els=document.querySelectorAll('a,button,span,li');"
+                                "for(var i=0;i<els.length;i++){var el=els[i];"
+                                "var c=(el.className||'')+'';var a=(el.getAttribute('aria-label')||'');"
+                                "var t=(el.getAttribute('title')||'');"
+                                "if(/pager|k-i-|k-link|next|last|arrow|page/i.test(c+' '+a+' '+t)){"
+                                "o.push({tag:el.tagName,cls:c,aria:a,title:t,"
+                                "txt:(el.innerText||'').trim().slice(0,15),vis:el.offsetParent!==null});}}"
+                                "return JSON.stringify(o);})()")
+                            open("/tmp/pager_debug.json", "w").write(pager or "[]")
+                            self.log("  DEBUG pager elements -> /tmp/pager_debug.json (" +
+                                     str(len(pager or "")) + " chars)")
+                        except Exception as pe:
+                            self.log("  DEBUG pager dump failed: " + str(pe))
+
                     for i, case in enumerate(targets):
                         cn = case["caseNumber"]
                         if args.limit and self.stats["processed"] >= args.limit:
@@ -971,6 +989,14 @@ class Discoverer:
 
                     if hit_limit:
                         break
+
+                    # Return to the results grid before paginating: processing a
+                    # page's cases navigates into case-detail pages, so the pager
+                    # isn't present unless we go back to the Search Results tab
+                    # first. (A repeated first case number trips the stall guard
+                    # above, so this can't loop even if the grid reset a page.)
+                    await self.back_to_search_results()
+                    await asyncio.sleep(1)
 
                     next_js = (
                         "(function(){"
