@@ -392,53 +392,79 @@ class Discoverer:
         await asyncio.sleep(1)
 
     async def go_to_portal_and_search(self, query):
-        """Navigate to portal, handle CAPTCHA, fill search, submit."""
+        """Navigate to portal, handle CAPTCHA, fill search, submit.
+
+        The Tyler Smart Search intermittently returns an empty results grid when
+        the reCAPTCHA token hasn't been validated by the time the search fires.
+        Retry the whole navigate -> solve -> submit cycle (fresh CAPTCHA each
+        time) until case rows actually appear."""
         self.log("Searching portal: '" + query + "'")
-        await self.page.goto(PORTAL, wait_until="domcontentloaded", timeout=60000)
-        await asyncio.sleep(3)
-        await self.handle_captcha()
-        await asyncio.sleep(1)
+        for attempt in range(4):
+            await self.page.goto(PORTAL, wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(3)
+            await self.handle_captcha()
+            await asyncio.sleep(1)
 
-        # Fill search input
-        await self.page.evaluate(
-            "(function(){"
-            "var inputs=document.querySelectorAll('input[type=text],input:not([type])');"
-            "var visible=[];"
-            "for(var i=0;i<inputs.length;i++){"
-            "if(inputs[i].offsetParent!==null)visible.push(inputs[i]);}"
-            "var inp=visible[0]||inputs[0];"
-            "if(inp){"
-            "inp.value='" + query.replace("'", "") + "';"
-            "inp.dispatchEvent(new Event('input',{bubbles:true}));"
-            "inp.dispatchEvent(new Event('change',{bubbles:true}));}"
-            "})()")
-        await asyncio.sleep(0.5)
+            # Fill search input
+            await self.page.evaluate(
+                "(function(){"
+                "var inputs=document.querySelectorAll('input[type=text],input:not([type])');"
+                "var visible=[];"
+                "for(var i=0;i<inputs.length;i++){"
+                "if(inputs[i].offsetParent!==null)visible.push(inputs[i]);}"
+                "var inp=visible[0]||inputs[0];"
+                "if(inp){"
+                "inp.value='" + query.replace("'", "") + "';"
+                "inp.dispatchEvent(new Event('input',{bubbles:true}));"
+                "inp.dispatchEvent(new Event('change',{bubbles:true}));}"
+                "})()")
+            await asyncio.sleep(0.5)
 
-        # Click Submit
-        sub = await self.page.evaluate(
-            "(function(){"
-            "var btns=document.querySelectorAll("
-            "'input[type=submit],button[type=submit],input[value=Submit],button');"
-            "for(var i=0;i<btns.length;i++){"
-            "var t=(btns[i].value||btns[i].textContent||'').toLowerCase();"
-            "if(t.indexOf('submit')>=0){btns[i].click();return 'CLICKED';}"
-            "}"
-            "var f=document.querySelector('form');"
-            "if(f){f.submit();return 'SUBMIT';}"
-            "return 'NONE';"
-            "})()")
-        self.log("Submit: " + str(sub))
-        await asyncio.sleep(4)
+            # Click Submit
+            sub = await self.page.evaluate(
+                "(function(){"
+                "var btns=document.querySelectorAll("
+                "'input[type=submit],button[type=submit],input[value=Submit],button');"
+                "for(var i=0;i<btns.length;i++){"
+                "var t=(btns[i].value||btns[i].textContent||'').toLowerCase();"
+                "if(t.indexOf('submit')>=0){btns[i].click();return 'CLICKED';}"
+                "}"
+                "var f=document.querySelector('form');"
+                "if(f){f.submit();return 'SUBMIT';}"
+                "return 'NONE';"
+                "})()")
+            self.log("Submit: " + str(sub) + (" (attempt " + str(attempt + 1) + ")" if attempt else ""))
+            await asyncio.sleep(4)
 
-        # Wait for results table
-        for sel in ["table tbody tr", "tr", "td"]:
-            try:
-                await self.page.wait_for_selector(sel, timeout=12000)
-                self.log("Table ready")
+            # Wait for results table
+            for sel in ["table tbody tr", "tr", "td"]:
+                try:
+                    await self.page.wait_for_selector(sel, timeout=12000)
+                    break
+                except Exception:
+                    continue
+            await asyncio.sleep(2)
+
+            # Did case rows actually load? If not, retry with a fresh CAPTCHA.
+            body = await self.page.inner_text("body")
+            if re.search(r'TX-\d{2}-\d{5}', body):
+                self.log("Results ready" + (" (attempt " + str(attempt + 1) + ")" if attempt else ""))
                 break
-            except Exception:
-                continue
-        await asyncio.sleep(2)
+            if attempt < 3:
+                self.log("  Empty results (reCAPTCHA likely not validated) — retrying search...")
+                await asyncio.sleep(2)
+
+        if os.environ.get("SCRAPE_DEBUG"):
+            try:
+                await self.page.screenshot(path="/tmp/portal_debug.png", full_page=True)
+                body = await self.page.inner_text("body")
+                open("/tmp/portal_debug.txt", "w").write(body)
+                nrows = len(re.findall(r'TX-\d{2}-\d{5}', body))
+                self.log("  DEBUG url=" + self.page.url)
+                self.log("  DEBUG TX-rows in body=" + str(nrows) + " body_len=" + str(len(body)) +
+                         " -> /tmp/portal_debug.{png,txt}")
+            except Exception as de:
+                self.log("  DEBUG dump failed: " + str(de))
 
     async def get_case_list_from_current_page(self):
         """Read all TX- case rows from current results page using Python parsing."""
