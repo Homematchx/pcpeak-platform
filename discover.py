@@ -931,9 +931,15 @@ class Discoverer:
                     total_found += len(page_rows)
                     self.stats["found"] = total_found
 
-                    targets = [r for r in page_rows
-                               if "OPEN" in r.get("status","").upper()
-                               or r.get("status","") == ""]
+                    # Respect --include-closed: default keeps only OPEN (or
+                    # blank-status) rows; with open_only=False, take every row
+                    # (judgment/OOS/dismissed) — needed to backfill closed cases.
+                    if self.open_only:
+                        targets = [r for r in page_rows
+                                   if "OPEN" in r.get("status","").upper()
+                                   or r.get("status","") == ""]
+                    else:
+                        targets = list(page_rows)
                     if self.skip_biz:
                         pre_filter_count = len(targets)
                         targets = [r for r in targets
