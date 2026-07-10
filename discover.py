@@ -680,28 +680,36 @@ class Discoverer:
                     except Exception:
                         pass
                 self.log("  Downloading Original Petition...")
-                dl_ctx = await self.browser.new_context(accept_downloads=True)
-                dl_page = await dl_ctx.new_page()
-                try:
-                    async with dl_page.expect_download(timeout=30000) as dl_info:
-                        try:
-                            await dl_page.goto(petition_href)
-                        except Exception:
-                            pass
-                    dl = await dl_info.value
-                    pdf_path = case_dir / "petition.pdf"
-                    await dl.save_as(pdf_path)
-                    self.log("  PDF saved")
-                    import pypdf
-                    reader = pypdf.PdfReader(str(pdf_path))
-                    pages = [p.extract_text() for p in reader.pages if p.extract_text()]
-                    pdf_text = "\n".join(pages)
-                    self.log("  PDF text: " + str(len(pdf_text)) + " chars")
-                except Exception as pe:
-                    self.log("  PDF error: " + str(pe))
-                finally:
-                    await dl_page.close()
-                    await dl_ctx.close()
+                # Fetch the PDF bytes directly over the authenticated session
+                # instead of waiting for a browser 'download' event. The portal
+                # serves many petitions INLINE (viewer), so no download fires and
+                # expect_download() just times out after 30s. A raw GET returns
+                # the bytes regardless of Content-Disposition.
+                pdf_path = case_dir / "petition.pdf"
+                for pdf_try in range(2):
+                    try:
+                        resp = await self.page.context.request.get(petition_href, timeout=45000)
+                        if not resp.ok:
+                            self.log("  PDF fetch HTTP " + str(resp.status) +
+                                     (" — retrying" if pdf_try == 0 else ""))
+                            continue
+                        body = await resp.body()
+                        if body[:4] != b"%PDF":
+                            self.log("  PDF fetch returned non-PDF (" + str(len(body)) +
+                                     " bytes, likely a viewer page)" +
+                                     (" — retrying" if pdf_try == 0 else ""))
+                            continue
+                        pdf_path.write_bytes(body)
+                        import pypdf
+                        reader = pypdf.PdfReader(str(pdf_path))
+                        pages = [p.extract_text() for p in reader.pages if p.extract_text()]
+                        pdf_text = "\n".join(pages)
+                        self.log("  PDF saved (" + str(len(body)) + " bytes) | text " +
+                                 str(len(pdf_text)) + " chars")
+                        break
+                    except Exception as pe:
+                        self.log("  PDF error: " + str(pe) +
+                                 (" — retrying" if pdf_try == 0 else ""))
         except Exception as e:
             self.log("  PDF error: " + str(e))
 
