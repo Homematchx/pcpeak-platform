@@ -515,17 +515,36 @@ class Discoverer:
         self.log("  Back to results: " + str(back_clicked))
         await asyncio.sleep(3)
 
-        # Click through to case detail — verify BOTH case_number AND Events in text
+        # Click through to case detail — verify BOTH case_number AND Events in text.
+        # The CaseDetail page loads its docket via AJAX, so poll for the content
+        # to render, and RELOAD a blank detail page instead of re-clicking a
+        # results link that no longer exists once we've navigated in.
         for attempt in range(5):
             try:
-                text = await self.page.inner_text("body")
+                text = ""
+                for _ in range(7):                       # poll up to ~14s for docket to render
+                    text = await self.page.inner_text("body")
+                    if case_number in text and "Events and Hearings" in text:
+                        break
+                    await asyncio.sleep(2)
                 self.log("  Attempt " + str(attempt+1) + ": " + str(len(text)) + " chars")
 
                 if case_number in text and "Events and Hearings" in text:
                     self.log("  Correct docket confirmed: " + case_number)
                     return True
 
-                js = (
+                # If we're already on a (blank) detail page, reload it to force
+                # the docket to re-fetch; otherwise click the case link in results.
+                if "CaseDetail" in (self.page.url or ""):
+                    self.log("  Detail page not populated — reloading")
+                    try:
+                        await self.page.reload(wait_until="domcontentloaded", timeout=30000)
+                    except Exception:
+                        pass
+                    await asyncio.sleep(2)
+                    continue
+
+                result = await self.page.evaluate(
                     "(function(){"
                     "var links=document.querySelectorAll('a');"
                     "for(var i=0;i<links.length;i++){"
@@ -538,11 +557,10 @@ class Discoverer:
                     "return null;"
                     "})()"
                 )
-                result = await self.page.evaluate(js)
                 self.log("  Click result: " + str(result))
                 if not result:
                     break
-                await asyncio.sleep(3)
+                await asyncio.sleep(2)
             except Exception as e:
                 self.log("  Attempt " + str(attempt+1) + " error: " + str(e))
                 await asyncio.sleep(2)
