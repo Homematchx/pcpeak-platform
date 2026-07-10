@@ -813,16 +813,36 @@ class Discoverer:
         valid_accts = valid_dcad_accounts(raw_acct)
         acct = ", ".join(valid_accts)
         if not valid_accts:
-            # Don't silently pass a bad account to enrichment (that produced
-            # garbage market values before). Flag it visibly so the run summary
-            # surfaces which cases need a manual DCAD account lookup.
-            if str(raw_acct).strip():
-                self.log("  ⚠ Account '" + str(raw_acct).strip() + "' is not a valid 17-digit "
-                         "DCAD account (Garland 5-digit / out-of-county / wrong field) "
-                         "— skipping enrichment; needs manual account lookup.")
+            # The petition account was missing or garbled. Rather than skip, try
+            # to RESOLVE the real 17-digit DCAD account from the property address
+            # (or owner name) via DCAD search — this recovers the many cases
+            # where extraction fails (incl. the dismissed-but-delinquent leads).
+            try:
+                from property_intel import resolve_dcad_account
+                resolved, how = await resolve_dcad_account(
+                    extracted.get("propertyAddress", ""),
+                    extracted.get("defendant", ""), self.browser)
+            except Exception as re_err:
+                resolved, how = "", "error:" + str(re_err)[:40]
+            if resolved:
+                self.log("  ↳ Resolved DCAD account via " + how + ": " + resolved +
+                         " (petition account was " + (repr(str(raw_acct).strip()) or "empty") + ")")
+                extracted["accountNumber"] = resolved
+                valid_accts = [resolved]
+                acct = resolved
+                self.stats["resolved_account"] = self.stats.get("resolved_account", 0) + 1
+                # persist the corrected account
+                try:
+                    with sqlite3.connect(str(DB_PATH)) as _db:
+                        _db.execute("UPDATE cases SET account_number=? WHERE case_number=?", [resolved, cn]); _db.commit()
+                except Exception:
+                    pass
+            elif str(raw_acct).strip():
+                self.log("  ⚠ Account '" + str(raw_acct).strip() + "' invalid and could not be "
+                         "resolved from address/owner — needs manual lookup.")
                 self.stats["invalid_account"] += 1
             else:
-                self.log("  ⚠ No DCAD account extracted — skipping enrichment; needs manual lookup.")
+                self.log("  ⚠ No account extracted and none resolvable from address/owner — needs manual lookup.")
                 self.stats["no_account"] += 1
         if valid_accts:
             try:
@@ -1073,6 +1093,8 @@ class Discoverer:
             self.log("  Processed: " + str(self.stats["processed"]))
             self.log("  Skipped:   " + str(self.stats["skipped"]))
             self.log("  Errors:    " + str(self.stats["errors"]))
+            if self.stats.get("resolved_account"):
+                self.log("  ✔ DCAD account resolved from address/owner: " + str(self.stats["resolved_account"]))
             flagged = self.stats["invalid_account"] + self.stats["no_account"]
             if flagged:
                 self.log("  ⚠ Account needs manual lookup: " + str(flagged) +

@@ -23,6 +23,122 @@ import json
 from datetime import datetime
 
 
+# ── DCAD ACCOUNT RESOLUTION ───────────────────────────────────
+# When the petition's account is missing/garbled, resolve the real 17-digit
+# DCAD account from the property address (primary) or owner name (fallback).
+# Safety rule: only return an account we're CONFIDENT about — a wrong account
+# produces confidently-wrong enrichment, which is worse than none.
+
+def _parse_property_address(addr):
+    """'2305 Hillside Ln, Carrollton, TX 75007' -> ('2305','HILLSIDE','CARROLLTON')."""
+    if not addr:
+        return "", "", ""
+    a = addr.upper()
+    m = re.match(r"\s*(\d+)\s+([A-Z0-9]+)", a)
+    num = m.group(1) if m else ""
+    street = m.group(2) if m else ""
+    city = ""
+    cm = re.search(r"CITY OF ([A-Z][A-Z ]+?)(?:,|\s+DALLAS|\s+TX|\s+TEXAS|$)", a)
+    if cm:
+        city = cm.group(1).strip()
+    else:
+        parts = [p.strip() for p in a.split(",")]
+        for i, pp in enumerate(parts):
+            if i > 0 and re.search(r"\bTX\b|\bTEXAS\b", pp):
+                city = re.sub(r"\bCOUNTY\b", "", parts[i - 1]).strip()
+                break
+    return num, street, city
+
+
+def _dcad_owner_query(name):
+    """Case defendant -> DCAD owner-search query 'LASTNAME FIRSTNAME'."""
+    if not name:
+        return ""
+    raw = re.sub(r"\bA/K/A\b.*", "", name.upper())
+    raw = re.sub(r"\b(ET AL|INDIVIDUALLY.*|AS INDEPENDENT.*|EXECUTOR.*|DECEASED)\b", "", raw)
+    if "," in raw:
+        last = raw.split(",")[0].strip()
+        rest = raw.split(",")[1].strip()
+        first = rest.split()[0] if rest.split() else ""
+        return f"{last} {first}".strip()
+    m = re.search(r"HEIRS.*OF\s+(.+)", raw)
+    if m:
+        toks = m.group(1).split()
+        return f"{toks[-1]} {toks[0]}".strip() if len(toks) >= 2 else (toks[-1] if toks else "")
+    toks = [t for t in re.sub(r"[.,]", " ", raw).split() if t not in ("JR", "SR", "II", "III", "IV")]
+    return f"{toks[-1]} {toks[0]}" if len(toks) >= 2 else " ".join(toks)
+
+
+async def _dcad_results(page):
+    """Parse (account, row-text) pairs from a DCAD search results page."""
+    return await page.evaluate(
+        "(function(){var o=[];document.querySelectorAll('a').forEach(function(a){"
+        "var m=(a.href||'').match(/AcctDetail\\w*\\.aspx\\?ID=(\\d{17})/);"
+        "if(m){var tr=a.closest('tr');o.push({acct:m[1],"
+        "row:(tr?tr.innerText:a.innerText).replace(/\\s+/g,' ').trim()});}});return o;})()")
+
+
+def _pick_residential(cands):
+    """Prefer a real-property (non 99-prefix BPP) account when several share an address."""
+    res = [c for c in cands if not c["acct"].startswith("99")]
+    return res[0]["acct"] if len(res) == 1 else ""
+
+
+async def resolve_dcad_account(property_address, owner_name, browser):
+    """Resolve a 17-digit DCAD account. Address search first (targets the exact
+    parcel), owner search as fallback. Returns (account, how) — account is "" if
+    we can't resolve it confidently."""
+    num, street, city = _parse_property_address(property_address)
+    # 1) Address search — the precise path.
+    if num and street:
+        ctx = await browser.new_context(); p = await ctx.new_page()
+        try:
+            await p.goto("https://www.dallascad.org/SearchAddr.aspx", timeout=40000, wait_until="domcontentloaded")
+            await p.wait_for_timeout(800)
+            await p.fill("#txtAddrNum", num)
+            await p.fill("#txtStName", street)
+            if city:
+                try: await p.select_option("#listCity", label=city)
+                except Exception: pass
+            await p.click("#cmdSubmit")
+            await p.wait_for_timeout(2200)
+            cands = await _dcad_results(p)
+        except Exception:
+            cands = []
+        finally:
+            await ctx.close()
+        if len(cands) == 1:
+            return cands[0]["acct"], "address-sole"
+        if len(cands) > 1:
+            pick = _pick_residential(cands)
+            if pick:
+                return pick, "address-residential"
+            # otherwise ambiguous — don't guess
+
+    # 2) Owner search — fallback; only a sole result or an address-matched one.
+    q = _dcad_owner_query(owner_name)
+    if q:
+        ctx = await browser.new_context(); p = await ctx.new_page()
+        try:
+            await p.goto("https://www.dallascad.org/SearchOwner.aspx", timeout=40000, wait_until="domcontentloaded")
+            await p.wait_for_timeout(800)
+            await p.fill("#txtOwnerName", q)
+            await p.click("#cmdSubmit")
+            await p.wait_for_timeout(2200)
+            cands = await _dcad_results(p)
+        except Exception:
+            cands = []
+        finally:
+            await ctx.close()
+        if len(cands) == 1:
+            return cands[0]["acct"], "owner-sole"
+        if len(cands) > 1 and num and street:
+            for c in cands:
+                if num in c["row"] and street in c["row"].upper():
+                    return c["acct"], "owner-addr-match"
+    return "", "unresolved"
+
+
 async def scrape_dcad(account_number: str, browser) -> dict:
     result = {
         # Valuation
