@@ -246,6 +246,34 @@ enrich to nothing (flagged). Fix = resolve the DCAD account by property address 
 address search) instead of relying on the petition's account field. **Also OPEN:** the
 in-browser "Run" button was deleted (cloud can't scrape) — scraping is local + sync.
 
+### Timing-model engine + DCAD account resolver (2026-07-09)
+Turned "backfill closed cases" into a self-measuring learn loop:
+- **Outcome capture fixed** — the docket is chronological (oldest first) and
+  extraction front-truncated to 4000 chars, silently dropping the OUTCOME events
+  (judgment / ISSUE ORDER OF SALE / sale / dismissal) that sit at the end. Now
+  always surfaces outcome-signal lines regardless of docket length; captures
+  `oos_date`/`oos_issued`, `saleScheduledDate`, and distinguishes a real judgment
+  from a NON-SUIT/DISMISSAL. Verified on TX-23-02230 (OOS 2026-06-16 captured).
+- **`scorecard.py`** — backtests `compute_projection` vs cases with a real
+  `oos_date`: prediction error (post-judgment & at-filing), observed vs assumed
+  filing→judgment / judgment→OOS windows, data-quality flags. Early read (n=4):
+  post-judgment model is decent (median err ~48d, 75% within 90d) but
+  **filing→judgment is ~9mo observed vs the model's assumed 12–48mo** — the big
+  recalibration target; judgment→OOS ~56d median with a long contested tail.
+- **`resolve_dcad_account(address, owner, browser)`** in property_intel.py —
+  DCAD address search (exact parcel) then owner-name fallback (sole/address-match
+  only; never guesses). Recovers the many cases extraction garbles (Tryon got a
+  wrong 15-digit account). Wired into the scraper's enrich gate: bad/missing
+  account → resolve from address/owner → persist → enrich. Recovered 9/11
+  no-account TX-23 cases; account coverage now 87%, 62 cases with a real balance.
+- **Funnel truth:** ~38% dismissed, ~38% judged-pending, ~23% reach OOS. Dismissed
+  ≠ resolved (see [[dismissal-not-resolved]] memory) — tax balance is the signal.
+  OOS outcomes live in OLD case numbers (TX-23-0*, TX-24-000*), not fresh ones.
+
+**OPEN next:** accumulate more OOS cases → recalibrate CITY_DATA from measured
+reality; ACT (tax-office) balance scrape shows some spurious $0 (may need the
+retry treatment DCAD got); surface dismissed-but-delinquent as a lead view.
+
 ### Steps 2-5 — not started
 Backfill closed 2024/2025 cases, deed/lien-index research, geocoding + legal parsing,
 nearest-neighbor benchmark matching. Harden account extraction (Garland 5-digit /
