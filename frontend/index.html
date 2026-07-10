@@ -414,6 +414,7 @@ Events:
           <button onclick="filterCity('garland')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Garland</button>
           <button onclick="filterCity('carrollton')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Carrollton</button>
           <button onclick="filterCity('plano')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Plano</button>
+          <button id="estate-toggle" onclick="toggleEstate()" title="Show only estate / heirs cases" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid #5b2a86;background:var(--surface);color:#5b2a86;cursor:pointer">&#9906; Estate</button>
         </div>
       </div>
       <div class="clist" id="clist"><div style="font-size:12px;color:var(--text3);padding:6px 0">No cases yet.</div></div>
@@ -2037,6 +2038,15 @@ function caseStage(ex){
        : ex.stage === "sale_pulled" ? "sale_pulled"
        : "pre_judgment";
 }
+// Estate / heirs = a HIGH-VALUE lead type (deceased owner, absent/unknown heirs,
+// clouded title competitors avoid, usually long delinquency).
+function caseIsEstate(c){
+  var ex = c.extracted || {};
+  var names = (ex.defendant||"") + " " +
+    ((ex.allDefendants||[]).map(function(x){return x.name||"";}).join(" "));
+  if (/\bHEIRS?\b|ESTATE OF|\bEST OF\b|DECEASED|DEVISEE|LIFE ESTATE/i.test(names)) return true;
+  return !!ex.estateHeirSituation;
+}
 
 function getFilteredCases(){
   var q = (window._search||"").trim().toLowerCase();
@@ -2046,6 +2056,7 @@ function getFilteredCases(){
     if(window._cityFilter && (c.city||"dallas")!==window._cityFilter) return false;
     if(f.complexity && (ex.complexity||"medium")!==f.complexity) return false;
     if(f.stage && caseStage(ex)!==f.stage) return false;
+    if(f.estate && !caseIsEstate(c)) return false;
     if(f.rep){
       var rep=(c.rep_assigned||"").trim();
       if(f.rep==="__unassigned__"){ if(rep) return false; }
@@ -2092,6 +2103,14 @@ function refreshRepFilterOptions(){
 function setSearch(v){ window._search=v; window._page=1; renderList(); }
 function setFilter(k,v,el){ window._filters[k]=v; window._page=1; if(el) el.classList.toggle("act", !!v); renderList(); }
 function setSort(v,el){ window._sort=v; window._page=1; if(el) el.classList.toggle("act", !!v); renderList(); }
+function toggleEstate(){
+  window._filters.estate = !window._filters.estate;
+  window._page = 1;
+  var b=document.getElementById("estate-toggle");
+  if(b){ b.style.background = window._filters.estate ? "#5b2a86" : "var(--surface)";
+         b.style.color = window._filters.estate ? "#fff" : "#5b2a86"; }
+  renderList();
+}
 function gotoPage(p){ window._page=p; renderList(); var l=document.getElementById("clist"); if(l) l.scrollTop=0; }
 
 function renderList() {
@@ -2132,6 +2151,7 @@ function renderList() {
         <div style="font-size:11px;color:var(--text3);margin-top:1px">${ex.defendant||""}</div>
         <div class="cchip-m" style="margin-top:5px">
           <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${acq.bg};color:${acq.color};border:1px solid ${acq.border}">${acq.icon} ${acq.label}</span>
+          ${caseIsEstate(c)?`<span title="Estate / heirs — high-value acquisition target" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:#5b2a86;color:#fff;border:1px solid #5b2a86">&#9906; ESTATE</span>`:""}
           ${ds?`<span style="font-size:10px;color:${acqDot};font-weight:600">${ds}</span>`:""}
           ${rep?`<span style="font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text2);border:1px solid var(--border2)">&#128100; ${rep}</span>`:""}
         </div>
