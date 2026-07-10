@@ -269,25 +269,20 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
       </div>
     </div>
 
-    <!-- AI AGENT -->
+    <!-- LOAD NEW DEALS -->
     <div class="sbs">
-      <div class="sbl">AI Agent</div>
+      <div class="sbl">Load New Deals</div>
       <div style="background:var(--surface2);border-radius:var(--r);padding:14px 16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--text)">Auto-Scraper</div>
-            <div style="font-size:11px;color:var(--text3)" id="last-run-txt">Last run: never</div>
-          </div>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">
-            <input id="case-input" type="text" placeholder="TX-26-00989 or TX-26-00" style="font-family:var(--FB);font-size:12px;padding:7px 10px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);width:140px" />
-            <button onclick="triggerCaseRun()" id="run-btn" style="font-family:var(--FB);font-size:12px;font-weight:600;padding:7px 14px;border-radius:var(--rs);cursor:pointer;border:none;background:var(--accent);color:#fff">&#9654; Run</button>
-          </div>
-          <div id="run-status" style="font-size:11px;color:var(--text3);margin-top:4px"></div>
+        <div style="font-size:11px;color:var(--text3);line-height:1.7;margin-bottom:8px">
+          Scraping runs on your Mac, not in the cloud. From <span style="font-family:var(--FM)">~/Downloads/pcpeak_platform</span>:
         </div>
-        <div style="font-size:11px;color:var(--text3);line-height:1.6">
-          Scrapes Dallas County portal, extracts case data, updates all monitored cases automatically.
-          <div style="margin-top:6px;font-family:var(--FM);font-size:10px;background:var(--surface3);padding:4px 8px;border-radius:4px">python3 agent/agent.py</div>
+        <div style="font-family:var(--FM);font-size:10px;background:var(--surface3);padding:9px 11px;border-radius:6px;line-height:1.95;color:var(--text2);overflow-x:auto;white-space:nowrap">
+          <div>export ANTHROPIC_API_KEY=sk-ant-&hellip;</div>
+          <div>python3 discover.py --pattern TX-26 --individuals-only</div>
+          <div>python3 sync_to_prod.py --dry-run&nbsp;&nbsp;<span style="color:var(--text3)"># preview</span></div>
+          <div>python3 sync_to_prod.py&nbsp;&nbsp;<span style="color:var(--text3)"># push here</span></div>
         </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:8px">Then press <b>Sync</b> (below) to refresh this view.</div>
       </div>
     </div>
 

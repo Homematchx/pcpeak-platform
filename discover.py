@@ -36,6 +36,16 @@ def classify(name):
         return {"type":"business","priority":"medium","contact":"Formal letter to registered agent"}
     return {"type":"individual","priority":"high","contact":"Door knock first, then direct mail"}
 
+def valid_dcad_accounts(acct):
+    """A Dallas DCAD account is exactly 17 digits. A multi-tract petition can list
+    several (comma/semicolon separated). Returns the list of valid 17-digit
+    accounts (empty if none are valid). Anything else — a 5-digit Garland number,
+    a lot number, an out-of-county parcel — is rejected rather than passed through
+    to enrichment as a garbage lookup."""
+    if not acct:
+        return []
+    return [a for a in re.split(r"[,;]\s*", str(acct).strip()) if re.fullmatch(r"\d{17}", a)]
+
 def pad_pattern(raw):
     r = raw.rstrip("*").upper()
     parts = r.split("-")
@@ -87,7 +97,7 @@ CRITICAL EXTRACTION RULES:
 1. totalDueAtFiling: Find "TOTAL DUE AS OF" on the LAST PAGE of the petition PDF. It shows as "TOTAL $X,XXX.XX" after all tax entity breakdowns. Extract the GRAND TOTAL dollar amount only.
 2. allDefendants: Extract EVERY defendant from the ORIGINAL PETITION PDF section "DEFENDANT(S)". Each defendant is listed in bold with their address like: "Henry Alexander Borg, Jr., 1116 Hidden Meadow Dr., Burleson, TX 76025". Extract the FULL individual address for each defendant — NOT the property address. Mark defendants with "(In Rem Only)" or "(IN REM ONLY)". Use docket Events for service status.
 3. propertyAddress: The physical property address from Exhibit A (e.g. "1530 E. Overton Rd., Dallas, TX 75216-5506").
-4. accountNumber: The DCAD account number from Exhibit A (e.g. "00000302749000000").
+4. accountNumber: The DCAD property account number from Exhibit A. A real Dallas DCAD account is EXACTLY 17 digits (e.g. "00000302749000000"). Copy only a genuine 17-digit DCAD account. If Exhibit A has no 17-digit DCAD account, or the property is outside Dallas County (e.g. Garland/Carrollton parcels in another appraisal district), return an empty string "". Do NOT substitute a lot number, cause number, city/utility account, or any other identifier, and never guess. For a multi-tract property listing several 17-digit accounts, return them comma-separated.
 5. defendant: The PRIMARY defendant — find who is listed as "In Personam". Never use a Life Estate holder or In Rem Only defendant as primary.
 6. complexity: "low" if single defendant served, "medium" if multiple or service issues, "high" if CBP/Rule106/estate/heir.
 7. IMPORTANT: The petition PDF text comes after "ORIGINAL PETITION PDF:" in the input. Read it carefully for all defendant addresses and total due."""
@@ -278,7 +288,8 @@ class Discoverer:
         self.browser = None
         self.open_only = open_only
         self.skip_biz = skip_biz
-        self.stats = {"found": 0, "processed": 0, "skipped": 0, "errors": 0}
+        self.stats = {"found": 0, "processed": 0, "skipped": 0, "errors": 0,
+                      "invalid_account": 0, "no_account": 0}
 
     def log(self, msg):
         print("[" + datetime.now().strftime("%H:%M:%S") + "] " + str(msg))
@@ -711,8 +722,22 @@ class Discoverer:
 
         # Property Intel enrichment — DCAD + Dallas ACT FIRST
         intel = None
-        acct = extracted.get("accountNumber", "")
-        if acct and len(acct) >= 10:
+        raw_acct = extracted.get("accountNumber", "")
+        valid_accts = valid_dcad_accounts(raw_acct)
+        acct = ", ".join(valid_accts)
+        if not valid_accts:
+            # Don't silently pass a bad account to enrichment (that produced
+            # garbage market values before). Flag it visibly so the run summary
+            # surfaces which cases need a manual DCAD account lookup.
+            if str(raw_acct).strip():
+                self.log("  ⚠ Account '" + str(raw_acct).strip() + "' is not a valid 17-digit "
+                         "DCAD account (Garland 5-digit / out-of-county / wrong field) "
+                         "— skipping enrichment; needs manual account lookup.")
+                self.stats["invalid_account"] += 1
+            else:
+                self.log("  ⚠ No DCAD account extracted — skipping enrichment; needs manual lookup.")
+                self.stats["no_account"] += 1
+        if valid_accts:
             try:
                 from property_intel import enrich_property
                 self.log("  Enriching property intel: " + acct)
@@ -916,6 +941,11 @@ class Discoverer:
             self.log("  Processed: " + str(self.stats["processed"]))
             self.log("  Skipped:   " + str(self.stats["skipped"]))
             self.log("  Errors:    " + str(self.stats["errors"]))
+            flagged = self.stats["invalid_account"] + self.stats["no_account"]
+            if flagged:
+                self.log("  ⚠ Account needs manual lookup: " + str(flagged) +
+                         " (" + str(self.stats["invalid_account"]) + " invalid, " +
+                         str(self.stats["no_account"]) + " missing)")
             self.log("=" * 55)
             self.log("Go to taxforeclosureanalyzer.com and click Sync")
             if self.browser:
