@@ -34,7 +34,11 @@ def _parse_property_address(addr):
     if not addr:
         return "", "", ""
     a = addr.upper()
-    m = re.match(r"\s*(\d+)\s+([A-Z0-9]+)", a)
+    # house number, an OPTIONAL leading direction (E./W./N./S./NE...), then the
+    # real street name. Without skipping the direction, "106 E. Harvard Dr" parsed
+    # its street as "E" and the DCAD address search failed.
+    m = re.match(
+        r"\s*(\d+)\s+(?:(?:N|S|E|W|NE|NW|SE|SW|NORTH|SOUTH|EAST|WEST)\.?\s+)?([A-Z0-9]+)", a)
     num = m.group(1) if m else ""
     street = m.group(2) if m else ""
     city = ""
