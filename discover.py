@@ -559,6 +559,14 @@ class Discoverer:
         except Exception:
             return False
 
+    def _case_exists(self, cn):
+        """Is this case already in the local DB? (for --skip-existing)"""
+        try:
+            with sqlite3.connect(str(DB_PATH)) as db:
+                return db.execute("SELECT 1 FROM cases WHERE case_number=?", [cn]).fetchone() is not None
+        except Exception:
+            return False
+
     async def process_one_case(self, case_info):
         """
         The core flow:
@@ -856,6 +864,7 @@ class Discoverer:
                 total_found = 0
                 page_num = 1
                 prev_first_cn = ""
+                hit_limit = False
 
                 while True:
                     page_rows = await self.get_case_list_from_current_page()
@@ -889,15 +898,27 @@ class Discoverer:
                              str(len(targets)) + " to process")
 
                     for i, case in enumerate(targets):
+                        cn = case["caseNumber"]
+                        if args.limit and self.stats["processed"] >= args.limit:
+                            self.log("Reached --limit " + str(args.limit) + " — stopping.")
+                            hit_limit = True
+                            break
+                        if args.skip_existing and self._case_exists(cn):
+                            self.stats["skipped"] += 1
+                            self.log("  skip (already in DB): " + cn)
+                            continue
                         o = classify(case["partyName"])
                         tag = ("[IND]" if o["type"]=="individual"
                                else "[EST]" if o["type"]=="estate" else "[BIZ]")
                         self.log("[pg" + str(page_num) + " " +
                                  str(i+1) + "/" + str(len(targets)) + "] " +
-                                 tag + " " + case["caseNumber"] +
+                                 tag + " " + cn +
                                  " | " + case.get("partyName",""))
                         await self.process_one_case(case)
                         await asyncio.sleep(3)
+
+                    if hit_limit:
+                        break
 
                     next_js = (
                         "(function(){"
@@ -970,6 +991,10 @@ async def main():
     parser.add_argument("--individuals-only",
                         action="store_true",
                         help="Skip business entities")
+    parser.add_argument("--limit", type=int, default=0,
+                        help="Stop after processing this many cases (0 = no limit)")
+    parser.add_argument("--skip-existing", action="store_true",
+                        help="Skip cases already present in the local DB")
     args = parser.parse_args()
 
     if not any([args.pattern, args.name, args.case]):
