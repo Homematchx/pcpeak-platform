@@ -217,6 +217,35 @@ fragmentation). Rebuilt as a server-side `reps` table (the single source of trut
   never inlined into HTML). Verified: backend lifecycle via TestClient; frontend wiring
   + deactivate-exclusion in-browser.
 
+### Scrape→sync pipeline — flown & hardened (2026-07-09)
+Ran the first real end-to-end flight (scrape locally → sync to live) on small
+batches and fixed every reliability bug it surfaced. discover.py now:
+- **Search retry** — the Tyler Smart Search intermittently returned an empty grid
+  (reCAPTCHA token not validated before submit); retry navigate→solve→submit up to
+  4x until TX- rows appear.
+- **PDF via session GET** — `expect_download()` timed out on inline-served petitions;
+  now fetch bytes over the authenticated context (`page.context.request.get`), verify
+  `%PDF`, retry once. Recovered cases that were saving empty.
+- **Case-detail nav** — poll ~14s for the docket to render and reload a blank
+  CaseDetail page instead of re-clicking a stale results link.
+- **Pagination** — was capped at page 1 (after processing a page, the scraper was on a
+  case-detail page with no pager). Now `back_to_search_results()` before the next-page
+  click; verified paging 1→2→3 processing cases with 0 errors.
+- **Account validation** — only 17-digit DCAD accounts (single or comma-multi) go to
+  enrichment; Garland 5-digit / out-of-county / wrong-field accounts are flagged
+  ("needs manual lookup", counted in the summary) instead of stored as garbage.
+- **Safety flags** — `--limit N`, `--skip-existing`; `SCRAPE_DEBUG` dumps.
+
+**`sync_to_prod.py`** is the local→prod push: `--dry-run` / default (new cases) /
+`--update-existing`. Never sends `rep_assigned` (live-owned), additive-only, dedupes
+docket events client-side, idempotent, reconciles its tally, verifies count after.
+
+**Loaded this session:** 58 cases live (was 48) — 10 new TX-26 deals through the full
+loop. **OPEN gap:** the Mesquite/Garland/out-of-county cases with no Dallas DCAD account
+enrich to nothing (flagged). Fix = resolve the DCAD account by property address (a DCAD
+address search) instead of relying on the petition's account field. **Also OPEN:** the
+in-browser "Run" button was deleted (cloud can't scrape) — scraping is local + sync.
+
 ### Steps 2-5 — not started
 Backfill closed 2024/2025 cases, deed/lien-index research, geocoding + legal parsing,
 nearest-neighbor benchmark matching. Harden account extraction (Garland 5-digit /
