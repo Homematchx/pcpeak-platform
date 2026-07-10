@@ -5,7 +5,8 @@ data/db/*.db-wal
 # Installer artifacts should never land in the repo (e.g. accidental 310MB Claude.dmg)
 *.dmg
 
-# Secrets — never commit API keys
+# Secrets — never commit API keys (any file ending in .env, dotfiles, etc.)
 .env
+*.env
 .env.*
 !.env.example
