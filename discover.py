@@ -89,7 +89,7 @@ Return ONLY valid JSON with NO markdown:
 "defCount":1,"citationByPostingRequested":false,"rule106SubstituteService":false,
 "priorRelatedSuits":[],"estateHeirSituation":false,
 "continuanceCount":0,"trialResetCount":0,"serviceIssues":"",
-"nextHearingDate":"","orderOfSaleIssued":false,"orderOfSaleDate":"",
+"nextHearingDate":"","orderOfSaleIssued":false,"orderOfSaleDate":"","saleScheduledDate":"",
 "complexity":"low","complexityReason":"",
 "keyDocketEvents":[{"date":"YYYY-MM-DD","event":"","type":"filing"}]}
 
@@ -100,7 +100,10 @@ CRITICAL EXTRACTION RULES:
 4. accountNumber: The DCAD property account number from Exhibit A. A real Dallas DCAD account is EXACTLY 17 digits (e.g. "00000302749000000"). Copy only a genuine 17-digit DCAD account. If Exhibit A has no 17-digit DCAD account, or the property is outside Dallas County (e.g. Garland/Carrollton parcels in another appraisal district), return an empty string "". Do NOT substitute a lot number, cause number, city/utility account, or any other identifier, and never guess. For a multi-tract property listing several 17-digit accounts, return them comma-separated.
 5. defendant: The PRIMARY defendant — find who is listed as "In Personam". Never use a Life Estate holder or In Rem Only defendant as primary.
 6. complexity: "low" if single defendant served, "medium" if multiple or service issues, "high" if CBP/Rule106/estate/heir.
-7. IMPORTANT: The petition PDF text comes after "ORIGINAL PETITION PDF:" in the input. Read it carefully for all defendant addresses and total due."""
+7. judgmentType: copy the docket's exact judgment/disposition wording — e.g. "JUDGMENT NON-JURY" (a real foreclosure judgment), "NON-SUIT/DISMISSAL BY PLAINTIFF" (a dismissal — NOT a foreclosure), "DEFAULT JUDGMENT". This distinction matters: a dismissal is not a path to sale. judgmentDate = the date of the FINAL judgment/disposition event (not a "PROPOSED ORDER/JUDGMENT").
+8. orderOfSaleIssued / orderOfSaleDate: set orderOfSaleIssued=true ONLY if the docket has an actual "ISSUE ORDER OF SALE" or "ORDER OF SALE" ISSUED event (not merely a "REQUEST FOR ABSTRACT OF JUDGMENT AND ORDER OF SALE"). orderOfSaleDate = that event's date (YYYY-MM-DD). These outcome events appear in the "KEY DOCKET OUTCOME EVENTS" section and at the END of the docket — look there.
+9. saleScheduledDate: if the docket or a notice states a foreclosure/constable/sheriff SALE or AUCTION date (e.g. "sale date 08/04/2026"), return it as YYYY-MM-DD; else "".
+10. IMPORTANT: The petition PDF text comes after "ORIGINAL PETITION PDF:" in the input. Read it carefully for all defendant addresses and total due."""
 
 async def claude_extract(text):
     if not ANTHROPIC_KEY:
@@ -246,6 +249,7 @@ def save_to_db(extracted, memo, owner):
             "judgment_type": extracted.get("judgmentType", "none"),
             "oos_issued": 1 if extracted.get("orderOfSaleIssued") else 0,
             "oos_date": extracted.get("orderOfSaleDate") or None,
+            "sale_scheduled_date": extracted.get("saleScheduledDate") or None,
             "next_hearing_date": extracted.get("nextHearingDate") or None,
             "city": "dallas",
             "tax_breakdown": json.dumps(extracted.get("taxBreakdown", [])),
@@ -731,8 +735,31 @@ class Discoverer:
         except Exception as e:
             self.log("  PDF error: " + str(e))
 
-        # Prioritize PDF content — docket truncated to 4000, PDF gets 12000
+        # The docket is chronological (oldest first), so the OUTCOME events we
+        # need — judgment, Order of Sale, sale/auction date, dismissal — sit at
+        # the END of a long docket and were being dropped by front-truncation.
+        # Always surface the outcome-signal lines (with a little context) so they
+        # survive regardless of docket length, in addition to the head + PDF.
+        outcome_re = re.compile(
+            r"ORDER OF SALE|ORDER OF SALE ISSUED|SALE DATE|FORECLOSURE SALE|"
+            r"JUDGMENT|NON-SUIT|DISMISS|ABSTRACT OF JUDGMENT|WRIT|SHERIFF|"
+            r"CONSTABLE|SET FOR SALE|NOTICE OF SALE", re.I)
+        dlines = docket_text.splitlines()
+        key_lines = []
+        for i, l in enumerate(dlines):
+            if outcome_re.search(l):
+                # keep the line and its immediate neighbours (dates live adjacent)
+                key_lines.extend(dlines[max(0, i - 1):i + 2])
+        # de-dup preserving order
+        seen = set(); key_block = []
+        for l in key_lines:
+            if l not in seen:
+                seen.add(l); key_block.append(l)
+        key_block = "\n".join(key_block)[:3500]
+
         full_text = docket_text[:4000]
+        if key_block:
+            full_text += "\n\nKEY DOCKET OUTCOME EVENTS (judgment / order of sale / sale date / dismissal):\n" + key_block
         if pdf_text:
             full_text = full_text + "\n\nORIGINAL PETITION PDF:\n" + pdf_text[:12000]
 
