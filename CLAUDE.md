@@ -163,15 +163,19 @@ These have no usable DCAD data; the account or county is the problem:
   "No Owner History / No Market History" (retired/merged/invalid account).
 Fixing these means correcting the source account numbers, not the scraper.
 
-### OPEN — credential rotations (tracked, NOT done)
-These are still outstanding; do not assume resolved:
-- [ ] Rotate the **GitHub PAT** embedded in the `origin` remote URL (`ghp_…`); switch
-      to a git credential helper instead of a token-in-URL.
-- [ ] Rotate the **2Captcha key** — it is hardcoded as a default in `discover.py`
-      (`TWO_CAPTCHA_KEY = os.environ.get("TWO_CAPTCHA_KEY", "<literal>")`) and was
-      exposed in terminal output; remove the hardcoded default too.
-- [ ] Rotate the **Anthropic key** if it was ever pasted in plaintext; keep it in env
-      only (it is no longer in Railway).
+### OPEN — credential rotations (status 2026-07-11 — STILL the highest open risk)
+Do not assume resolved. These are USER actions (revoke/reissue) — Claude can't create
+or enter credentials.
+- [ ] **2Captcha key** — hardcoded default REMOVED from source 2026-07-11 (discover.py,
+      agent/agent.py, import_backtax.py are now env-only). BUT the key is still in git
+      HISTORY, so it MUST be rotated on 2captcha.com to be worthless; optionally purge
+      history (git filter-repo/BFG) after rotating. Not done.
+- [ ] **GitHub PAT** — STILL embedded in the `origin` remote URL (`https://<token>@…`).
+      Rotate on GitHub, then set a credential helper (`git config --global
+      credential.helper osxkeychain`) + token-less remote URL instead of token-in-URL.
+- [x]/[ ] **Anthropic key** — NOT in tracked source (verified: no `sk-ant` literal
+      anywhere; env-only, not in Railway). Rotate only if it was ever pasted in plaintext
+      elsewhere; otherwise low risk.
 
 ## Roadmap progress
 
@@ -334,3 +338,11 @@ overwritten) then prunes the local PDF **only** after a confirmed upload.
 Backfill closed 2024/2025 cases, deed/lien-index research, geocoding + legal parsing,
 nearest-neighbor benchmark matching. Harden account extraction (Garland 5-digit /
 Carrollton empty accounts) at the FRONT of step 2 before backfilling more.
+
+**Deed/lien data path — BUSINESS DECISION, not an engineering one (researched 2026-07-11).**
+`dallas.tx.publicsearch.us` (the County Clerk's deed/lien records) must NOT be scraped:
+its robots.txt is `Allow: /$` / `Disallow: /` (homepage only), there's no open API, and
+Tyler-style records ToS prohibit automated aggregation. Legitimate paths: (1) a Texas
+Public Information Act (PIA) request to the County Clerk for bulk data, or (2) a licensed
+provider (e.g. TexasFile covers Dallas OPR). Decide the path before any Step-2 deed work.
+See [[publicsearch-tos-research]].

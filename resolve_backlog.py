@@ -47,7 +47,7 @@ def _all_def_text(row):
 
 async def main(args):
     from playwright.async_api import async_playwright
-    from property_intel import resolve_account_corroborated, enrich_property
+    from property_intel import resolve_account_corroborated, enrich_property, corroboration_strength
 
     cases = backlog(args.limit)
     if not cases:
@@ -72,7 +72,7 @@ async def main(args):
 
             if conf == "corroborated" and acct:
                 stats["resolved"] += 1
-                note = "auto-resolved: " + why
+                note = "auto-resolved [" + corroboration_strength(why) + "]: " + why
                 print("  ✓ %-13s RESOLVED %s  (%s)" % (cn, acct, why))
                 if not args.dry_run:
                     with sqlite3.connect(str(DB_PATH)) as db:

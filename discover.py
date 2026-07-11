@@ -826,7 +826,7 @@ class Discoverer:
             except Exception:
                 extra = ""
             try:
-                from property_intel import resolve_account_corroborated
+                from property_intel import resolve_account_corroborated, corroboration_strength
                 resolved, conf, why = await resolve_account_corroborated(
                     extracted.get("propertyAddress", ""),
                     extracted.get("defendant", ""), self.browser, extra_names=extra)
@@ -840,7 +840,7 @@ class Discoverer:
                 valid_accts = [resolved]
                 acct = resolved
                 acct_status = "resolved"
-                acct_note = "auto-resolved: " + why
+                acct_note = "auto-resolved [" + corroboration_strength(why) + "]: " + why
                 self.stats["resolved_account"] = self.stats.get("resolved_account", 0) + 1
                 try:
                     with sqlite3.connect(str(DB_PATH)) as _db:

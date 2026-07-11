@@ -209,6 +209,24 @@ async def resolve_account_corroborated(property_address, defendant, browser, ext
     return "", "unresolved", "no DCAD candidate found"
 
 
+def corroboration_strength(reason):
+    """Stable, machine-readable strength code for a corroborated resolution reason,
+    so resolutions are queryable by HOW they were corroborated (revisit the weaker
+    single-token 'owner-name' path once there's real volume):
+      agreement    — two independent DCAD searches returned the same account (strongest)
+      address-match— an owner-search result whose DCAD address matches the petition
+      owner-name   — an address result whose owner shares a name token with the defendant
+                     (the single-shared-token risk lives here)
+      estate       — estate/heir case, address result with an estate owner
+      other        — anything else (shouldn't happen for a corroborated result)"""
+    r = (reason or "").lower()
+    if "address+owner agree" in r:                     return "agreement"
+    if "address matches petition" in r:                return "address-match"
+    if "owner matches defendant" in r:                 return "owner-name"
+    if "estate" in r:                                  return "estate"
+    return "other"
+
+
 async def resolve_dcad_account(property_address, owner_name, browser):
     """Resolve a 17-digit DCAD account. Address search first (targets the exact
     parcel), owner search as fallback. Returns (account, how) — account is "" if
