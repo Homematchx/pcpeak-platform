@@ -917,6 +917,27 @@ class Discoverer:
 
         self.log("  Saved " + cn + " | " + addr + " | $" + "{:,.0f}".format(debt))
 
+        # Append-only raw-capture archive → durable object storage. No-op unless
+        # the ARCHIVE_* env vars are set (then the raw source corpus is preserved
+        # off-laptop and the big local PDF is pruned). See archive.py.
+        try:
+            import archive
+            if archive.archiving_enabled():
+                from datetime import datetime as _dt
+                ts = _dt.now().strftime("%Y%m%dT%H%M%SZ")
+                files = {"petition.pdf": str(case_dir / "petition.pdf"),
+                         "docket.txt": str(case_dir / "docket.txt")}
+                blobs = {"extracted.json": (json.dumps(extracted), "application/json")}
+                if intel:
+                    blobs["property_intel.json"] = (json.dumps(intel), "application/json")
+                keys = archive.archive_case(cn, ts, files=files, blobs=blobs)
+                self.log("  ↑ archived " + str(len(keys)) + " raw artifacts (durable storage)")
+                pdf = case_dir / "petition.pdf"           # prune only after a successful upload
+                if keys and pdf.exists():
+                    pdf.unlink()
+        except Exception as ae:
+            self.log("  archive note (kept local): " + str(ae)[:80])
+
         self.stats["processed"] += 1
         return True
 
