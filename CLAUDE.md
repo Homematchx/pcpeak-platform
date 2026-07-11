@@ -374,6 +374,28 @@ overwritten) then prunes the local PDF **only** after a confirmed upload.
   DCAD/ACT HTML (property_intel currently saves parsed values only, not source HTML);
   (3) build the retrieval/re-extract path (pull raw from archive to re-mine).
 
+### Business Personal Property (BPP) suits — detected + excluded (2026-07-11)
+BPP tax suits (business equipment/inventory, not real estate) were running through
+real-estate compute_projection/equity as if they were houses. Audit: **21 of 147 cases
+are BPP.** Contamination of the CITY_DATA calibration was **coincidental, not structural**
+— BPP suits DO reach a sale stage ("WRIT OF EXECUTION", the personal-property analog of
+an Order of Sale; 3 already have it), and scorecard.py selected calibration cases by raw
+`oos_date`, so any BPP case that ever got an oos_date would have leaked. Fixed structurally:
+- **Signal:** the Tyler docket's `Comment` field (REAL PROPERTY | PERSONAL PROPERTY) — the
+  authoritative discriminator (123 REAL / 21 PERSONAL, clean). NOT the 99-account prefix
+  (only 7/21 have it). `discover.property_type_from_docket()` parses it at scrape time.
+- **`property_type` column** ('real'|'personal'), stored (cloud can't read dockets), set by
+  discover.py. **`personal_property` is a case_track value, classified FIRST** — a BPP case
+  can never reach oos_timing even if it carries an oos_date.
+- **Belt-and-suspenders:** discover.py + the backfill NULL out `oos_date`/`oos_issued` for
+  BPP, so the raw field stays real-estate-only.
+- **scorecard.py excludes BPP** (filters property_type/case_track), so calibration never sees
+  one — the actual leak-close. compute_projection + frontend project()/equity short-circuit
+  to "N/A · business personal property". Verified: 21 tagged, 0 in oos_timing, calibration
+  still 10 real-property OOS cases, scorecard excludes 21.
+- **OPEN:** the 3 prod-facing BPP cases (TX-26-01188/01373/01377) need a data sync +
+  production merge to take effect live; batch-1/2 BPP cases are local-only (held).
+
 ### Future enhancement (not urgent) — capture the real judgment amount
 The docket's "Total Judgment: of $0.00" is a Tyler source quirk (the real award is in the
 judgment PDF, which we don't download — we only pull the petition PDF). We do NOT store a

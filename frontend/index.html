@@ -405,7 +405,7 @@ Events:
         </div>
         <div style="display:flex;gap:5px">
           <select id="filter-track" class="lc-sel" onchange="setFilter('track',this.value,this)" title="Dataset track — keeps OOS-timing vs dismissed-owing leads separate">
-            <option value="">Track: All</option><option value="oos_timing">OOS timing</option><option value="dismissed_owing">Dismissed &mdash; owing</option><option value="dismissed_paid">Dismissed &mdash; paid</option><option value="judged_pending">Judged &mdash; pending</option><option value="active">Active</option>
+            <option value="">Track: All</option><option value="oos_timing">OOS timing</option><option value="dismissed_owing">Dismissed &mdash; owing</option><option value="dismissed_paid">Dismissed &mdash; paid</option><option value="judged_pending">Judged &mdash; pending</option><option value="active">Active</option><option value="personal_property">Personal property (BPP)</option>
           </select>
         </div>
         <div style="display:flex;gap:5px">
@@ -1047,6 +1047,11 @@ Be direct and specific. Reference which benchmark this most resembles and why.`}
 // PROJECTION ENGINE
 // ═══════════════════════════════════════════
 function project(cobj) {
+  // Business personal-property suits get NO real-estate projection (different instrument).
+  if (caseTrack(cobj)==="personal_property") {
+    return { na:true, naReason:"business personal property", projOOS:null, projAuction:null,
+             appealClose:null, fjMonths:null, daysPostJ:null, daysToOOS:null, oosDays:null, ranges:[null,null] };
+  }
   const city = CITIES[cobj.city] || CITIES.dallas;
   const ex = cobj.extracted;
   const complexity = ex.complexity || "medium";
@@ -1416,6 +1421,8 @@ function renderDetail(c) {
       <div class="tp on" id="tp-ov">
         <!-- Equity position card -->
         ${(function(){
+          // Business personal-property suit — no house, no real equity. Don't show real-estate math.
+          if(caseTrack(c)==="personal_property") return `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);padding:14px 18px;margin-bottom:16px;color:var(--text3);font-size:12px">&#9878; Business Personal Property suit &mdash; no real-estate equity/timing (different legal instrument; excluded from OOS projections).</div>`;
           var pi = (c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel)||{};
           var mv = pi.market_value||0;
           if(!mv) return "";
@@ -2083,6 +2090,7 @@ function caseTrack(c){
   if(c.case_track) return c.case_track;
   var ex=c.extracted||{};
   var pi=(c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel)||{};
+  if(c.property_type==="personal") return "personal_property";   // FIRST — BPP never in timing
   var oos=ex.orderOfSaleDate||c.oos_date;
   if(oos && (""+oos).trim()) return "oos_timing";
   var jt=((ex.judgmentType||c.judgment_type||"")+"").toUpperCase();

@@ -48,9 +48,12 @@ app.add_middleware(CORSMiddleware,
 # exactly 17 digits; a multi-tract petition lists several (comma/semicolon).
 _PLACEHOLDER_ACCTS = {"tbd", "n/a", "na", "none", "unknown", "null"}
 
-def case_track_of(oos_date, judgment_type, judgment_date, tax_balance):
+def case_track_of(property_type, oos_date, judgment_type, judgment_date, tax_balance):
     """Which track/dataset a case belongs to. One shared rule (mirrored in discover.py
     and the frontend) so the tag stays consistent and filterable:
+      personal_property — business personal-property suit (different instrument; EXCLUDED
+                          from real-estate timing/equity + calibration). Checked FIRST so a
+                          BPP case can never land in oos_timing even if it gets an oos_date.
       oos_timing      — reached an Order of Sale (feeds the timing model)
       dismissed_owing — dismissed BUT still owes tax (the real lead pipeline; unknown
                         balance also lands here so a rep looks — dismissal != dead)
@@ -58,6 +61,8 @@ def case_track_of(oos_date, judgment_type, judgment_date, tax_balance):
       judged_pending  — has a real judgment, no OOS yet
       active          — open / pre-judgment
     `tax_balance` is the live ACT balance (None = unknown, 0.0 = real zero — distinct)."""
+    if property_type == "personal":
+        return "personal_property"          # FIRST — never let BPP reach the timing track
     if oos_date and str(oos_date).strip():
         return "oos_timing"
     jt = (judgment_type or "").upper()
@@ -237,8 +242,13 @@ def init_db():
             ("account_note", "TEXT"),
             # Which dataset/track a case belongs to (keeps OOS-timing vs lead pipelines
             # from blending): oos_timing | dismissed_owing | dismissed_paid | judged_pending
-            # | active. Stored + queryable (sidebar filter); see case_track_of().
+            # | active | personal_property. Stored + queryable (sidebar filter); see case_track_of().
             ("case_track", "TEXT"),
+            # 'real' | 'personal' — from the Tyler docket's Comment field (REAL PROPERTY /
+            # PERSONAL PROPERTY). BPP (personal) suits are a different instrument and are
+            # excluded from real-estate timing/equity + the CITY_DATA calibration. Set by
+            # discover.py at scrape time (cloud can't read dockets, so it's stored not derived).
+            ("property_type", "TEXT"),
         ]:
             if col not in cols:
                 db.execute(f"ALTER TABLE cases ADD COLUMN {col} {typedef}")
@@ -257,15 +267,19 @@ def init_db():
             db.execute("UPDATE cases SET account_status=? WHERE case_number=?",
                        [account_status_of(acct), cn])
         # Backfill case_track — parse property_intel for the live balance (None=unknown).
-        for cn, od, jt, jd, pij in db.execute(
-                "SELECT case_number, oos_date, judgment_type, judgment_date, property_intel "
-                "FROM cases WHERE case_track IS NULL OR TRIM(case_track)=''").fetchall():
+        # Re-derive whenever case_track is empty OR property_type is set but the track
+        # doesn't yet reflect it (so a BPP case flips to personal_property once tagged).
+        for cn, pt, od, jt, jd, tr, pij in db.execute(
+                "SELECT case_number, property_type, oos_date, judgment_type, judgment_date, "
+                "case_track, property_intel FROM cases "
+                "WHERE case_track IS NULL OR TRIM(case_track)='' "
+                "   OR (property_type='personal' AND case_track!='personal_property')").fetchall():
             bal = None
             if pij:
                 try: bal = json.loads(pij).get("current_tax_balance")
                 except Exception: bal = None
             db.execute("UPDATE cases SET case_track=? WHERE case_number=?",
-                       [case_track_of(od, jt, jd, bal), cn])
+                       [case_track_of(pt, od, jt, jd, bal), cn])
         db.commit()
     _seed_benchmarks()
     print(f"Database initialized: {DB_PATH}")
@@ -338,6 +352,15 @@ CITY_DATA = {
 }
 
 def compute_projection(case: dict) -> dict:
+    # Business personal-property suits are a different legal instrument — no house, no
+    # real equity, no real-estate Order of Sale. They must be EXCLUDED from real-estate
+    # timing/equity math, not just labeled. Short-circuit to N/A.
+    if case.get("property_type") == "personal" or case.get("case_track") == "personal_property":
+        return {
+            "projected_oos": None, "confidence_pct": 0,
+            "filing_to_judgment_months": None, "days_to_oos": None,
+            "projection_na": True, "projection_na_reason": "business personal property",
+        }
     city = CITY_DATA.get(case.get("city","dallas"), CITY_DATA["dallas"])
     complexity = case.get("complexity","medium")
     complexity = complexity if complexity in city["ftj"] else "low"

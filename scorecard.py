@@ -50,11 +50,19 @@ def days(a, b):
 
 def main():
     db = sqlite3.connect(DB); db.row_factory = sqlite3.Row
-    rows = [dict(r) for r in db.execute("SELECT * FROM cases").fetchall()]
+    all_rows = [dict(r) for r in db.execute("SELECT * FROM cases").fetchall()]
+    # EXCLUDE business personal-property suits — a different instrument (writ of execution,
+    # not a real-estate Order of Sale). They must never enter the real-estate calibration,
+    # even if a BPP case somehow carries an oos_date. Filter on BOTH signals to be safe.
+    rows = [c for c in all_rows
+            if c.get("property_type") != "personal" and c.get("case_track") != "personal_property"]
+    excluded_bpp = len(all_rows) - len(rows)
     total = len(rows)
 
-    # Ground truth = an actual Order-of-Sale date.
+    # Ground truth = an actual Order-of-Sale date (real property only, per the filter above).
     resolved = [c for c in rows if d(c.get("oos_date"))]
+    if excluded_bpp:
+        print(f"  (excluded {excluded_bpp} business-personal-property case(s) from calibration)")
 
     print("=" * 68)
     print("  PROJECTION-vs-ACTUAL SCORECARD")

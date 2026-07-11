@@ -76,10 +76,29 @@ def valid_dcad_accounts(acct):
     return [a.upper() for a in re.split(r"[,;]\s*", str(acct).strip())
             if re.fullmatch(r"[0-9A-Za-z]{17}", a)]
 
-def case_track_of(oos_date, judgment_type, judgment_date, tax_balance):
+def property_type_from_docket(docket_text):
+    """Tyler docket has a structured 'Comment' field = REAL PROPERTY | PERSONAL PROPERTY.
+    This is the authoritative Real-vs-BPP discriminator (verified 123 REAL / 20 PERSONAL,
+    clean). Returns 'personal' | 'real' | None (no Comment field found)."""
+    if not docket_text:
+        return None
+    m = re.search(r'Comment\s*\n\s*-?\s*([^\n]+)', docket_text, re.IGNORECASE)
+    if not m:
+        return None
+    v = m.group(1).upper()
+    if "PERSONAL PROPERTY" in v:
+        return "personal"
+    if "REAL PROPERTY" in v:
+        return "real"
+    return None
+
+def case_track_of(property_type, oos_date, judgment_type, judgment_date, tax_balance):
     """Which dataset/track a case belongs to (mirror of backend.case_track_of — keep in
-    sync). oos_timing | dismissed_owing | dismissed_paid | judged_pending | active.
-    tax_balance: None = unknown (surfaced as owing), 0.0 = real zero (distinct)."""
+    sync). personal_property | oos_timing | dismissed_owing | dismissed_paid |
+    judged_pending | active. personal_property is checked FIRST so a BPP suit never
+    reaches the timing track even if it somehow gets an oos_date."""
+    if property_type == "personal":
+        return "personal_property"
     if oos_date and str(oos_date).strip():
         return "oos_timing"
     jt = (judgment_type or "").upper()
@@ -263,7 +282,7 @@ def save_to_db(extracted, memo, owner):
     now = datetime.now().isoformat()
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(DB_PATH)) as db:
-        for col in ["owner_type TEXT", "owner_priority TEXT", "property_intel TEXT", "legal_description TEXT", "account_status TEXT", "account_note TEXT", "case_track TEXT"]:
+        for col in ["owner_type TEXT", "owner_priority TEXT", "property_intel TEXT", "legal_description TEXT", "account_status TEXT", "account_note TEXT", "case_track TEXT", "property_type TEXT"]:
             try:
                 db.execute("ALTER TABLE cases ADD COLUMN " + col)
             except Exception:
@@ -944,15 +963,31 @@ class Discoverer:
                 self.log("  Intel error: " + str(ie))
                 intel = None
 
-        # Tag the dataset/track (keeps OOS-timing vs dismissed-owing leads from blending).
+        # Property type (real vs business-personal-property) from the docket Comment field.
+        # BPP suits are a different instrument — detect at scrape time so they never
+        # accumulate into the real-estate timing/equity math again.
+        _ptype = property_type_from_docket(docket_text)
+        # Belt-and-suspenders: a BPP suit must never carry a real-estate oos_date. Clear
+        # it BEFORE it can reach the timing track (writ-of-execution != Order of Sale).
+        if _ptype == "personal":
+            try:
+                with sqlite3.connect(str(DB_PATH)) as _db:
+                    _db.execute("UPDATE cases SET oos_date=NULL, oos_issued=0 WHERE case_number=?", [cn]); _db.commit()
+            except Exception:
+                pass
+
+        # Tag the dataset/track (keeps OOS-timing vs dismissed-owing leads from blending;
+        # personal_property is classified FIRST).
         try:
             _bal = intel.get("current_tax_balance") if intel else None
-            _track = case_track_of(extracted.get("orderOfSaleDate"),
+            _oos = None if _ptype == "personal" else extracted.get("orderOfSaleDate")
+            _track = case_track_of(_ptype, _oos,
                                    extracted.get("judgmentType"),
                                    extracted.get("judgmentDate"), _bal)
             with sqlite3.connect(str(DB_PATH)) as _db:
-                _db.execute("UPDATE cases SET case_track=? WHERE case_number=?", [_track, cn]); _db.commit()
-            self.log("  Track: " + _track)
+                _db.execute("UPDATE cases SET case_track=?, property_type=? WHERE case_number=?",
+                            [_track, _ptype, cn]); _db.commit()
+            self.log("  Track: " + _track + (" [property_type=" + _ptype + "]" if _ptype else ""))
         except Exception:
             pass
 
