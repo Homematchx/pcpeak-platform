@@ -217,7 +217,7 @@ def save_to_db(extracted, memo, owner):
     now = datetime.now().isoformat()
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(DB_PATH)) as db:
-        for col in ["owner_type TEXT", "owner_priority TEXT", "property_intel TEXT", "legal_description TEXT", "account_status TEXT"]:
+        for col in ["owner_type TEXT", "owner_priority TEXT", "property_intel TEXT", "legal_description TEXT", "account_status TEXT", "account_note TEXT"]:
             try:
                 db.execute("ALTER TABLE cases ADD COLUMN " + col)
             except Exception:
@@ -813,47 +813,58 @@ class Discoverer:
         valid_accts = valid_dcad_accounts(raw_acct)
         acct = ", ".join(valid_accts)
         acct_status = "resolved" if valid_accts else None   # set by the resolver branches below
+        acct_note = None
         if not valid_accts:
-            # The petition account was missing or garbled. Rather than skip, try
-            # to RESOLVE the real 17-digit DCAD account from the property address
-            # (or owner name) via DCAD search — this recovers the many cases
-            # where extraction fails (incl. the dismissed-but-delinquent leads).
+            # The petition account was missing or garbled. Try to RESOLVE the real
+            # DCAD account from the address/owner — but ONLY auto-assign when a second
+            # independent signal corroborates it (the n=92 audit showed address search
+            # alone returns a confidently-wrong parcel ~2% of the time). An
+            # uncorroborated candidate is noted but NEVER written.
+            extra = ""
             try:
-                from property_intel import resolve_dcad_account
-                resolved, how = await resolve_dcad_account(
+                extra = " ".join(x.get("name", "") for x in (extracted.get("allDefendants") or []))
+            except Exception:
+                extra = ""
+            try:
+                from property_intel import resolve_account_corroborated
+                resolved, conf, why = await resolve_account_corroborated(
                     extracted.get("propertyAddress", ""),
-                    extracted.get("defendant", ""), self.browser)
+                    extracted.get("defendant", ""), self.browser, extra_names=extra)
             except Exception as re_err:
-                resolved, how = "", "error:" + str(re_err)[:40]
-            if resolved:
-                self.log("  ↳ Resolved DCAD account via " + how + ": " + resolved +
+                resolved, conf, why = "", "unresolved", "error:" + str(re_err)[:40]
+            cand = (" (uncorroborated candidate " + resolved + ")") if (resolved and conf != "corroborated") else ""
+            if resolved and conf == "corroborated":
+                self.log("  ↳ Resolved DCAD account (" + why + "): " + resolved +
                          " (petition account was " + (repr(str(raw_acct).strip()) or "empty") + ")")
                 extracted["accountNumber"] = resolved
                 valid_accts = [resolved]
                 acct = resolved
                 acct_status = "resolved"
+                acct_note = "auto-resolved: " + why
                 self.stats["resolved_account"] = self.stats.get("resolved_account", 0) + 1
-                # persist the corrected account
                 try:
                     with sqlite3.connect(str(DB_PATH)) as _db:
                         _db.execute("UPDATE cases SET account_number=? WHERE case_number=?", [resolved, cn]); _db.commit()
                 except Exception:
                     pass
             elif str(raw_acct).strip():
-                self.log("  ⚠ Account '" + str(raw_acct).strip() + "' invalid and could not be "
-                         "resolved from address/owner — needs manual lookup.")
+                self.log("  ⚠ Account '" + str(raw_acct).strip() + "' invalid; no corroborated DCAD match"
+                         + cand + " — needs manual lookup.")
                 self.stats["invalid_account"] += 1
                 acct_status = "invalid"
+                acct_note = "still needs manual lookup — " + why + cand
             else:
-                self.log("  ⚠ No account extracted and none resolvable from address/owner — needs manual lookup.")
+                self.log("  ⚠ No account extracted; no corroborated DCAD match" + cand + " — needs manual lookup.")
                 self.stats["no_account"] += 1
                 acct_status = "needs_lookup"
+                acct_note = "no corroborated DCAD match — " + why + cand
 
-        # Persist the account-resolution state so a flagged case becomes a VISIBLE,
-        # queryable backlog item (sidebar filter) instead of a line lost in the log.
+        # Persist the account-resolution state + reason so a flagged case becomes a
+        # VISIBLE, queryable backlog item (sidebar filter) instead of a lost log line.
         try:
             with sqlite3.connect(str(DB_PATH)) as _db:
-                _db.execute("UPDATE cases SET account_status=? WHERE case_number=?", [acct_status, cn]); _db.commit()
+                _db.execute("UPDATE cases SET account_status=?, account_note=? WHERE case_number=?",
+                            [acct_status, acct_note, cn]); _db.commit()
         except Exception:
             pass
         if valid_accts:

@@ -88,6 +88,127 @@ def _pick_residential(cands):
     return res[0]["acct"] if len(res) == 1 else ""
 
 
+async def _address_search(browser, num, street, city):
+    """DCAD address search -> [{acct,row}] (row text carries the OWNER name)."""
+    ctx = await browser.new_context(); p = await ctx.new_page()
+    try:
+        await p.goto("https://www.dallascad.org/SearchAddr.aspx", timeout=40000, wait_until="domcontentloaded")
+        await p.wait_for_timeout(800)
+        await p.fill("#txtAddrNum", num)
+        await p.fill("#txtStName", street)
+        if city:
+            try: await p.select_option("#listCity", label=city)
+            except Exception: pass
+        await p.click("#cmdSubmit")
+        await p.wait_for_timeout(2200)
+        return await _dcad_results(p)
+    except Exception:
+        return []
+    finally:
+        await ctx.close()
+
+
+async def _owner_search(browser, query):
+    """DCAD owner search -> [{acct,row}] (row text carries the property ADDRESS)."""
+    ctx = await browser.new_context(); p = await ctx.new_page()
+    try:
+        await p.goto("https://www.dallascad.org/SearchOwner.aspx", timeout=40000, wait_until="domcontentloaded")
+        await p.wait_for_timeout(800)
+        await p.fill("#txtOwnerName", query)
+        await p.click("#cmdSubmit")
+        await p.wait_for_timeout(2200)
+        return await _dcad_results(p)
+    except Exception:
+        return []
+    finally:
+        await ctx.close()
+
+
+# ── Corroboration guard ───────────────────────────────────────
+# The audit (n=92) showed DCAD's address search can return a CONFIDENTLY WRONG parcel
+# (~2%). So an account is only trustworthy enough to write when a second, independent
+# signal agrees. A wrong-but-confident account is worse than a delayed one.
+_ESTATE_MARKERS = ("HEIRS", "ESTATE OF", "EST OF", " EST ", "ESTATE", "DECEASED",
+                   "DEVISEE", "LIFE ESTATE", "UNKNOWN OWNER", "UNKNOWN HEIR")
+_NAME_STOP = {"JR", "SR", "II", "III", "IV", "ET", "AL", "AKA", "A/K/A", "AND", "THE",
+              "LIFE", "ESTATE", "OF", "EST", "HEIRS", "HEIR", "DECEASED", "DEVISEE",
+              "INDIVIDUALLY", "ETUX", "ETVIR", "TRUSTEE", "TRUST", "&", "DBA"}
+
+def _is_estate_case(defendant, extra=""):
+    """Estate/heir case: the DCAD owner legitimately differs from the named defendant
+    (heirs, deceased owner), so an owner-name mismatch is EXPECTED, not a red flag."""
+    blob = ((defendant or "") + " " + (extra or "")).upper()
+    return any(m in blob for m in _ESTATE_MARKERS)
+
+def _name_tokens(name):
+    raw = re.sub(r"[.,/]", " ", (name or "").upper())
+    return {t for t in raw.split() if len(t) >= 3 and t not in _NAME_STOP}
+
+def _owner_matches_defendant(owner_text, defendant):
+    return bool(_name_tokens(owner_text) & _name_tokens(defendant))
+
+def _owner_is_estate(owner_text):
+    return any(m in (owner_text or "").upper() for m in _ESTATE_MARKERS)
+
+
+async def resolve_account_corroborated(property_address, defendant, browser, extra_names=""):
+    """Resolve a DCAD account ONLY when corroborated. Returns (account, confidence, reason):
+       'corroborated'  — safe to auto-assign (two independent signals agree)
+       'uncorroborated'— a candidate exists but only ONE unverified signal → do NOT write
+       'unresolved'    — no candidate at all
+
+    Corroboration paths (any one is sufficient):
+      1. Address search and owner search independently return the SAME account.
+      2. An address-search account whose row OWNER matches the defendant name.
+      3. An owner-search account whose row ADDRESS contains the petition house#+street.
+      4. Estate/heir case only: an address-search account whose owner shows estate markers
+         (heirs/deceased/life estate) — owner won't match the heir defendant, but an estate
+         owner AT the searched address corroborates it's the right parcel."""
+    num, street, city = _parse_property_address(property_address)
+    estate = _is_estate_case(defendant, extra_names)
+
+    addr_cands = await _address_search(browser, num, street, city) if (num and street) else []
+    q = _dcad_owner_query(defendant)
+    owner_cands = await _owner_search(browser, q) if q else []
+
+    def _res(accts):  # drop BPP (99-prefix) personal-property accounts
+        return [a for a in accts if not a.startswith("99")]
+
+    addr_accts = _res({c["acct"] for c in addr_cands})
+    owner_accts = _res({c["acct"] for c in owner_cands})
+
+    # 1) independent agreement — strongest
+    both = set(addr_accts) & set(owner_accts)
+    if len(both) == 1:
+        return both.pop(), "corroborated", "address+owner agree"
+
+    # 2) address result whose owner matches the defendant (non-estate path)
+    for c in addr_cands:
+        if not c["acct"].startswith("99") and _owner_matches_defendant(c["row"], defendant):
+            return c["acct"], "corroborated", "address result; DCAD owner matches defendant"
+
+    # 3) owner result whose address matches the petition address
+    if num and street:
+        for c in owner_cands:
+            r = c["row"].upper()
+            if not c["acct"].startswith("99") and num in r and (" " + street) in (" " + r):
+                return c["acct"], "corroborated", "owner result; DCAD address matches petition"
+
+    # 4) estate/heir: address result whose owner carries estate markers
+    if estate:
+        for c in addr_cands:
+            if not c["acct"].startswith("99") and _owner_is_estate(c["row"]):
+                return c["acct"], "corroborated", "estate case; address result has estate owner"
+
+    # A candidate may exist but nothing corroborates it — do NOT write it.
+    guess = (addr_accts[0] if len(addr_accts) == 1 else
+             owner_accts[0] if len(owner_accts) == 1 else "")
+    if guess:
+        src = "address-only" if len(addr_accts) == 1 else "owner-only"
+        return guess, "uncorroborated", src + " candidate; owner<->defendant not corroborated"
+    return "", "unresolved", "no DCAD candidate found"
+
+
 async def resolve_dcad_account(property_address, owner_name, browser):
     """Resolve a 17-digit DCAD account. Address search first (targets the exact
     parcel), owner search as fallback. Returns (account, how) — account is "" if
@@ -95,22 +216,7 @@ async def resolve_dcad_account(property_address, owner_name, browser):
     num, street, city = _parse_property_address(property_address)
     # 1) Address search — the precise path.
     if num and street:
-        ctx = await browser.new_context(); p = await ctx.new_page()
-        try:
-            await p.goto("https://www.dallascad.org/SearchAddr.aspx", timeout=40000, wait_until="domcontentloaded")
-            await p.wait_for_timeout(800)
-            await p.fill("#txtAddrNum", num)
-            await p.fill("#txtStName", street)
-            if city:
-                try: await p.select_option("#listCity", label=city)
-                except Exception: pass
-            await p.click("#cmdSubmit")
-            await p.wait_for_timeout(2200)
-            cands = await _dcad_results(p)
-        except Exception:
-            cands = []
-        finally:
-            await ctx.close()
+        cands = await _address_search(browser, num, street, city)
         if len(cands) == 1:
             return cands[0]["acct"], "address-sole"
         if len(cands) > 1:
@@ -122,18 +228,7 @@ async def resolve_dcad_account(property_address, owner_name, browser):
     # 2) Owner search — fallback; only a sole result or an address-matched one.
     q = _dcad_owner_query(owner_name)
     if q:
-        ctx = await browser.new_context(); p = await ctx.new_page()
-        try:
-            await p.goto("https://www.dallascad.org/SearchOwner.aspx", timeout=40000, wait_until="domcontentloaded")
-            await p.wait_for_timeout(800)
-            await p.fill("#txtOwnerName", q)
-            await p.click("#cmdSubmit")
-            await p.wait_for_timeout(2200)
-            cands = await _dcad_results(p)
-        except Exception:
-            cands = []
-        finally:
-            await ctx.close()
+        cands = await _owner_search(browser, q)
         if len(cands) == 1:
             return cands[0]["acct"], "owner-sole"
         if len(cands) > 1 and num and street:

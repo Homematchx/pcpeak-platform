@@ -2178,7 +2178,9 @@ function renderList() {
             return `<span title="${uh?'Unknown heirs — deceased owner, heirs unidentifiable; highest-conviction target':'Estate / deceased owner — high-value target'}" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${uh?'#7a1e7a':'#5b2a86'};color:#fff;border:1px solid ${uh?'#7a1e7a':'#5b2a86'}">&#9906; ${uh?'UNKNOWN HEIRS':'ESTATE'}</span>`;})()}
           ${(function(){var as=caseAccountStatus(c); if(as==="resolved") return "";
             var nl=as==="needs_lookup";
-            return `<span title="${nl?'No valid DCAD account — manual lookup owed (not enriched)':'Extracted account is malformed — needs correction (not enriched)'}" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${nl?'#8a5a00':'#8a1f1f'};color:#fff;border:1px solid ${nl?'#8a5a00':'#8a1f1f'}">&#9888; ${nl?'NEEDS ACCT':'BAD ACCT'}</span>`;})()}
+            var dflt=nl?'No valid DCAD account — manual lookup owed (not enriched)':'Extracted account is malformed — needs correction (not enriched)';
+            var tip=(c.account_note||dflt).replace(/"/g,'&quot;');
+            return `<span title="${tip}" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${nl?'#8a5a00':'#8a1f1f'};color:#fff;border:1px solid ${nl?'#8a5a00':'#8a1f1f'}">&#9888; ${nl?'NEEDS ACCT':'BAD ACCT'}</span>`;})()}
           ${ds?`<span style="font-size:10px;color:${acqDot};font-weight:600">${ds}</span>`:""}
           ${rep?`<span style="font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text2);border:1px solid var(--border2)">&#128100; ${rep}</span>`:""}
         </div>

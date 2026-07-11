@@ -208,6 +208,10 @@ def init_db():
             # lookup owed), 'invalid' (an account was extracted but malformed and
             # not resolvable). Written by discover.py; surfaced as a sidebar filter.
             ("account_status", "TEXT"),
+            # Human-readable reason for the current account_status — e.g. why a case is
+            # still in the backlog (uncorroborated candidate, out-of-county), or how an
+            # account was auto-resolved. Written by discover.py / resolve_backlog.py.
+            ("account_note", "TEXT"),
         ]:
             if col not in cols:
                 db.execute(f"ALTER TABLE cases ADD COLUMN {col} {typedef}")
