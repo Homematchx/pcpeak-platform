@@ -77,7 +77,7 @@ async def _dcad_results(page):
     """Parse (account, row-text) pairs from a DCAD search results page."""
     return await page.evaluate(
         "(function(){var o=[];document.querySelectorAll('a').forEach(function(a){"
-        "var m=(a.href||'').match(/AcctDetail\\w*\\.aspx\\?ID=(\\d{17})/);"
+        "var m=(a.href||'').match(/AcctDetail\\w*\\.aspx\\?ID=([0-9A-Za-z]{17})/);"
         "if(m){var tr=a.closest('tr');o.push({acct:m[1],"
         "row:(tr?tr.innerText:a.innerText).replace(/\\s+/g,' ').trim()});}});return o;})()")
 

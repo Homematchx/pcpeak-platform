@@ -65,14 +65,16 @@ def classify(name):
     return {"type":"individual","priority":"high","contact":"Door knock first, then direct mail"}
 
 def valid_dcad_accounts(acct):
-    """A Dallas DCAD account is exactly 17 digits. A multi-tract petition can list
-    several (comma/semicolon separated). Returns the list of valid 17-digit
-    accounts (empty if none are valid). Anything else — a 5-digit Garland number,
-    a lot number, an out-of-county parcel — is rejected rather than passed through
-    to enrichment as a garbage lookup."""
+    """A Dallas DCAD account is exactly 17 CHARACTERS — usually all digits, but some
+    parcels (condos/townhomes/special) use 17-char ALPHANUMERIC IDs (e.g.
+    '0067850D0010A0000', '382020500K0150000') that are equally valid. A multi-tract
+    petition can list several (comma/semicolon separated). Returns the list of valid
+    17-char accounts, uppercased (empty if none). Anything else — a 5-digit Garland
+    number, a lot number — is rejected rather than passed to enrichment as garbage."""
     if not acct:
         return []
-    return [a for a in re.split(r"[,;]\s*", str(acct).strip()) if re.fullmatch(r"\d{17}", a)]
+    return [a.upper() for a in re.split(r"[,;]\s*", str(acct).strip())
+            if re.fullmatch(r"[0-9A-Za-z]{17}", a)]
 
 def pad_pattern(raw):
     r = raw.rstrip("*").upper()

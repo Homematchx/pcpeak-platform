@@ -53,8 +53,10 @@ def account_status_of(acct):
     if not a or a.lower() in _PLACEHOLDER_ACCTS:
         return "needs_lookup"                      # no account to work with
     parts = [p for p in re.split(r"[,;]\s*", a) if p]
-    if any(re.fullmatch(r"\d{17}", p) for p in parts):
-        return "resolved"                          # at least one usable 17-digit account
+    # A DCAD account is 17 chars — usually digits, but some parcels use 17-char
+    # alphanumeric IDs (condos/townhomes/special), which are equally valid.
+    if any(re.fullmatch(r"[0-9A-Za-z]{17}", p) for p in parts):
+        return "resolved"                          # at least one usable 17-char account
     return "invalid"                               # something was extracted, but it's malformed
 
 # ─── DATABASE ─────────────────────────────────────────────────

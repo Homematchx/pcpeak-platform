@@ -2063,9 +2063,10 @@ function caseAccountStatus(c){
   var ex=c.extracted||{};
   var a=((ex.accountNumber||c.account_number||"")+"").trim();
   // Same rule as backend account_status_of() / discover.py valid_dcad_accounts().
+  // 17 chars — usually digits, but some DCAD parcels use 17-char alphanumeric IDs.
   if(!a || /^(tbd|n\/?a|none|unknown|null)$/i.test(a)) return "needs_lookup";
   var parts=a.split(/[,;]\s*/).filter(Boolean);
-  if(parts.some(function(p){return /^\d{17}$/.test(p);})) return "resolved";
+  if(parts.some(function(p){return /^[0-9A-Za-z]{17}$/.test(p);})) return "resolved";
   return "invalid";
 }
 
