@@ -255,7 +255,10 @@ class CaseUpdate(BaseModel):
 
 # ─── CITY BENCHMARKS ──────────────────────────────────────────
 CITY_DATA = {
-    "dallas":     {"ftj":{"low":[12,18],"medium":[18,30],"high":[30,48]}, "joos":{"low":60,"medium":75,"high":89}},
+    # filing->judgment recalibrated 2026-07-09 from real closed cases: observed
+    # median ~9mo, not the old 12-48mo guess (scorecard.py). joos left as-is
+    # (median ~94d is close; the contested long tail needs a separate signal).
+    "dallas":     {"ftj":{"low":[7,11],"medium":[10,16],"high":[15,28]}, "joos":{"low":60,"medium":75,"high":89}},
     "fort_worth": {"ftj":{"low":[10,15],"medium":[15,24],"high":[24,36]}, "joos":{"low":45,"medium":60,"high":75}},
     "houston":    {"ftj":{"low":[18,28],"medium":[28,42],"high":[42,60]}, "joos":{"low":75,"medium":90,"high":120}},
     "austin":     {"ftj":{"low":[10,16],"medium":[16,26],"high":[26,38]}, "joos":{"low":45,"medium":65,"high":80}},

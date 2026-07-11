@@ -459,7 +459,7 @@ const STAGE = {
 // CITY DATA
 // ═══════════════════════════════════════════
 const CITIES = {
-  dallas:     {n:"Dallas",      speed:"Moderate", ftj:{low:[12,18],medium:[18,30],high:[30,48]}, joos:{low:60,medium:75,high:89},  ota:[20,45], firm:"LGBS (Linebarger)", note:"High volume court. All 3 confirmed cases use same LGBS firm and Judge Ginsberg. Timeline driven almost entirely by defendant count and service complexity.", auction:"First Tuesday of month"},
+  dallas:     {n:"Dallas",      speed:"Moderate", ftj:{low:[7,11],medium:[10,16],high:[15,28]}, joos:{low:60,medium:75,high:89},  ota:[20,45], firm:"LGBS (Linebarger)", note:"filing->judgment recalibrated from real closed cases (observed median ~9mo, not 12-48). judgment->OOS ~75-94d typical; contested cases run 12-18mo (long tail).", auction:"First Tuesday of month"},
   fort_worth: {n:"Fort Worth",  speed:"Faster",   ftj:{low:[10,15],medium:[15,24],high:[24,36]}, joos:{low:45,medium:60,high:75},  ota:[14,30], firm:"LGBS / Perdue Brandon", note:"Tarrant County moves faster. Lower volume, fewer estate-heir complications.", auction:"First Tuesday of month"},
   houston:    {n:"Houston",     speed:"Slower",   ftj:{low:[18,28],medium:[28,42],high:[42,60]}, joos:{low:75,medium:90,high:120}, ota:[30,60], firm:"Linebarger / Perdue Brandon", note:"Harris County has significant backlog. Multi-defendant matters routinely 4-5 years.", auction:"First Tuesday of month"},
   san_antonio:{n:"San Antonio", speed:"Moderate", ftj:{low:[12,20],medium:[20,32],high:[30,44]}, joos:{low:60,medium:80,high:100}, ota:[20,45], firm:"Linebarger", note:"Bexar County mid-tier. Service delays similar to Dallas.", auction:"First Tuesday of month"},
