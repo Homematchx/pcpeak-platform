@@ -404,6 +404,11 @@ Events:
           </select>
         </div>
         <div style="display:flex;gap:5px">
+          <select id="filter-track" class="lc-sel" onchange="setFilter('track',this.value,this)" title="Dataset track — keeps OOS-timing vs dismissed-owing leads separate">
+            <option value="">Track: All</option><option value="oos_timing">OOS timing</option><option value="dismissed_owing">Dismissed &mdash; owing</option><option value="dismissed_paid">Dismissed &mdash; paid</option><option value="judged_pending">Judged &mdash; pending</option><option value="active">Active</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:5px">
           <select id="filter-rep" class="lc-sel" onchange="setFilter('rep',this.value,this)">
             <option value="">Rep: All</option><option value="__unassigned__">Unassigned</option>
           </select>
@@ -2033,7 +2038,7 @@ function swTab(e, id) {
 // ── filter / search / sort / pagination state ──
 window._search = window._search || "";
 window._cityFilter = window._cityFilter || "";
-window._filters = window._filters || {complexity:"", stage:"", rep:"", account:""};
+window._filters = window._filters || {complexity:"", stage:"", rep:"", account:"", track:""};
 window._sort = window._sort || "";
 window._page = window._page || 1;
 var LIST_PAGE_SIZE = 15;
@@ -2072,6 +2077,24 @@ function caseAccountStatus(c){
   if(parts.some(function(p){return /^[0-9A-Za-z]{17}$/.test(p);})) return "resolved";
   return "invalid";
 }
+// Dataset track (mirror of backend case_track_of / discover.py). Prefers the stored
+// case_track; derives for legacy/seed rows so nothing shows blank.
+function caseTrack(c){
+  if(c.case_track) return c.case_track;
+  var ex=c.extracted||{};
+  var pi=(c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel)||{};
+  var oos=ex.orderOfSaleDate||c.oos_date;
+  if(oos && (""+oos).trim()) return "oos_timing";
+  var jt=((ex.judgmentType||c.judgment_type||"")+"").toUpperCase();
+  if(/DISMISS|NON-?SUIT/.test(jt)){
+    var bal=pi.current_tax_balance;
+    if(bal==null) return "dismissed_owing";
+    return bal>0 ? "dismissed_owing" : "dismissed_paid";
+  }
+  var jd=ex.judgmentDate||c.judgment_date;
+  var hasJ=(jd&&(""+jd).trim())||(jt&&jt!=="NONE"&&jt!=="");
+  return hasJ ? "judged_pending" : "active";
+}
 
 function getFilteredCases(){
   var q = (window._search||"").trim().toLowerCase();
@@ -2082,6 +2105,7 @@ function getFilteredCases(){
     if(f.complexity && (ex.complexity||"medium")!==f.complexity) return false;
     if(f.stage && caseStage(ex)!==f.stage) return false;
     if(f.account && caseAccountStatus(c)!==f.account) return false;
+    if(f.track && caseTrack(c)!==f.track) return false;
     if(f.estate && !caseIsEstate(c)) return false;
     if(f.rep){
       var rep=(c.rep_assigned||"").trim();

@@ -374,6 +374,16 @@ overwritten) then prunes the local PDF **only** after a confirmed upload.
   DCAD/ACT HTML (property_intel currently saves parsed values only, not source HTML);
   (3) build the retrieval/re-extract path (pull raw from archive to re-mine).
 
+### Future enhancement (not urgent) — capture the real judgment amount
+The docket's "Total Judgment: of $0.00" is a Tyler source quirk (the real award is in the
+judgment PDF, which we don't download — we only pull the petition PDF). We do NOT store a
+judgment-amount field, so there is no our-side conflation bug here (verified 2026-07-11:
+real debt is captured in `total_due_filing`; the 4 judged batch-1 cases carry $8,982–$43,474).
+The actual judgment/payoff amount is valuable (payoff at judgment) but lives in the judgment
+document — capturing it would mean downloading + parsing that PDF. Future enhancement, low
+priority. This is a data-CAPTURE gap, NOT the falsy-conflation bug shape (that was DCAD
+1/1/1900 and ACT $0-vs-unknown, both fixed).
+
 ### Steps 2-5 — not started
 Backfill closed 2024/2025 cases, deed/lien-index research, geocoding + legal parsing,
 nearest-neighbor benchmark matching. Harden account extraction (Garland 5-digit /

@@ -48,6 +48,27 @@ app.add_middleware(CORSMiddleware,
 # exactly 17 digits; a multi-tract petition lists several (comma/semicolon).
 _PLACEHOLDER_ACCTS = {"tbd", "n/a", "na", "none", "unknown", "null"}
 
+def case_track_of(oos_date, judgment_type, judgment_date, tax_balance):
+    """Which track/dataset a case belongs to. One shared rule (mirrored in discover.py
+    and the frontend) so the tag stays consistent and filterable:
+      oos_timing      — reached an Order of Sale (feeds the timing model)
+      dismissed_owing — dismissed BUT still owes tax (the real lead pipeline; unknown
+                        balance also lands here so a rep looks — dismissal != dead)
+      dismissed_paid  — dismissed and $0 owed (resolved, low value)
+      judged_pending  — has a real judgment, no OOS yet
+      active          — open / pre-judgment
+    `tax_balance` is the live ACT balance (None = unknown, 0.0 = real zero — distinct)."""
+    if oos_date and str(oos_date).strip():
+        return "oos_timing"
+    jt = (judgment_type or "").upper()
+    if "DISMISS" in jt or "NON-SUIT" in jt or "NONSUIT" in jt:
+        if tax_balance is None:
+            return "dismissed_owing"          # unknown → surface it, don't hide a lead
+        return "dismissed_owing" if tax_balance > 0 else "dismissed_paid"
+    has_judgment = bool(judgment_date and str(judgment_date).strip()) or (jt and jt not in ("", "NONE"))
+    return "judged_pending" if has_judgment else "active"
+
+
 def account_status_of(acct):
     a = (acct or "").strip()
     if not a or a.lower() in _PLACEHOLDER_ACCTS:
@@ -214,6 +235,10 @@ def init_db():
             # still in the backlog (uncorroborated candidate, out-of-county), or how an
             # account was auto-resolved. Written by discover.py / resolve_backlog.py.
             ("account_note", "TEXT"),
+            # Which dataset/track a case belongs to (keeps OOS-timing vs lead pipelines
+            # from blending): oos_timing | dismissed_owing | dismissed_paid | judged_pending
+            # | active. Stored + queryable (sidebar filter); see case_track_of().
+            ("case_track", "TEXT"),
         ]:
             if col not in cols:
                 db.execute(f"ALTER TABLE cases ADD COLUMN {col} {typedef}")
@@ -231,6 +256,16 @@ def init_db():
                 "WHERE account_status IS NULL OR TRIM(account_status)=''").fetchall():
             db.execute("UPDATE cases SET account_status=? WHERE case_number=?",
                        [account_status_of(acct), cn])
+        # Backfill case_track — parse property_intel for the live balance (None=unknown).
+        for cn, od, jt, jd, pij in db.execute(
+                "SELECT case_number, oos_date, judgment_type, judgment_date, property_intel "
+                "FROM cases WHERE case_track IS NULL OR TRIM(case_track)=''").fetchall():
+            bal = None
+            if pij:
+                try: bal = json.loads(pij).get("current_tax_balance")
+                except Exception: bal = None
+            db.execute("UPDATE cases SET case_track=? WHERE case_number=?",
+                       [case_track_of(od, jt, jd, bal), cn])
         db.commit()
     _seed_benchmarks()
     print(f"Database initialized: {DB_PATH}")

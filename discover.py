@@ -76,6 +76,20 @@ def valid_dcad_accounts(acct):
     return [a.upper() for a in re.split(r"[,;]\s*", str(acct).strip())
             if re.fullmatch(r"[0-9A-Za-z]{17}", a)]
 
+def case_track_of(oos_date, judgment_type, judgment_date, tax_balance):
+    """Which dataset/track a case belongs to (mirror of backend.case_track_of — keep in
+    sync). oos_timing | dismissed_owing | dismissed_paid | judged_pending | active.
+    tax_balance: None = unknown (surfaced as owing), 0.0 = real zero (distinct)."""
+    if oos_date and str(oos_date).strip():
+        return "oos_timing"
+    jt = (judgment_type or "").upper()
+    if "DISMISS" in jt or "NON-SUIT" in jt or "NONSUIT" in jt:
+        if tax_balance is None:
+            return "dismissed_owing"
+        return "dismissed_owing" if tax_balance > 0 else "dismissed_paid"
+    has_judgment = bool(judgment_date and str(judgment_date).strip()) or (jt and jt not in ("", "NONE"))
+    return "judged_pending" if has_judgment else "active"
+
 def pad_pattern(raw):
     r = raw.rstrip("*").upper()
     parts = r.split("-")
@@ -249,7 +263,7 @@ def save_to_db(extracted, memo, owner):
     now = datetime.now().isoformat()
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(DB_PATH)) as db:
-        for col in ["owner_type TEXT", "owner_priority TEXT", "property_intel TEXT", "legal_description TEXT", "account_status TEXT", "account_note TEXT"]:
+        for col in ["owner_type TEXT", "owner_priority TEXT", "property_intel TEXT", "legal_description TEXT", "account_status TEXT", "account_note TEXT", "case_track TEXT"]:
             try:
                 db.execute("ALTER TABLE cases ADD COLUMN " + col)
             except Exception:
@@ -929,6 +943,18 @@ class Discoverer:
             except Exception as ie:
                 self.log("  Intel error: " + str(ie))
                 intel = None
+
+        # Tag the dataset/track (keeps OOS-timing vs dismissed-owing leads from blending).
+        try:
+            _bal = intel.get("current_tax_balance") if intel else None
+            _track = case_track_of(extracted.get("orderOfSaleDate"),
+                                   extracted.get("judgmentType"),
+                                   extracted.get("judgmentDate"), _bal)
+            with sqlite3.connect(str(DB_PATH)) as _db:
+                _db.execute("UPDATE cases SET case_track=? WHERE case_number=?", [_track, cn]); _db.commit()
+            self.log("  Track: " + _track)
+        except Exception:
+            pass
 
         # Fix tax breakdown: parse entity totals directly from PDF (no-space format)
         if pdf_text and (not extracted.get("taxBreakdown") or
