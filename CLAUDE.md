@@ -274,6 +274,27 @@ Turned "backfill closed cases" into a self-measuring learn loop:
 reality; ACT (tax-office) balance scrape shows some spurious $0 (may need the
 retry treatment DCAD got); surface dismissed-but-delinquent as a lead view.
 
+### Raw-capture archive — built & inert, awaiting storage creds (2026-07-10)
+`archive.py` — append-only raw-source archive to durable S3-compatible object
+storage (Cloudflare R2 / Backblaze B2 / AWS S3). The raw corpus (petition PDFs,
+docket, extraction + enrichment snapshots) is the moat: capture it raw + timestamped
+so it can be re-mined forever as models improve, and get it off the laptop. Wired
+into `discover.py` right after a case saves: uploads `raw/{case}/{ts}/` (petition.pdf,
+docket.txt, extracted.json, property_intel.json — a NEW snapshot per scrape, never
+overwritten) then prunes the local PDF **only** after a confirmed upload.
+- **Fully env-gated.** `archiving_enabled()` = all 4 `ARCHIVE_*` vars set. Unset =
+  no-op, scraper unchanged (verified: `archive_case()` returns `[]`, PDF kept local).
+- **To turn on:** set `ARCHIVE_ENDPOINT/BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY`
+  (+ optional `ARCHIVE_REGION`, default `auto`) — see `.env.example`. Validate with
+  `python3 archive.py` (write→read→delete probe).
+- **boto3 1.43.46** installed locally (only import site is `archive._client()`; not a
+  scraper hard-dep — `archiving_enabled()` never imports boto3). NOT added to Railway
+  (cloud doesn't scrape or archive).
+- **OPEN follow-ups (once storage is provisioned):** (1) one-time backfill-archive of
+  the ~236MB of petition PDFs already on the laptop, then prune; (2) v2 = capture raw
+  DCAD/ACT HTML (property_intel currently saves parsed values only, not source HTML);
+  (3) build the retrieval/re-extract path (pull raw from archive to re-mine).
+
 ### Steps 2-5 — not started
 Backfill closed 2024/2025 cases, deed/lien-index research, geocoding + legal parsing,
 nearest-neighbor benchmark matching. Harden account extraction (Garland 5-digit /
