@@ -179,15 +179,20 @@ Fixing these means correcting the source account numbers, not the scraper.
       fine-grained PAT (keychain stores it), (2) **REVOKE the old PAT on GitHub** — still
       valid until revoked.
 
-### Deploy gate — production branch created 2026-07-11, NOT yet active
-Auto-deploy from `main` is ON (verified). A `production` branch was created (mirrors main)
-as a manual release gate: work lands on `main`, then `git checkout production && git merge
-main && git push origin production` to release. **NOT active until the USER changes
-Railway's deploy/Production branch from `main` to `production` in the dashboard** — until
-then main still auto-deploys. See the "auto-deploy honest accounting" — deploys are
-additive-column + derived-backfill + projection-constant changes; DB is on a volume (no
-data loss), scraping is local (prod only serves), so blast radius is a broken site, not
-lost data — recoverable via git revert + redeploy.
+### Deploy gate — production branch is ACTIVE (Railway watches `production`)
+Work lands on `main`; release with `git checkout production && git merge main && git push
+origin production && git checkout main`. Railway deploys `production`. DB is on a volume (no
+data loss), scraping is local (prod only serves), so a bad deploy's blast radius is a broken
+site, not lost data — recoverable via revert + redeploy.
+
+> ⚠️ **DO-NOT-DEPLOY CONSTRAINT — `f7a3003` (corpus untracking) MUST NOT reach `production`
+> until the archive/object-storage path is live and serving petition PDFs.** The backend
+> serves `GET /api/petition/{cn}` from `data/pdfs/{cn}/petition.pdf` on disk (from the repo),
+> and the frontend "Petition PDF" button hits it. `f7a3003` removes all of `data/pdfs/` from
+> the branch — merging it first will **404 the Petition PDF button for ~46 cases** on the
+> live site. Because of this, code was **cherry-picked** to production (not a straight
+> `merge main`), and a future routine `git merge main` would silently carry `f7a3003` over.
+> Until the archive serves PDFs: keep cherry-picking code commits, or rebase `f7a3003` out.
 
 ## Roadmap progress
 
