@@ -339,6 +339,18 @@ the 5 (resolved+enriched), synced to prod; local+prod backlog now **3**, all str
 Code is on `main`; deploys to prod on the next `production` merge. Prod DATA + display are
 already correct (synced account_status='resolved'; the frontend prefers the stored value).
 
+### Repo hygiene — untracked the scraped corpus from git (2026-07-11)
+`git rm --cached` (files kept on disk) untracked ~108 stale files that predated
+`.gitignore`: 3 `.pyc`, all of `data/pdfs/` (51 docket.txt + 46 petition.pdf), and 3
+stray root PDFs. `.gitignore` now covers `*.pyc`, `__pycache__/`, `data/pdfs/`, `*.pdf`.
+- **Deferred (optional):** the ~237MB corpus is still in git HISTORY. A `git filter-repo`
+  / BFG purge would reclaim it, but rewrites all hashes + needs a force-push — do it
+  deliberately, not mid-session. New clones won't grow further regardless.
+- **⚠ BACKUP GAP (raised priority):** now that `data/pdfs/` is git-untracked, git is no
+  longer even an incidental backup of the raw corpus. The ONLY copy is local disk until
+  the [[archive-paused]] object-store archive is turned on — a laptop failure loses the
+  moat. This is the strongest argument yet for un-pausing archive.py once storage exists.
+
 ### Raw-capture archive — built & inert, awaiting storage creds (2026-07-10) — PAUSED
 (Deliberately paused by the user 2026-07-11; keep inert until they resume — see
 [[archive-paused]]. Original notes below.)

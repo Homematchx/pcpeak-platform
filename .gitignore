@@ -10,3 +10,13 @@ data/db/*.db-wal
 *.env
 .env.*
 !.env.example
+
+# Python bytecode
+*.pyc
+__pycache__/
+
+# Scraped source corpus — the petition/docket raw files live on disk (and belong in
+# the durable object-store archive, see archive.py), NOT in git. ~237MB; keeps the
+# repo lean. PDFs anywhere are ignored to catch stray downloads too.
+data/pdfs/
+*.pdf
