@@ -163,19 +163,31 @@ These have no usable DCAD data; the account or county is the problem:
   "No Owner History / No Market History" (retired/merged/invalid account).
 Fixing these means correcting the source account numbers, not the scraper.
 
-### OPEN — credential rotations (status 2026-07-11 — STILL the highest open risk)
-Do not assume resolved. These are USER actions (revoke/reissue) — Claude can't create
-or enter credentials.
-- [ ] **2Captcha key** — hardcoded default REMOVED from source 2026-07-11 (discover.py,
-      agent/agent.py, import_backtax.py are now env-only). BUT the key is still in git
-      HISTORY, so it MUST be rotated on 2captcha.com to be worthless; optionally purge
-      history (git filter-repo/BFG) after rotating. Not done.
-- [ ] **GitHub PAT** — STILL embedded in the `origin` remote URL (`https://<token>@…`).
-      Rotate on GitHub, then set a credential helper (`git config --global
-      credential.helper osxkeychain`) + token-less remote URL instead of token-in-URL.
-- [x]/[ ] **Anthropic key** — NOT in tracked source (verified: no `sk-ant` literal
-      anywhere; env-only, not in Railway). Rotate only if it was ever pasted in plaintext
-      elsewhere; otherwise low risk.
+### Credentials — status 2026-07-11 (mostly rotated; 2 user follow-ups left)
+- **Secrets live in `Anthropic_API_KEY.env`** (gitignored via `*.env`, untracked — verified).
+  Holds ANTHROPIC_API_KEY, TWO_CAPTCHA_KEY, NTREIS/ATTOM/GOOGLE_STREET_VIEW/PORT.
+  discover.py's `_load_local_env()` loads it into os.environ at startup (zero-dep; a real
+  shell export still wins). Nothing loaded it before — the key was silently empty.
+- [x] **2Captcha key** — ROTATED + verified working (new key len 32; getbalance $2.61; a
+      live one-case run solved the CAPTCHA end-to-end). Hardcoded default removed from
+      source. NOTE: the OLD key is still in git HISTORY — optional filter-repo/BFG purge
+      (now harmless since rotated).
+- [x] **Anthropic key** — ROTATED + verified (Claude extraction ran on it). Not in source,
+      not in Railway.
+- [~] **GitHub PAT** — remote switched to token-less URL + `credential.helper osxkeychain`
+      (helper verified functional). USER TODO: (1) first authenticated push enters the new
+      fine-grained PAT (keychain stores it), (2) **REVOKE the old PAT on GitHub** — still
+      valid until revoked.
+
+### Deploy gate — production branch created 2026-07-11, NOT yet active
+Auto-deploy from `main` is ON (verified). A `production` branch was created (mirrors main)
+as a manual release gate: work lands on `main`, then `git checkout production && git merge
+main && git push origin production` to release. **NOT active until the USER changes
+Railway's deploy/Production branch from `main` to `production` in the dashboard** — until
+then main still auto-deploys. See the "auto-deploy honest accounting" — deploys are
+additive-column + derived-backfill + projection-constant changes; DB is on a volume (no
+data loss), scraping is local (prod only serves), so blast radius is a broken site, not
+lost data — recoverable via git revert + redeploy.
 
 ## Roadmap progress
 
