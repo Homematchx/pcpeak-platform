@@ -274,7 +274,42 @@ Turned "backfill closed cases" into a self-measuring learn loop:
 reality; ACT (tax-office) balance scrape shows some spurious $0 (may need the
 retry treatment DCAD got); surface dismissed-but-delinquent as a lead view.
 
-### Raw-capture archive — built & inert, awaiting storage creds (2026-07-10)
+### Account backlog + corroboration guard (2026-07-11)
+- **CITY_DATA FROZEN.** The n=8 Dallas ftj recalibration ([7,11]/[10,16]/[15,28]) was
+  reverted to baseline [12,18]/[18,30]/[30,48] in both backend and frontend. Do NOT
+  recalibrate without explicit sign-off; revisit only at ≥40 closed OOS cases. Always
+  show sample size (n=) next to any stat. See [[city-data-frozen-sample-size]].
+- **`account_status` column** (resolved | needs_lookup | invalid) — flagged/malformed
+  accounts were vanishing into a log line + counter; now a persisted, queryable state
+  written by discover.py, surfaced as a sidebar filter + per-card badge (⚠ NEEDS ACCT /
+  BAD ACCT). Plus `account_note` (the reason, shown in the badge tooltip). One shared
+  rule across discover.py `valid_dcad_accounts`, backend `account_status_of`, frontend
+  `caseAccountStatus` (≥1 part of exactly 17 digits = resolved; empty/placeholder =
+  needs_lookup; else invalid). Verified: all 3 paths agree, counts reconcile.
+- **Resolver audit (`resolver_audit.py`, n=92):** independently re-resolved known-good
+  accounts from address only vs on-file. 85 match / 5 mismatch / 2 null. Verified the 5:
+  2 were resolver FALSE POSITIVES (address search returned a wrong parcel; on-file owner
+  matched the defendant → on-file correct), 3 inconclusive (owner≠defendant, but could be
+  estate/heir). **Confirmed extraction garble on valid-17-digit accounts: 0/90.** The real
+  finding: address search alone returns a confidently-wrong parcel ~2% of the time.
+- **Corroboration guard** (`property_intel.resolve_account_corroborated`): auto-assign an
+  account ONLY when a 2nd independent signal agrees (address+owner searches converge, or
+  the result's DCAD owner matches the defendant, or an owner result's address matches the
+  petition). Estate/heir cases handled: defendant≠DCAD-owner is expected there, not a
+  mismatch. Uncorroborated candidate is NOTED but NEVER written. Wired into BOTH the
+  backlog tool and the live scraper (discover.py).
+- **`resolve_backlog.py`** consumes the needs_lookup/invalid backlog. First run (n=14):
+  6 auto-resolved+enriched (all corroborated — recovered the Garland 5-digit stubs +
+  an estate/heir case), 1 held back (owner-only, not trusted), 7 unresolved (Mesquite/
+  Rowlett/out-of-county, no Dallas DCAD match). Local backlog 14→8. **These 6 resolutions
+  are LOCAL only — NOT yet synced to prod.**
+- **OPEN:** enrich_property's ownership parser returns empty `owners` for some suburban
+  (Garland/Carrollton) accounts even when market_value/balance parse fine — a display gap
+  (account is still correct; corroboration was independent of that field). Worth a fix.
+
+### Raw-capture archive — built & inert, awaiting storage creds (2026-07-10) — PAUSED
+(Deliberately paused by the user 2026-07-11; keep inert until they resume — see
+[[archive-paused]]. Original notes below.)
 `archive.py` — append-only raw-source archive to durable S3-compatible object
 storage (Cloudflare R2 / Backblaze B2 / AWS S3). The raw corpus (petition PDFs,
 docket, extraction + enrichment snapshots) is the moat: capture it raw + timestamped
