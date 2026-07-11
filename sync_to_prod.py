@@ -104,6 +104,9 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="Preview only; change nothing.")
     ap.add_argument("--update-existing", action="store_true",
                     help="Also refresh scraped fields on cases already live (never rep_assigned).")
+    ap.add_argument("--only", default="",
+                    help="Comma-separated case numbers — sync ONLY these (a precise, targeted "
+                         "push; implies --update-existing for them). Everything else is untouched.")
     args = ap.parse_args()
     dry = args.dry_run
 
@@ -112,6 +115,16 @@ def main():
 
     db = sqlite3.connect(DB_PATH); db.row_factory = sqlite3.Row
     local = local_cases(db)
+
+    if args.only:
+        want = {c.strip() for c in args.only.split(",") if c.strip()}
+        missing = want - set(local)
+        if missing:
+            print("WARNING: --only case(s) not in local DB (ignored): " + ", ".join(sorted(missing)))
+        local = {cn: v for cn, v in local.items() if cn in want}
+        args.update_existing = True   # targeting existing prod cases → refresh them
+        if not local:
+            print("Nothing to sync — no matching local cases."); sys.exit(0)
 
     try:
         status, prod_list = api("GET", "/api/cases")
