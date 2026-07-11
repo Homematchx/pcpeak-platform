@@ -1411,13 +1411,16 @@ function renderDetail(c) {
       <div class="tp on" id="tp-ov">
         <!-- Equity position card -->
         ${(function(){
-          var mv = (c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel||{}).market_value||0;
-          var debt = (c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel||{}).current_tax_balance||ex.totalDueAtFiling||0;
+          var pi = (c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel)||{};
+          var mv = pi.market_value||0;
           if(!mv) return "";
+          // A real $0 balance (taxes paid) is a VALUE — only fall back to the filing
+          // debt when the live balance is genuinely unknown (null/undefined).
+          var debt = (pi.current_tax_balance!=null) ? pi.current_tax_balance : (ex.totalDueAtFiling||0);
           var equity = mv - debt;
           var debtPct = Math.round(debt/mv*100);
           var eqPct = 100-debtPct;
-          var fmtC = function(n){return n?"$"+Math.round(n).toLocaleString():"—"};
+          var fmtC = function(n){return (n==null)?"—":"$"+Math.round(n).toLocaleString()};
           return `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);padding:14px 18px;margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)">Equity position</div><div style="font-size:10px;color:var(--text3)">DCAD 2026 · Live ACT balance</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center;margin-bottom:12px"><div><div style="font-family:var(--FD);font-size:20px;font-weight:600;color:var(--accent)">${fmtC(mv)}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-top:3px">Market value</div></div><div><div style="font-family:var(--FD);font-size:20px;font-weight:600;color:#7a1e1e">${fmtC(debt)}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-top:3px">Live debt</div></div><div><div style="font-family:var(--FD);font-size:20px;font-weight:600;color:#1e5c30">${fmtC(equity)}</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-top:3px">Est. equity</div></div></div><div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden;position:relative"><div style="position:absolute;left:0;top:0;height:100%;width:${debtPct}%;background:#e08080;border-radius:5px"></div><div style="position:absolute;left:${debtPct}%;top:0;height:100%;right:0;background:#6ec890;border-radius:0 5px 5px 0"></div></div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px"><span style="color:#c08080">Debt ${debtPct}% of value</span><span style="color:#1e5c30;font-weight:600">${eqPct}% equity cushion</span></div></div>`;
         })()} 
         <div class="sgrid">
@@ -1599,11 +1602,11 @@ function renderPropertyIntel(ex) {
   var intel = ex.property_intel ? (typeof ex.property_intel === "string" ? JSON.parse(ex.property_intel) : ex.property_intel) : null;
   var acct = (intel && intel.account_number) || ex.accountNumber || ex.account_number || "";
   var ls2 = "padding:8px 16px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;text-decoration:none;font-size:12px;color:var(--text2)";
-  if (!intel || (!intel.market_value && !intel.current_tax_balance && !intel.year_built)) {
+  if (!intel || (intel.market_value==null && intel.current_tax_balance==null && intel.year_built==null)) {
     el.innerHTML = "<div style='padding:40px;text-align:center;color:var(--text3)'><div style='font-size:32px;margin-bottom:12px'>&#127968;</div><div style='font-weight:700;font-size:16px;margin-bottom:8px'>Property Intelligence Not Yet Loaded</div><div style='font-size:13px;margin-bottom:20px'>Run discover.py to auto-enrich with live DCAD and Dallas ACT data.</div>" + (acct ? "<div style='display:flex;gap:8px;justify-content:center;flex-wrap:wrap'><a href='https://www.dallascad.org/AcctDetailRes.aspx?ID=" + acct + "' target='_blank' style='" + ls2 + "'>View DCAD</a><a href='https://www.dallasact.com/act_webdev/dallas/showdetail2.jsp?can=" + acct + "&ownerno=0' target='_blank' style='" + ls2 + "'>Tax Balance</a><a href='https://www.dallasact.com/act_webdev/dallas/reports/taxbyyear.jsp?can=" + acct + "&ownerno=0' target='_blank' style='" + ls2 + "'>Tax by Year</a><a href='https://www.dallasact.com/act_webdev/dallas/reports/paymentinfo.jsp?can=" + acct + "&ownerno=0' target='_blank' style='" + ls2 + "'>Payment History</a></div>" : "") + "</div>";
     return;
   }
-  var fmt = function(n) { return n ? "$" + Number(n).toLocaleString() : "-"; };
+  var fmt = function(n) { return (n==null) ? "-" : "$" + Number(n).toLocaleString(); };  // 0 -> "$0", null -> "-" (distinct)
   var html = "";
   var d = intel.distress || {};
   var dLevel = d.level || "low";
@@ -1766,7 +1769,7 @@ function openPetitionPDF(c) {
       if(fs) fs.style.display="none";
     });
   var acct = ex.accountNumber || "";
-  var fmt = function(n){return n?"$"+Math.round(Number(n)).toLocaleString():"—";};
+  var fmt = function(n){return (n==null)?"—":"$"+Math.round(Number(n)).toLocaleString();};  // 0 -> "$0", null -> "—" (distinct)
 
   var brief = document.getElementById("petition-brief");
   if(!brief) return;

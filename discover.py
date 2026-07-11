@@ -171,8 +171,10 @@ async def claude_memo(extracted, owner, intel=None):
         # Build property intel summary for memo
         intel_summary = ""
         if intel and isinstance(intel, dict):
-            mv = intel.get("market_value") or 0
-            bal = intel.get("current_tax_balance") or 0
+            # honest strings for the memo — 'unknown' (None) is not the same as a real $0
+            _mvv = intel.get("market_value"); _balv = intel.get("current_tax_balance")
+            mv = "unknown" if _mvv is None else f"${_mvv:,.0f}"
+            bal = "unknown" if _balv is None else f"${_balv:,.2f}"
             yr = intel.get("year_built") or ""
             age = intel.get("actual_age") or ""
             dep = intel.get("depreciation_pct") or ""
@@ -199,7 +201,7 @@ async def claude_memo(extracted, owner, intel=None):
 
             intel_summary = (
                 f"\n\nPROPERTY INTELLIGENCE (DCAD + Dallas ACT live data):\n"
-                f"- Market Value: ${mv:,} | Live Tax Balance: ${bal:,.2f}\n"
+                f"- Market Value: {mv} | Live Tax Balance: {bal}\n"
                 f"- Year Built: {yr} ({age} yrs old) | Depreciation: {dep}% | Size: {sqft} sqft\n"
                 f"- Exterior: {ext_wall} | Deed Transfer: {deed}\n"
                 f"- Homestead Exemption: {'NONE - likely absentee/non-owner-occupied' if no_hmstd else 'YES - owner occupied'}\n"
@@ -907,17 +909,19 @@ class Discoverer:
                 from property_intel import enrich_property
                 self.log("  Enriching property intel: " + acct)
                 intel = await enrich_property(acct, addr, self.browser)
-                if intel and (intel.get("market_value") or intel.get("current_tax_balance")):
+                # A real $0 balance (taxes paid) is DATA, not "no data" — gate on
+                # `is not None`, not falsy, so a paid-up property isn't dropped.
+                if intel and (intel.get("market_value") is not None or intel.get("current_tax_balance") is not None):
                     with sqlite3.connect(str(DB_PATH)) as db:
                         db.execute(
                             "UPDATE cases SET property_intel=? WHERE case_number=?",
                             [json.dumps(intel), cn]
                         )
                         db.commit()
-                    mv = intel.get("market_value", 0) or 0
-                    bal = intel.get("current_tax_balance", 0) or 0
-                    self.log("  Intel saved: MV $" + "{:,.0f}".format(mv) +
-                             " | Balance $" + "{:,.0f}".format(bal))
+                    mvv = intel.get("market_value"); balv = intel.get("current_tax_balance")
+                    mv_s = "unknown" if mvv is None else "${:,.0f}".format(mvv)
+                    bal_s = "unknown" if balv is None else "${:,.2f}".format(balv)
+                    self.log("  Intel saved: MV " + mv_s + " | Balance " + bal_s)
                     extracted["_property_intel"] = json.dumps(intel)
                 else:
                     self.log("  Intel: no data returned")

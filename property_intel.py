@@ -948,8 +948,10 @@ async def _enrich_single_account(account_number: str, address: str, browser,
         "errors": {"dcad": dcad.get("error"), "act": act.get("error")}
     }
 
-    mv = f"${dcad.get('market_value',0):,}" if dcad.get("market_value") else "unknown"
-    bal = f"${act.get('total_amount_due',0):,}" if act.get("total_amount_due") else "unknown"
+    # 'unknown' (None = scrape miss) is DISTINCT from a real $0 (taxes paid). Use
+    # `is None`, not falsy — 0.0 is a real value, not a missing one.
+    mv = "unknown" if dcad.get("market_value") is None else f"${dcad.get('market_value'):,.0f}"
+    bal = "unknown" if act.get("total_amount_due") is None else f"${act.get('total_amount_due'):,.2f}"
     print(f"  [intel] {account_number} | MV: {mv} | Balance: {bal} | Distress: {distress['level'].upper()}")
 
     return result
@@ -1025,8 +1027,8 @@ async def enrich_property(account_number: str, address: str, browser,
         results.append(await _enrich_single_account(a, address, browser, gsv_api_key))
     combined = _aggregate_multi_tract(list(results), accounts)
 
-    mv = f"${combined.get('market_value',0):,}" if combined.get("market_value") else "unknown"
-    bal = f"${combined.get('current_tax_balance',0):,}" if combined.get("current_tax_balance") else "unknown"
+    mv = "unknown" if combined.get("market_value") is None else f"${combined.get('market_value'):,.0f}"
+    bal = "unknown" if combined.get("current_tax_balance") is None else f"${combined.get('current_tax_balance'):,.2f}"
     dist = combined.get("distress", {}).get("level", "unknown")
     print(f"  [intel] {account_number} | {len(accounts)} tracts combined | MV: {mv} | Balance: {bal} | Distress: {dist.upper()}")
 
