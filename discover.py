@@ -746,6 +746,29 @@ class Discoverer:
         case_dir.mkdir(parents=True, exist_ok=True)
         (case_dir / "docket.txt").write_text(docket_text, encoding="utf-8")
 
+        # BUSINESS PERSONAL PROPERTY suits are out of scope for real-estate acquisition.
+        # Detect from the docket Comment field HERE — BEFORE the expensive Claude
+        # extraction + PDF download + DCAD/ACT enrichment + memo — and save only a minimal
+        # skip-record so future BPP cases never cost API calls we'd only discard.
+        if property_type_from_docket(docket_text) == "personal":
+            self.log("  ⚑ BUSINESS PERSONAL PROPERTY suit — skip-record only (out of scope; no extraction/enrichment)")
+            save_to_db({
+                "caseNumber": cn,
+                "court": case_info.get("court", ""),
+                "filedDate": case_info.get("fileDate") or None,
+                "caseStatus": (case_info.get("status") or "OPEN").upper(),
+                "defendant": party,
+            }, "", owner)
+            with sqlite3.connect(str(DB_PATH)) as _db:
+                _db.execute(
+                    "UPDATE cases SET property_type='personal', case_track='personal_property', "
+                    "account_status='n/a', account_note='business personal property — out of scope (skip-record)', "
+                    "oos_date=NULL, oos_issued=0 WHERE case_number=?", [cn])
+                _db.commit()
+            self.stats["processed"] = self.stats.get("processed", 0) + 1
+            self.stats["bpp_skipped"] = self.stats.get("bpp_skipped", 0) + 1
+            return True
+
         # Download Original Petition PDF via fresh context
         pdf_text = ""
         href = case_info.get("href", "")

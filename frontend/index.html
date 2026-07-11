@@ -2212,7 +2212,7 @@ function renderList() {
           ${(function(){var et=caseEstateType(c); if(!et) return "";
             var uh=et==="unknown-heirs";
             return `<span title="${uh?'Unknown heirs — deceased owner, heirs unidentifiable; highest-conviction target':'Estate / deceased owner — high-value target'}" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${uh?'#7a1e7a':'#5b2a86'};color:#fff;border:1px solid ${uh?'#7a1e7a':'#5b2a86'}">&#9906; ${uh?'UNKNOWN HEIRS':'ESTATE'}</span>`;})()}
-          ${(function(){var as=caseAccountStatus(c); if(as==="resolved") return "";
+          ${(function(){var as=caseAccountStatus(c); if(as==="resolved"||as==="n/a"||caseTrack(c)==="personal_property") return "";
             var nl=as==="needs_lookup";
             var dflt=nl?'No valid DCAD account — manual lookup owed (not enriched)':'Extracted account is malformed — needs correction (not enriched)';
             var tip=(c.account_note||dflt).replace(/"/g,'&quot;');
