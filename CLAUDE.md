@@ -320,8 +320,24 @@ retry treatment DCAD got); surface dismissed-but-delinquent as a lead view.
   Rowlett/out-of-county, no Dallas DCAD match). Local backlog 14→8. **These 6 resolutions
   are LOCAL only — NOT yet synced to prod.**
 - **OPEN:** enrich_property's ownership parser returns empty `owners` for some suburban
-  (Garland/Carrollton) accounts even when market_value/balance parse fine — a display gap
-  (account is still correct; corroboration was independent of that field). Worth a fix.
+  (Garland/Carrollton/Mesquite) accounts even when market_value/balance parse fine — a
+  display gap (account still correct). This is now the main remaining enrichment gap.
+
+### Alphanumeric DCAD accounts fixed (2026-07-11) — backlog 8→3
+Root cause of most of the backlog: `valid_dcad_accounts` required 17 DIGITS, but DCAD
+uses 17-char ALPHANUMERIC IDs for some parcels (condos/townhomes/special — e.g.
+`0067850D0010A0000`, `382020500K0150000`). Those valid accounts were flagged 'invalid'
+and never enriched. Verified all 5 affected accounts load real DCAD properties (3/5
+confirm owner==defendant: Diaz/Quinlan/Richey). Widened the account rule to 17-char
+alphanumeric across ALL paths that must agree: `valid_dcad_accounts` (discover.py),
+`_dcad_results` (property_intel.py), `account_status_of` (backend), `caseAccountStatus`
+(frontend) — unit-tested in-browser (5-digit stubs / non-17 still rejected). Reprocessed
+the 5 (resolved+enriched), synced to prod; local+prod backlog now **3**, all structural:
+- `TX-23-02234` (SALZMAN) — petition extracted NO property address; needs re-extraction.
+- `TX-24-00079` — Las Colinas HOA, dual "12 Erling / 13 Claiborne" common-area parcel.
+- `TX-24-00099` — 4210 Pecan Grove Ln, Rowlett (spans Dallas/Rockwall county).
+Code is on `main`; deploys to prod on the next `production` merge. Prod DATA + display are
+already correct (synced account_status='resolved'; the frontend prefers the stored value).
 
 ### Raw-capture archive — built & inert, awaiting storage creds (2026-07-10) — PAUSED
 (Deliberately paused by the user 2026-07-11; keep inert until they resume — see
