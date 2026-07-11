@@ -17,7 +17,7 @@ DB_PATH = Path("/Users/stephenlewis/Downloads/pcpeak_platform/data/db/pcpeak.db"
 PDF_DIR = Path("/Users/stephenlewis/Downloads/pcpeak_platform/data/pdfs")
 PORTAL  = "https://courtsportal.dallascounty.org/DALLASPROD/Home/Dashboard/29"
 ANTHROPIC_KEY   = os.environ.get("ANTHROPIC_API_KEY", "")
-TWO_CAPTCHA_KEY = os.environ.get("TWO_CAPTCHA_KEY", "e6b154c8fad025b44a18d395ba6b1180")
+TWO_CAPTCHA_KEY = os.environ.get("TWO_CAPTCHA_KEY", "")
 
 BUSINESS_WORDS = ["LLC","INC","CORP","LTD","TRUST","PROPERTIES","HOLDINGS",
     "INVESTMENTS","GROUP","REALTY","ASSOCIATES","MANAGEMENT","DEVELOPMENT",

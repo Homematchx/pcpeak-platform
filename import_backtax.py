@@ -23,7 +23,7 @@ DB_PATH  = BASE_DIR / "data" / "db" / "pcpeak.db"
 PDF_DIR  = BASE_DIR / "data" / "pdfs"
 PORTAL   = "https://courtsportal.dallascounty.org/DALLASPROD/Home/Dashboard/29"
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY","")
-TWO_CAPTCHA_KEY = "e6b154c8fad025b44a18d395ba6b1180"
+TWO_CAPTCHA_KEY = os.environ.get("TWO_CAPTCHA_KEY", "")
 
 # ── OWNER CLASSIFICATION ──────────────────────────────────────
 BUSINESS_WORDS = [
