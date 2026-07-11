@@ -399,6 +399,9 @@ Events:
           <select id="filter-stage" class="lc-sel" onchange="setFilter('stage',this.value,this)">
             <option value="">Stage</option><option value="pre_judgment">Pre-judgment</option><option value="judgment_entered">Judgment</option><option value="oos_issued">OOS issued</option><option value="sale_pulled">Sale pulled</option>
           </select>
+          <select id="filter-account" class="lc-sel" onchange="setFilter('account',this.value,this)" title="DCAD account resolution state">
+            <option value="">Account</option><option value="resolved">&#10003; Resolved</option><option value="needs_lookup">Needs lookup</option><option value="invalid">Invalid</option>
+          </select>
         </div>
         <div style="display:flex;gap:5px">
           <select id="filter-rep" class="lc-sel" onchange="setFilter('rep',this.value,this)">
@@ -459,7 +462,7 @@ const STAGE = {
 // CITY DATA
 // ═══════════════════════════════════════════
 const CITIES = {
-  dallas:     {n:"Dallas",      speed:"Moderate", ftj:{low:[7,11],medium:[10,16],high:[15,28]}, joos:{low:60,medium:75,high:89},  ota:[20,45], firm:"LGBS (Linebarger)", note:"filing->judgment recalibrated from real closed cases (observed median ~9mo, not 12-48). judgment->OOS ~75-94d typical; contested cases run 12-18mo (long tail).", auction:"First Tuesday of month"},
+  dallas:     {n:"Dallas",      speed:"Moderate", ftj:{low:[12,18],medium:[18,30],high:[30,48]}, joos:{low:60,medium:75,high:89},  ota:[20,45], firm:"LGBS (Linebarger)", note:"filing->judgment constants FROZEN (baseline 12-48mo). A recalibration to 7-28mo on n=8 was reverted — too small a sample. Observed windows are shown as evidence with sample size, not baked in.", auction:"First Tuesday of month"},
   fort_worth: {n:"Fort Worth",  speed:"Faster",   ftj:{low:[10,15],medium:[15,24],high:[24,36]}, joos:{low:45,medium:60,high:75},  ota:[14,30], firm:"LGBS / Perdue Brandon", note:"Tarrant County moves faster. Lower volume, fewer estate-heir complications.", auction:"First Tuesday of month"},
   houston:    {n:"Houston",     speed:"Slower",   ftj:{low:[18,28],medium:[28,42],high:[42,60]}, joos:{low:75,medium:90,high:120}, ota:[30,60], firm:"Linebarger / Perdue Brandon", note:"Harris County has significant backlog. Multi-defendant matters routinely 4-5 years.", auction:"First Tuesday of month"},
   san_antonio:{n:"San Antonio", speed:"Moderate", ftj:{low:[12,20],medium:[20,32],high:[30,44]}, joos:{low:60,medium:80,high:100}, ota:[20,45], firm:"Linebarger", note:"Bexar County mid-tier. Service delays similar to Dallas.", auction:"First Tuesday of month"},
@@ -2027,7 +2030,7 @@ function swTab(e, id) {
 // ── filter / search / sort / pagination state ──
 window._search = window._search || "";
 window._cityFilter = window._cityFilter || "";
-window._filters = window._filters || {complexity:"", stage:"", rep:""};
+window._filters = window._filters || {complexity:"", stage:"", rep:"", account:""};
 window._sort = window._sort || "";
 window._page = window._page || 1;
 var LIST_PAGE_SIZE = 15;
@@ -2051,6 +2054,20 @@ function caseEstateType(c){
   return ex.estateHeirSituation ? "estate" : "";
 }
 function caseIsEstate(c){ return !!caseEstateType(c); }
+// DCAD account-resolution state, the visible backlog signal. Prefers the stored
+// account_status (written by discover.py); falls back to deriving from the account
+// number for legacy/seed/quick-add rows so nothing shows blank. A Dallas DCAD
+// account is exactly 17 digits (multi-tract = comma/semicolon list, each 17).
+function caseAccountStatus(c){
+  if(c.account_status) return c.account_status;
+  var ex=c.extracted||{};
+  var a=((ex.accountNumber||c.account_number||"")+"").trim();
+  // Same rule as backend account_status_of() / discover.py valid_dcad_accounts().
+  if(!a || /^(tbd|n\/?a|none|unknown|null)$/i.test(a)) return "needs_lookup";
+  var parts=a.split(/[,;]\s*/).filter(Boolean);
+  if(parts.some(function(p){return /^\d{17}$/.test(p);})) return "resolved";
+  return "invalid";
+}
 
 function getFilteredCases(){
   var q = (window._search||"").trim().toLowerCase();
@@ -2060,6 +2077,7 @@ function getFilteredCases(){
     if(window._cityFilter && (c.city||"dallas")!==window._cityFilter) return false;
     if(f.complexity && (ex.complexity||"medium")!==f.complexity) return false;
     if(f.stage && caseStage(ex)!==f.stage) return false;
+    if(f.account && caseAccountStatus(c)!==f.account) return false;
     if(f.estate && !caseIsEstate(c)) return false;
     if(f.rep){
       var rep=(c.rep_assigned||"").trim();
@@ -2158,6 +2176,9 @@ function renderList() {
           ${(function(){var et=caseEstateType(c); if(!et) return "";
             var uh=et==="unknown-heirs";
             return `<span title="${uh?'Unknown heirs — deceased owner, heirs unidentifiable; highest-conviction target':'Estate / deceased owner — high-value target'}" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${uh?'#7a1e7a':'#5b2a86'};color:#fff;border:1px solid ${uh?'#7a1e7a':'#5b2a86'}">&#9906; ${uh?'UNKNOWN HEIRS':'ESTATE'}</span>`;})()}
+          ${(function(){var as=caseAccountStatus(c); if(as==="resolved") return "";
+            var nl=as==="needs_lookup";
+            return `<span title="${nl?'No valid DCAD account — manual lookup owed (not enriched)':'Extracted account is malformed — needs correction (not enriched)'}" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${nl?'#8a5a00':'#8a1f1f'};color:#fff;border:1px solid ${nl?'#8a5a00':'#8a1f1f'}">&#9888; ${nl?'NEEDS ACCT':'BAD ACCT'}</span>`;})()}
           ${ds?`<span style="font-size:10px;color:${acqDot};font-weight:600">${ds}</span>`:""}
           ${rep?`<span style="font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text2);border:1px solid var(--border2)">&#128100; ${rep}</span>`:""}
         </div>

@@ -217,7 +217,7 @@ def save_to_db(extracted, memo, owner):
     now = datetime.now().isoformat()
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(DB_PATH)) as db:
-        for col in ["owner_type TEXT", "owner_priority TEXT", "property_intel TEXT", "legal_description TEXT"]:
+        for col in ["owner_type TEXT", "owner_priority TEXT", "property_intel TEXT", "legal_description TEXT", "account_status TEXT"]:
             try:
                 db.execute("ALTER TABLE cases ADD COLUMN " + col)
             except Exception:
@@ -812,6 +812,7 @@ class Discoverer:
         raw_acct = extracted.get("accountNumber", "")
         valid_accts = valid_dcad_accounts(raw_acct)
         acct = ", ".join(valid_accts)
+        acct_status = "resolved" if valid_accts else None   # set by the resolver branches below
         if not valid_accts:
             # The petition account was missing or garbled. Rather than skip, try
             # to RESOLVE the real 17-digit DCAD account from the property address
@@ -830,6 +831,7 @@ class Discoverer:
                 extracted["accountNumber"] = resolved
                 valid_accts = [resolved]
                 acct = resolved
+                acct_status = "resolved"
                 self.stats["resolved_account"] = self.stats.get("resolved_account", 0) + 1
                 # persist the corrected account
                 try:
@@ -841,9 +843,19 @@ class Discoverer:
                 self.log("  ⚠ Account '" + str(raw_acct).strip() + "' invalid and could not be "
                          "resolved from address/owner — needs manual lookup.")
                 self.stats["invalid_account"] += 1
+                acct_status = "invalid"
             else:
                 self.log("  ⚠ No account extracted and none resolvable from address/owner — needs manual lookup.")
                 self.stats["no_account"] += 1
+                acct_status = "needs_lookup"
+
+        # Persist the account-resolution state so a flagged case becomes a VISIBLE,
+        # queryable backlog item (sidebar filter) instead of a line lost in the log.
+        try:
+            with sqlite3.connect(str(DB_PATH)) as _db:
+                _db.execute("UPDATE cases SET account_status=? WHERE case_number=?", [acct_status, cn]); _db.commit()
+        except Exception:
+            pass
         if valid_accts:
             try:
                 from property_intel import enrich_property

@@ -8,6 +8,7 @@ Run: uvicorn main:app --reload --port 8000
 import sqlite3
 import json
 import os
+import re
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional, List
@@ -40,6 +41,21 @@ app.add_middleware(CORSMiddleware,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"])
+
+# ─── ACCOUNT-RESOLUTION STATE ─────────────────────────────────
+# One rule, shared by discover.py (valid_dcad_accounts), this backfill, and the
+# frontend (caseAccountStatus) so the three always agree. A Dallas DCAD account is
+# exactly 17 digits; a multi-tract petition lists several (comma/semicolon).
+_PLACEHOLDER_ACCTS = {"tbd", "n/a", "na", "none", "unknown", "null"}
+
+def account_status_of(acct):
+    a = (acct or "").strip()
+    if not a or a.lower() in _PLACEHOLDER_ACCTS:
+        return "needs_lookup"                      # no account to work with
+    parts = [p for p in re.split(r"[,;]\s*", a) if p]
+    if any(re.fullmatch(r"\d{17}", p) for p in parts):
+        return "resolved"                          # at least one usable 17-digit account
+    return "invalid"                               # something was extracted, but it's malformed
 
 # ─── DATABASE ─────────────────────────────────────────────────
 @contextmanager
@@ -187,6 +203,11 @@ def init_db():
             ("owner_type", "TEXT"),
             ("owner_priority", "TEXT"),
             ("rep_assigned", "TEXT"),
+            # Account-resolution state: 'resolved' (valid 17-digit account on file),
+            # 'needs_lookup' (no account extracted, none resolvable — manual DCAD
+            # lookup owed), 'invalid' (an account was extracted but malformed and
+            # not resolvable). Written by discover.py; surfaced as a sidebar filter.
+            ("account_status", "TEXT"),
         ]:
             if col not in cols:
                 db.execute(f"ALTER TABLE cases ADD COLUMN {col} {typedef}")
@@ -195,6 +216,15 @@ def init_db():
         # roster starts as the real source of truth (no hardcoded placeholders).
         db.execute("INSERT OR IGNORE INTO reps (name) SELECT DISTINCT rep_assigned FROM cases "
                    "WHERE rep_assigned IS NOT NULL AND TRIM(rep_assigned) != ''")
+        # Backfill account_status for rows migrated in before the column existed, so
+        # none stay NULL (indistinguishable from a real state). Uses the SAME rule as
+        # discover.py's valid_dcad_accounts() and the frontend's caseAccountStatus(),
+        # so all three paths agree exactly (the counts must reconcile).
+        for cn, acct in db.execute(
+                "SELECT case_number, account_number FROM cases "
+                "WHERE account_status IS NULL OR TRIM(account_status)=''").fetchall():
+            db.execute("UPDATE cases SET account_status=? WHERE case_number=?",
+                       [account_status_of(acct), cn])
         db.commit()
     _seed_benchmarks()
     print(f"Database initialized: {DB_PATH}")
@@ -255,10 +285,12 @@ class CaseUpdate(BaseModel):
 
 # ─── CITY BENCHMARKS ──────────────────────────────────────────
 CITY_DATA = {
-    # filing->judgment recalibrated 2026-07-09 from real closed cases: observed
-    # median ~9mo, not the old 12-48mo guess (scorecard.py). joos left as-is
-    # (median ~94d is close; the contested long tail needs a separate signal).
-    "dallas":     {"ftj":{"low":[7,11],"medium":[10,16],"high":[15,28]}, "joos":{"low":60,"medium":75,"high":89}},
+    # FROZEN. Do NOT recalibrate these from scorecard data without explicit sign-off.
+    # A 2026-07-09 recalibration to ftj [7,11]/[10,16]/[15,28] on n=8 OOS cases was
+    # reverted — sample too small. scorecard.py may REPORT observed windows (always
+    # tagged with n=), but must not write these constants. Revisit threshold: >=40
+    # closed cases with a real oos_date, and only with an explicit go-ahead.
+    "dallas":     {"ftj":{"low":[12,18],"medium":[18,30],"high":[30,48]}, "joos":{"low":60,"medium":75,"high":89}},
     "fort_worth": {"ftj":{"low":[10,15],"medium":[15,24],"high":[24,36]}, "joos":{"low":45,"medium":60,"high":75}},
     "houston":    {"ftj":{"low":[18,28],"medium":[28,42],"high":[42,60]}, "joos":{"low":75,"medium":90,"high":120}},
     "austin":     {"ftj":{"low":[10,16],"medium":[16,26],"high":[26,38]}, "joos":{"low":45,"medium":65,"high":80}},
