@@ -16,6 +16,34 @@ from datetime import datetime, date
 DB_PATH = Path("/Users/stephenlewis/Downloads/pcpeak_platform/data/db/pcpeak.db")
 PDF_DIR = Path("/Users/stephenlewis/Downloads/pcpeak_platform/data/pdfs")
 PORTAL  = "https://courtsportal.dallascounty.org/DALLASPROD/Home/Dashboard/29"
+
+
+def _load_local_env():
+    """Load KEY=VALUE lines from a local, gitignored env file into os.environ (never
+    overwriting an already-set var — a real shell export always wins). Zero-dependency;
+    the project's secrets live in a gitignored env file the code wouldn't otherwise read.
+    Checked in order; the first that exists wins."""
+    here = Path(__file__).parent
+    for name in (".env", "Anthropic_API_KEY.env"):
+        f = here / name
+        if not f.exists():
+            continue
+        for raw in f.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].lstrip()
+            k, _, v = line.partition("=")
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            if k and k not in os.environ:
+                os.environ[k] = v
+        return name
+    return None
+
+
+_ENV_FILE = _load_local_env()
 ANTHROPIC_KEY   = os.environ.get("ANTHROPIC_API_KEY", "")
 TWO_CAPTCHA_KEY = os.environ.get("TWO_CAPTCHA_KEY", "")
 
@@ -345,6 +373,9 @@ class Discoverer:
                           "googlekey": sk, "pageurl": url, "json": 1})
                 d = r.json()
                 if d.get("status") != 1:
+                    # Surface the real reason (ERROR_WRONG_USER_KEY, ERROR_ZERO_BALANCE,
+                    # etc.) instead of failing silently.
+                    self.log("  2Captcha rejected submit: " + str(d.get("request", d)))
                     return None
                 cid = d["request"]
                 self.log("  Waiting (ID:" + str(cid) + ")...")
@@ -355,8 +386,10 @@ class Discoverer:
                         "&action=get&id=" + str(cid) + "&json=1")
                     d2 = r2.json()
                     if d2.get("status") == 1:
+                        self.log("  ✓ CAPTCHA solved (ID:" + str(cid) + ")")
                         return d2["request"]
                     if d2.get("request") not in ("CAPCHA_NOT_READY",):
+                        self.log("  2Captcha solve failed: " + str(d2.get("request")))
                         break
         except Exception as e:
             self.log("  2Captcha error: " + str(e))
@@ -1180,6 +1213,11 @@ async def main():
     if not ANTHROPIC_KEY:
         print("ERROR: Set ANTHROPIC_API_KEY environment variable")
         return
+    if not TWO_CAPTCHA_KEY:
+        print("⚠  WARNING: TWO_CAPTCHA_KEY not set — reCAPTCHA auto-solve is DISABLED; the "
+              "portal search will likely fail. Set it in Anthropic_API_KEY.env / .env or export it.")
+    else:
+        print("✓ TWO_CAPTCHA_KEY loaded (len %d, src %s)" % (len(TWO_CAPTCHA_KEY), _ENV_FILE or "shell env"))
 
     await Discoverer(
         open_only=not args.include_closed,
