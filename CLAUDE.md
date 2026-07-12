@@ -185,14 +185,17 @@ origin production && git checkout main`. Railway deploys `production`. DB is on 
 data loss), scraping is local (prod only serves), so a bad deploy's blast radius is a broken
 site, not lost data — recoverable via revert + redeploy.
 
-> ⚠️ **DO-NOT-DEPLOY CONSTRAINT — `f7a3003` (corpus untracking) MUST NOT reach `production`
-> until the archive/object-storage path is live and serving petition PDFs.** The backend
-> serves `GET /api/petition/{cn}` from `data/pdfs/{cn}/petition.pdf` on disk (from the repo),
-> and the frontend "Petition PDF" button hits it. `f7a3003` removes all of `data/pdfs/` from
-> the branch — merging it first will **404 the Petition PDF button for ~46 cases** on the
-> live site. Because of this, code was **cherry-picked** to production (not a straight
-> `merge main`), and a future routine `git merge main` would silently carry `f7a3003` over.
-> Until the archive serves PDFs: keep cherry-picking code commits, or rebase `f7a3003` out.
+> **CORRECTION (verified live 2026-07-11): `f7a3003` is actually SAFE to deploy.** My
+> earlier concern — that untracking `data/pdfs/` would 404 the "Petition PDF" button — was
+> WRONG. The frontend `openPetitionPDF()` does `fetch('/api/petition/'+cn).then(r=>r.json())`
+> and uses `data.url` = the stored `petition_href` (a courtsportal.dallascounty.org
+> DocumentViewer URL). It NEVER uses the local PDF file: a `FileResponse` fallback would
+> break `r.json()` and just hide the button, and there are **0 frontend references to
+> `/api/pdf`**. So removing `data/pdfs/` breaks nothing user-facing. This deploy still
+> cherry-picked the 4 code commits (harmless over-caution); a future straight `git merge
+> main` carrying `f7a3003` is FINE and would slim the ~237MB corpus out of the container.
+> (The petition button works only for the 31/112 cases that have a `petition_href`; that's a
+> separate coverage gap, unrelated to local files.)
 
 ## Roadmap progress
 
