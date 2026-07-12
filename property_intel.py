@@ -508,42 +508,37 @@ async def scrape_dallas_act(account_number: str, browser) -> dict:
         await asyncio.sleep(2)
         text = await page.inner_text("body")
 
-        # Parse table rows: date  amount  years  payer
-        # Parse payment table using regex on full text
-        payment_matches = re.findall(
-            r'(\d{4}-\d{2}-\d{2})\s+\$(\d[\d,\.]+)\s+([\d,\s]+?)\s+([A-Z][A-Z\s]+?)(?=\d{4}-|$)',
-            text, re.MULTILINE
-        )
-        for date, amount, years, payer in payment_matches[:15]:
-            try:
-                result["payment_history"].append({
-                    "date": date.strip(),
-                    "amount": float(amount.replace(",","")),
-                    "tax_year": years.strip(),
-                    "payer": payer.strip()[:50]
-                })
-            except Exception:
-                pass
-        # Fallback: find dates and surrounding context
-        if not result["payment_history"]:
-            for line in text.splitlines():
-                m = re.match(r'\s*(\d{4}-\d{2}-\d{2})\s+\$(\d[\d,\.]+)\s+(.*)', line)
-                if m:
-                    try:
-                        rest = m.group(3)
-                        years_m = re.search(r'(\d{4}(?:[,\s]+\d{4})*)', rest)
-                        years = years_m.group(1) if years_m else ""
-                        payer = rest[years_m.end():].strip() if years_m else rest
-                        result["payment_history"].append({
-                            "date": m.group(1),
-                            "amount": float(m.group(2).replace(",","")),
-                            "tax_year": years,
-                            "payer": payer[:50]
-                        })
-                    except Exception:
-                        pass
-
-        result["payment_history"] = result["payment_history"][:15]
+        # The ACT payment page renders each field on its OWN line (date, then amount,
+        # then optional tax-year / payer) — NOT single-line rows — and many payments
+        # (older ones especially) have no payer/year at all. The old single-line,
+        # payer-REQUIRED regex dropped those rows and capped at 15 (verified: acct
+        # 00000219142000000 has 7-8 payments, stored 1). Same table-layout bug class as
+        # the DCAD ownership-history fix. Pair each payment date with the $amount that
+        # follows it; capture year/payer only when present; do not require them; no cap.
+        DATE = re.compile(r'^(\d{4}-\d{2}-\d{2})$')
+        AMT  = re.compile(r'^\$?([\d,]+\.\d{2})$')
+        YEAR = re.compile(r'^\d{4}(?:[,\s]+\d{4})*$')
+        _HEADERS = {"PAYMENT AMOUNT", "TAX YEAR PAID", "PAYMENT INFORMATION"}
+        cur = None
+        pays = []
+        for l in (ln.strip() for ln in text.splitlines() if ln.strip()):
+            dm = DATE.match(l)
+            if dm:
+                cur = {"date": dm.group(1), "amount": None, "tax_year": "", "payer": ""}
+                pays.append(cur)
+                continue
+            if cur is None:
+                continue
+            am = AMT.match(l)
+            if am and cur["amount"] is None:
+                try: cur["amount"] = float(am.group(1).replace(",", ""))
+                except Exception: pass
+            elif YEAR.match(l) and not cur["tax_year"]:
+                cur["tax_year"] = l
+            elif re.search(r"[A-Za-z]", l) and not cur["payer"] and l.upper() not in _HEADERS:
+                cur["payer"] = l[:50]
+        # keep only real payment rows (a date paired with an amount)
+        result["payment_history"] = [p for p in pays if p["amount"] is not None][:100]
 
         # Tax by year
         await page.goto(
