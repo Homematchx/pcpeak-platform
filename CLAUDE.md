@@ -404,6 +404,32 @@ an Order of Sale; 3 already have it), and scorecard.py selected calibration case
 - **OPEN:** the 3 prod-facing BPP cases (TX-26-01188/01373/01377) need a data sync +
   production merge to take effect live; batch-1/2 BPP cases are local-only (held).
 
+### Pre-launch review — 3 live-data defects fixed + deployed (2026-07-11)
+1. **OOS projection self-check + staleness.** compute_projection/project() ignored a real
+   oos_date and showed a fabricated projected date at 85% (all 10 confirmed cases), and 53
+   cases flashed stale confidence past a failed projection. Now: real OOS → confirmed date
+   @100% ("Order of Sale ISSUED"); passed-with-no-OOS → "Projection failed — no OOS as of
+   <today>" @0%. Verified live (TX-23-00244 confirmed, TX-22-01443 stale).
+2. **joos confidence calibration.** joos never got ftj's freeze/scrutiny; the n=10 data is
+   bimodal (fast ~40-120d vs contested ~360-557d), so 85% "judgment→high confidence"
+   misrepresented it. Max non-confirmed confidence now 55% ([22,30,45,55]) + a bimodal UI
+   caveat + CITY_DATA doc. Constants NOT changed (same don't-recalibrate-on-small-n rule).
+3. **payment_history parser** (same class as the DCAD ownership-history fix): ACT page is
+   a vertical layout, old regex required a single-line row + a payer + capped at 15 →
+   dropped the majority. Rewrote as date→amount line-pairing. Backfill recovered **2457
+   dropped records across 110/122 cases** (1448→3905 local; prod synced to 3391 for its 112).
+   `payment_backfill.py` is the one-time re-scrape tool.
+Deployed 1&2 to prod via cherry-pick (f7a3003 still held out); synced 3's data to the 112
+prod cases only (held batch-1/2 leads NOT pushed — they still need the dismissed-owing UI label).
+
+### DEFERRED — git history purge (disk was a false alarm)
+The 56MB "critical" reading was macOS APFS immediate-free; purgeable space reclaimed to
+**1.7GB**, so the urgency is gone. The 315MB corpus-in-.git-history is still pure waste worth
+purging eventually (needs `pip install git-filter-repo`; rewrites main+production; removes
+data/pdfs from the prod deploy too — harmless, frontend uses petition_href URLs). Railway
+trigger confirmed SAFE for force-push (watches branch HEAD, not SHA lineage). Do it
+deliberately later, not under (false) disk pressure.
+
 ### Future enhancement (not urgent) — capture the real judgment amount
 The docket's "Total Judgment: of $0.00" is a Tyler source quirk (the real award is in the
 judgment PDF, which we don't download — we only pull the petition PDF). We do NOT store a
