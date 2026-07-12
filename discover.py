@@ -297,6 +297,7 @@ def save_to_db(extracted, memo, owner):
             "all_defendants": json.dumps(extracted.get("allDefendants", [])),
             "property_address": extracted.get("propertyAddress", ""),
             "account_number": extracted.get("accountNumber", ""),
+            "petition_href": extracted.get("petitionHref") or None,
             "law_firm": extracted.get("lawFirm", "LGBS"),
             "plaintiff_attorney": extracted.get("plaintiffAttorney", ""),
             "total_due_filing": extracted.get("totalDueAtFiling") or None,
@@ -771,6 +772,7 @@ class Discoverer:
 
         # Download Original Petition PDF via fresh context
         pdf_text = ""
+        petition_href = ""          # persisted via save_to_db below (needs the row to exist first)
         href = case_info.get("href", "")
         try:
             petition_href = await self.page.evaluate(
@@ -786,14 +788,9 @@ class Discoverer:
                 "return first?first.href:null;"
                 "})()")
             if petition_href:
-                # Save the petition URL to DB for later download
-                with sqlite3.connect(str(DB_PATH)) as _db:
-                    try:
-                        _db.execute("UPDATE cases SET petition_href=? WHERE case_number=?",
-                                   [petition_href, cn])
-                        _db.commit()
-                    except Exception:
-                        pass
+                # NOTE: petition_href is persisted by save_to_db (via extracted below),
+                # NOT here — the row doesn't exist yet, so an UPDATE would be a no-op
+                # (this was the bug that lost petition_href for ~81/112 first-scrape cases).
                 self.log("  Downloading Original Petition...")
                 # Fetch the PDF bytes directly over the authenticated session
                 # instead of waiting for a browser 'download' event. The portal
@@ -894,7 +891,11 @@ class Discoverer:
                 extracted["totalDueAtFiling"] = float(total_m.group(1).replace(",",""))
                 self.log("  Debt from PDF fallback: $" + "{:,.2f}".format(extracted["totalDueAtFiling"]))
 
-        # Save to database first (without memo)
+        # Save to database first (without memo). Persist the petition URL captured at
+        # download time so the "Petition PDF" button works (it was being lost to a
+        # pre-insert UPDATE that no-op'd for first-scrape cases).
+        if petition_href:
+            extracted["petitionHref"] = petition_href
         save_to_db(extracted, "", owner)
 
         addr = extracted.get("propertyAddress", "no address extracted")
