@@ -5,6 +5,34 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-07-12
+
+**Last session shipped (all fixed, verified LIVE on prod):** three pre-launch data-integrity
+defects — (1) OOS projection self-check + staleness, (2) judgment→OOS confidence calibrated to
+the bimodal reality (85%→55% max), (3) payment_history parser recovering 2457 dropped records.
+Full detail in "Pre-launch review — 3 live-data defects fixed + deployed" below. ①② deployed to
+`production` via cherry-pick (f7a3003 still held out); ③'s data synced to the 112 prod cases only
+(batch-1/2 leads still held pending the dismissed-owing UI label). **Git history purge DEFERRED** —
+the disk alarm was false (macOS purgeable; 1.7GB free); see "DEFERRED — git history purge".
+
+**NEXT PRIORITY (fresh session, SCOPING/design only — do not build yet): a prediction ledger +
+outcome-capture layer.** All three defects point at the same structural gap: the platform makes
+predictions (projected OOS date, confidence) but never records them at the moment they're made,
+so it can't reconcile prediction vs actual outcome over time. `compute_projection` recomputes
+live every request (no history); `scorecard.py` backtests only against the CURRENT `oos_date`, so
+it can't measure calibration drift. Scope:
+- **Ledger:** append-only snapshot of each prediction (case, projected_oos, confidence, model
+  inputs, timestamp) when made — never overwritten.
+- **Outcome capture:** record the ACTUAL outcome (real oos_date / dismissal / sale) when it lands,
+  keyed back to the prediction that called it.
+- **Calibration view:** predicted-vs-actual over time, sliced by stage/complexity/city, always
+  showing n= (per [[city-data-frozen-sample-size]]). This is the evidence that would eventually
+  justify un-freezing CITY_DATA at ≥40 closed OOS cases.
+- **Connects to:** `compute_projection` (predictor), `scorecard.py` (current backtester), the
+  `oos_confirmed`/`projection_stale` flags from defect ① (outcome signals).
+- **Open scoping Qs:** storage (new table vs archive.py's raw-capture pattern); snapshot cadence
+  (every scrape vs only on state change); how to treat re-predictions as inputs update.
+
 ## Engineering standard for this project
 
 Every claim about the data has to be checked against the actual source before it's
