@@ -340,11 +340,18 @@ class CaseUpdate(BaseModel):
 
 # ─── CITY BENCHMARKS ──────────────────────────────────────────
 CITY_DATA = {
-    # FROZEN. Do NOT recalibrate these from scorecard data without explicit sign-off.
+    # FROZEN (ftj). Do NOT recalibrate from scorecard data without explicit sign-off.
     # A 2026-07-09 recalibration to ftj [7,11]/[10,16]/[15,28] on n=8 OOS cases was
     # reverted — sample too small. scorecard.py may REPORT observed windows (always
     # tagged with n=), but must not write these constants. Revisit threshold: >=40
     # closed cases with a real oos_date, and only with an explicit go-ahead.
+    #
+    # joos (judgment->OOS) is a POINT over BIMODAL data — do not trust it as precise.
+    # Observed n=10: [0,0,40,41,41,70,119 | 360,379,557] — a fast cluster (~40-120d) and a
+    # contested tail (~360-557d). These constants (60/75/89) capture only the fast path, so
+    # the projected OOS DATE carries wide uncertainty even post-judgment. That's why
+    # post-judgment confidence is moderate (~55%), NOT high — a judgment tells us OOS will
+    # likely happen, not WHEN. Same >=40-case, explicit-sign-off bar before recalibrating.
     "dallas":     {"ftj":{"low":[12,18],"medium":[18,30],"high":[30,48]}, "joos":{"low":60,"medium":75,"high":89}},
     "fort_worth": {"ftj":{"low":[10,15],"medium":[15,24],"high":[24,36]}, "joos":{"low":45,"medium":60,"high":75}},
     "houston":    {"ftj":{"low":[18,28],"medium":[28,42],"high":[42,60]}, "joos":{"low":75,"medium":90,"high":120}},
@@ -398,20 +405,20 @@ def compute_projection(case: dict) -> dict:
         j_date = datetime.strptime(judged, "%Y-%m-%d")
         proj_oos = j_date + timedelta(days=oos_days)
         fj_months = round((j_date - datetime.strptime(filed, "%Y-%m-%d")).days / 30) if filed else None
-        confidence = 85
+        confidence = 55   # joos is bimodal (fast ~40-120d vs contested ~360-557d) — date is uncertain even post-judgment
     elif next_hearing:
         nh = datetime.strptime(next_hearing, "%Y-%m-%d")
         if nh > now:
             est_judgment = nh + timedelta(days=7)
             proj_oos = est_judgment + timedelta(days=oos_days)
             fj_months = round((est_judgment - datetime.strptime(filed, "%Y-%m-%d")).days / 30) if filed else None
-            confidence = 75
+            confidence = 45
     elif filed:
         mid = round((ranges[0]+ranges[1])/2)
         est_judgment = datetime.strptime(filed, "%Y-%m-%d") + timedelta(days=mid*30)
         proj_oos = est_judgment + timedelta(days=oos_days)
         fj_months = mid
-        confidence = {"low":65,"medium":50,"high":35}[complexity]
+        confidence = {"low":40,"medium":30,"high":22}[complexity]
     
     result = {
         "projected_oos": proj_oos.strftime("%Y-%m-%d") if proj_oos else None,

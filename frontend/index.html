@@ -1087,7 +1087,7 @@ function project(cobj) {
     projOOS = new Date(judged.getTime() + oosDays*864e5);
     appealClose = new Date(judged.getTime() + 31*864e5);
     daysPostJ = Math.round((now-judged)/864e5);
-    confidence = ex.orderOfSaleIssued ? 100 : 85;
+    confidence = 55;   // joos bimodal (fast ~40-120d vs contested ~360-557d) — date uncertain even post-judgment
 
   } else if (trialAnchor) {
     // Trial is scheduled — anchor projection to it
@@ -1095,7 +1095,7 @@ function project(cobj) {
     fjMonths = filed ? Math.round((estJudgment-filed)/2592e6) : null;
     projOOS = new Date(estJudgment.getTime() + oosDays*864e5);
     appealClose = new Date(estJudgment.getTime() + 31*864e5);
-    confidence = complexity==="low" ? 78 : complexity==="medium" ? 62 : 48;
+    confidence = complexity==="low" ? 48 : complexity==="medium" ? 40 : 32;
 
   } else if (filed) {
     // Use confirmed Dallas benchmarks for same city+complexity to refine mid estimate
@@ -1106,7 +1106,7 @@ function project(cobj) {
     fjMonths = mid;
     projOOS = new Date(estJudgment.getTime() + oosDays*864e5);
     appealClose = new Date(estJudgment.getTime() + 31*864e5);
-    confidence = complexity==="low" ? 65 : complexity==="medium" ? 50 : 35;
+    confidence = complexity==="low" ? 40 : complexity==="medium" ? 30 : 22;
   }
 
   if (projOOS) {
@@ -1271,6 +1271,7 @@ function renderDetail(c) {
         <div class="proj-lbl">&#128197; Projected Order of Sale &mdash; ${city.n}</div>
         <div class="proj-dt">${fmt(pr.projOOS)}</div>
         <div class="proj-nt">${dNote?`<strong>${dNote}</strong> &middot; `:""}${anchorNote}${city.n} ${ex.complexity||"medium"}-complexity: ${pr.oosDays}-day post-judgment window. ${pr.appealClose&&hasJ?`Appeal window ~${fmt(pr.appealClose)}.`:""} ${!hasJ?`Judgment not yet entered — projected ~${pr.fjMonths} months from filing (${pr.ranges[0]}–${pr.ranges[1]} mo range).`:""} ${pr.projAuction?`Auction est. ~${fmt(pr.projAuction)} (${city.auction}).`:""}</div>
+        <div class="proj-nt" style="color:var(--amber);margin-top:2px">&#9888; judgment&rarr;OOS is <strong>bimodal</strong> (n=10): ~40&ndash;120d fast path vs 360&ndash;557d contested. This date assumes the fast path &mdash; wide uncertainty, hence the moderate confidence.</div>
         <div class="proj-cf"><div class="cfbar"><div class="cffil" style="width:${pr.confidence}%"></div></div>${pr.confidence}% confidence &middot; ${pr.trialAnchor?"Trial anchored":hasJ?"Judgment confirmed":"Filing date estimate"}</div>
       </div>
       <div class="mbox">
