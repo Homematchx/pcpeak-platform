@@ -373,11 +373,27 @@ def compute_projection(case: dict) -> dict:
     
     from datetime import datetime, timedelta
     now = datetime.now()
-    
+
+    # A REAL Order of Sale trumps any projection. If oos_date is on record, show THAT
+    # confirmed date — never a computed estimate over a confirmed fact. (Was: all 10
+    # confirmed-OOS cases showed a fabricated projected date at 85%.)
+    real_oos = (case.get("oos_date") or "").strip()
+    if real_oos:
+        fjm = None
+        if filed and judged:
+            try: fjm = round((datetime.strptime(judged, "%Y-%m-%d") - datetime.strptime(filed, "%Y-%m-%d")).days / 30)
+            except Exception: fjm = None
+        try: dto = (datetime.strptime(real_oos, "%Y-%m-%d") - now).days
+        except Exception: dto = None
+        return {
+            "projected_oos": real_oos, "confidence_pct": 100, "oos_confirmed": True,
+            "filing_to_judgment_months": fjm, "days_to_oos": dto,
+        }
+
     proj_oos = None
     confidence = 0
     fj_months = None
-    
+
     if judged:
         j_date = datetime.strptime(judged, "%Y-%m-%d")
         proj_oos = j_date + timedelta(days=oos_days)
@@ -397,12 +413,20 @@ def compute_projection(case: dict) -> dict:
         fj_months = mid
         confidence = {"low":65,"medium":50,"high":35}[complexity]
     
-    return {
+    result = {
         "projected_oos": proj_oos.strftime("%Y-%m-%d") if proj_oos else None,
         "confidence_pct": confidence,
         "filing_to_judgment_months": fj_months,
         "days_to_oos": (proj_oos - now).days if proj_oos else None,
     }
+    # STALENESS: the projected OOS date has passed and NO real OOS is on record — the
+    # prediction failed. Don't keep flashing stale confidence; say so explicitly.
+    if proj_oos and proj_oos < now:
+        result["projection_stale"] = True
+        result["projection_failed_reason"] = "no OOS as of %s (predicted %s)" % (
+            now.strftime("%Y-%m-%d"), proj_oos.strftime("%Y-%m-%d"))
+        result["confidence_pct"] = 0
+    return result
 
 # ─── API ROUTES ───────────────────────────────────────────────
 

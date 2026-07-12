@@ -1064,6 +1064,20 @@ function project(cobj) {
   const nextH  = ex.nextHearingDate ? new Date(ex.nextHearingDate) : null;
   const trialAnchor = nextH && nextH > now ? nextH : null;
 
+  // A REAL Order of Sale trumps any projection — show THAT confirmed date, never a
+  // computed estimate over a confirmed fact.
+  const realOOS = ex.orderOfSaleDate || cobj.oos_date || ex.oosDate || "";
+  if (realOOS) {
+    const oosD = new Date(realOOS);
+    return { oosConfirmed:true, city, complexity, ranges, oosDays, filed, judged,
+             estJudgment:judged, projOOS:oosD, projAuction:null, appealClose:null,
+             fjMonths:(filed&&judged)?Math.round((judged-filed)/2592e6):null,
+             daysPostJ:judged?Math.round((now-judged)/864e5):null,
+             daysToOOS:Math.round((oosD-now)/864e5),
+             moActive:filed?Math.round((now-filed)/2592e6):null,
+             confidence:100, totalMo:null, trialAnchor:null, phases:{svc:0,trial:0,post:0} };
+  }
+
   let estJudgment, projOOS, projAuction, appealClose;
   let fjMonths = null, daysPostJ = null, confidence = 0;
 
@@ -1104,9 +1118,15 @@ function project(cobj) {
   const moActive  = filed   ? Math.round((now-filed)/2592e6)    : null;
   const totalMo   = (fjMonths||0) + oosDays/30;
 
+  // STALENESS: projected OOS date has passed with no real OOS on record — prediction failed.
+  const projectionStale = !!(projOOS && projOOS < now);
+  const projectionFailedReason = projectionStale
+    ? `no OOS as of ${now.toISOString().slice(0,10)} (predicted ${projOOS.toISOString().slice(0,10)})` : null;
+
   return {city, complexity, ranges, oosDays, filed, judged, estJudgment,
           projOOS, projAuction, appealClose, fjMonths, daysPostJ, daysToOOS,
-          moActive, confidence, totalMo, trialAnchor,
+          moActive, confidence: projectionStale ? 0 : confidence, totalMo, trialAnchor,
+          projectionStale, projectionFailedReason,
           phases:{svc:(fjMonths||0)*.45, trial:(fjMonths||0)*.55, post:oosDays/30}};
 }
 
@@ -1230,7 +1250,21 @@ function renderDetail(c) {
 
   // Projection box
   let projHTML = "";
-  if (pr.projOOS) {
+  if (pr.oosConfirmed) {
+    projHTML = `
+      <div class="proj" style="border-color:#1e5c30">
+        <div class="proj-lbl" style="color:#1e5c30">&#10003; Order of Sale ISSUED &mdash; ${city.n}</div>
+        <div class="proj-dt">${fmt(pr.projOOS)}</div>
+        <div class="proj-nt">Confirmed on the docket${pr.fjMonths?` &middot; ${pr.fjMonths} mo filing&rarr;judgment`:""}. This is a recorded event, not a projection.</div>
+      </div>`;
+  } else if (pr.projectionStale) {
+    projHTML = `
+      <div class="proj" style="border-color:#8a1f1f">
+        <div class="proj-lbl" style="color:#8a1f1f">&#9888; Projection failed &mdash; ${city.n}</div>
+        <div class="proj-dt" style="color:#8a1f1f;font-size:16px">No OOS as of ${fmt(new Date().toISOString().slice(0,10))}</div>
+        <div class="proj-nt">Predicted ~${fmt(pr.projOOS)} has passed with no Order of Sale on record &mdash; the estimate is stale. Re-scrape the docket to confirm current status.</div>
+      </div>`;
+  } else if (pr.projOOS) {
     const anchorNote = pr.trialAnchor ? `Trial scheduled ${fmt(ex.nextHearingDate)} anchors this estimate. ` : "";
     projHTML = `
       <div class="proj">
@@ -2197,7 +2231,9 @@ function renderList() {
   list.innerHTML = pageItems.map(c => {
     const ex = c.extracted, city = CITIES[c.city]||CITIES.dallas, pr = project(c);
     const hasJ = !!ex.judgmentDate, oos = ex.orderOfSaleIssued;
-    const ds = pr.daysToOOS!==null ? (pr.daysToOOS>0?`~${pr.daysToOOS}d to OOS`:"OOS due") : "";
+    const ds = pr.oosConfirmed ? "OOS issued"
+             : pr.projectionStale ? "proj. failed"
+             : pr.daysToOOS!==null ? (pr.daysToOOS>0?`~${pr.daysToOOS}d to OOS`:"OOS due") : "";
     const acq = getAcqPriority(ex);
     const acqDot = oos?"var(--red)":hasJ?"var(--amber)":ex.stage==="sale_pulled"?"#7a1e7a":"var(--blue)";
     const rep = (c.rep_assigned||"").trim();
