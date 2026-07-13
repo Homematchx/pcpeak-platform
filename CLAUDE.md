@@ -31,6 +31,35 @@ resolved decisions. Highlights the build must honor:
 - **Connects to:** `compute_projection` (predictor), `scorecard.py` (migrate it to read the ledger
   + report by `model_version`), the `oos_confirmed`/`projection_stale`/`case_track` outcome signals.
 
+## INCIDENT (2026-07-13) — 36 cases synced to prod prematurely: a PROCESS gap, not a data bug
+
+**What happened.** The held batch-1/2 cases (21 BPP + 16 dismissed-owing leads) went live on prod
+via a `sync_to_prod.py` run when only one case was meant to be pushed — prod jumped **112 → 148**.
+It was NOT assessed when it happened and stayed open through a full architecture session (ledger
+design + restore guard) until directly asked about. Recording it as a **process** failure, not a
+data one.
+
+**Why it happened.** `sync_to_prod.py` has **no distinction between "exists locally" and "approved
+for prod."** Its default / `--update-existing` modes push every local case not already on prod, so
+a routine sync silently promotes everything in the local DB — including work-in-progress leads
+deliberately held back. There is no "ready for prod" gate; the only safeguard is remembering to
+pass `--only`/`--dry-run`.
+
+**Resolution — fix-forward, not rollback.** Rollback would mean deleting rows from the prod DB via
+the raw `railway run` path — the exact unguarded DR vector this session structurally eliminated
+(ledger.db separation) — to fix a state that already displays correctly. Not worth it. Severity
+assessment: the fixes shipped this session (BPP→N/A, `case_track` classification, projection
+staleness, balance-as-distress) mean the live cases display reasonably; the one real gap was the
+**dismissed-owing UI label**, which was then BUILT (`dismissedBadge`: "⚠ DISMISSED · OWES $X",
+paid = muted) and deployed to prod. No data corruption, no fabricated values.
+
+**FOLLOW-UP (not urgent, but real): give `sync_to_prod.py` a structural "approved for prod" gate.**
+The same way the restore path was made structurally safe, this class of mistake should be made
+structurally hard to repeat — not guarded by memory. Options: a per-case `prod_ready` column (only
+`prod_ready=1` cases sync), or an explicit allowlist the sync must be handed. Until then, ALWAYS
+run `--only <case>` or `--dry-run` first; never a bare / `--update-existing` sync. See
+[[sync-approved-for-prod-gate]].
+
 ## Engineering standard for this project
 
 Every claim about the data has to be checked against the actual source before it's
