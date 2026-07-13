@@ -9,6 +9,7 @@ import sqlite3
 import json
 import os
 import re
+import hashlib
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional, List
@@ -470,6 +471,7 @@ def compute_projection(case: dict) -> dict:
             "projected_oos": None, "confidence_pct": 0,
             "filing_to_judgment_months": None, "days_to_oos": None,
             "projection_na": True, "projection_na_reason": "business personal property",
+            "basis": "na_bpp",
         }
     city = CITY_DATA.get(case.get("city","dallas"), CITY_DATA["dallas"])
     complexity = case.get("complexity","medium")
@@ -497,18 +499,20 @@ def compute_projection(case: dict) -> dict:
         except Exception: dto = None
         return {
             "projected_oos": real_oos, "confidence_pct": 100, "oos_confirmed": True,
-            "filing_to_judgment_months": fjm, "days_to_oos": dto,
+            "filing_to_judgment_months": fjm, "days_to_oos": dto, "basis": "confirmed",
         }
 
     proj_oos = None
     confidence = 0
     fj_months = None
+    basis = "none"
 
     if judged:
         j_date = datetime.strptime(judged, "%Y-%m-%d")
         proj_oos = j_date + timedelta(days=oos_days)
         fj_months = round((j_date - datetime.strptime(filed, "%Y-%m-%d")).days / 30) if filed else None
         confidence = 55   # joos is bimodal (fast ~40-120d vs contested ~360-557d) — date is uncertain even post-judgment
+        basis = "judged"
     elif next_hearing:
         nh = datetime.strptime(next_hearing, "%Y-%m-%d")
         if nh > now:
@@ -516,18 +520,21 @@ def compute_projection(case: dict) -> dict:
             proj_oos = est_judgment + timedelta(days=oos_days)
             fj_months = round((est_judgment - datetime.strptime(filed, "%Y-%m-%d")).days / 30) if filed else None
             confidence = 45
+            basis = "next_hearing"
     elif filed:
         mid = round((ranges[0]+ranges[1])/2)
         est_judgment = datetime.strptime(filed, "%Y-%m-%d") + timedelta(days=mid*30)
         proj_oos = est_judgment + timedelta(days=oos_days)
         fj_months = mid
         confidence = {"low":40,"medium":30,"high":22}[complexity]
-    
+        basis = "filed"
+
     result = {
         "projected_oos": proj_oos.strftime("%Y-%m-%d") if proj_oos else None,
         "confidence_pct": confidence,
         "filing_to_judgment_months": fj_months,
         "days_to_oos": (proj_oos - now).days if proj_oos else None,
+        "basis": basis,
     }
     # STALENESS: the projected OOS date has passed and NO real OOS is on record — the
     # prediction failed. Don't keep flashing stale confidence; say so explicitly.
@@ -536,7 +543,119 @@ def compute_projection(case: dict) -> dict:
         result["projection_failed_reason"] = "no OOS as of %s (predicted %s)" % (
             now.strftime("%Y-%m-%d"), proj_oos.strftime("%Y-%m-%d"))
         result["confidence_pct"] = 0
+        # NB: `basis` stays the underlying branch (judged/filed/next_hearing) — staleness is a
+        # DISPLAY status (projection_stale), not how the prediction was made. For the ledger, a
+        # stale forward prediction keeps basis='judged' and is resolved to expired_no_oos by the
+        # sweep — so it's still counted as the (failed) forward prediction it was.
     return result
+
+# ─── PREDICTION LEDGER (design doc §6) — logged on the WRITE path only, never reads ──
+def _prediction_snapshot(case: dict, proj: dict) -> dict:
+    """The immutable inputs + outputs that define one prediction (for input_hash + the row)."""
+    city = CITY_DATA.get(case.get("city", "dallas"), CITY_DATA["dallas"])
+    complexity = case.get("complexity", "medium")
+    complexity = complexity if complexity in city["ftj"] else "low"
+    ftj = city["ftj"][complexity]; joos = city["joos"][complexity]
+    return {
+        "case_number": case.get("case_number"),
+        "model_version": MODEL_VERSION,
+        "prediction_basis": proj.get("basis", "none"),
+        "projected_oos": proj.get("projected_oos"),
+        "confidence_pct": proj.get("confidence_pct"),
+        "days_to_oos": proj.get("days_to_oos"),
+        "filing_to_judgment_months": proj.get("filing_to_judgment_months"),
+        "in_city": case.get("city", "dallas"),
+        "in_complexity": complexity,
+        "in_stage": case.get("stage"),
+        "in_filed_date": case.get("filed_date"),
+        "in_judgment_date": case.get("judgment_date"),
+        "in_next_hearing_date": case.get("next_hearing_date"),
+        "in_oos_issued": 1 if case.get("oos_issued") else 0,
+        "used_joos_days": joos, "used_ftj_low": ftj[0], "used_ftj_high": ftj[1],
+    }
+
+def _prediction_input_hash(snap: dict) -> str:
+    # Hash the PREDICTION DRIVERS (NOT predicted_at, and NOT confidence_pct/in_stage which are
+    # derived or display-mutated — confidence gets zeroed when a projection goes stale, and
+    # stage is contextual metadata; including either would log a spurious new row when nothing
+    # about the prediction actually changed). basis + projected_oos + the driving inputs +
+    # model_version fully identify a prediction; a MODEL_VERSION bump forces a fresh row.
+    keys = ["model_version", "prediction_basis", "projected_oos", "in_city",
+            "in_complexity", "in_filed_date", "in_judgment_date",
+            "in_next_hearing_date", "in_oos_issued"]
+    return hashlib.sha256("|".join(str(snap.get(k)) for k in keys).encode()).hexdigest()
+
+def log_prediction(db, case: dict, proj: dict):
+    """Append a prediction_ledger row IF it meaningfully differs from this case's most-recent
+    row (input_hash change) — new row per meaningful change, never version-in-place. Called
+    from create_case (the WRITE path) only. BPP (na_bpp) is not a real-estate prediction and is
+    not logged. Authoritative write to ledger.db is single-file; a crash-split just means the
+    row re-logs next write (machine-derived, self-heals — design §12)."""
+    snap = _prediction_snapshot(case, proj)
+    if not snap["case_number"] or snap["prediction_basis"] == "na_bpp":
+        return
+    h = _prediction_input_hash(snap)
+    last = db.execute("SELECT input_hash FROM ledger.prediction_ledger WHERE case_number=? "
+                      "ORDER BY id DESC LIMIT 1", [snap["case_number"]]).fetchone()
+    if last and last["input_hash"] == h:
+        return  # nothing meaningful changed since the last recorded prediction
+    cols = list(snap.keys()) + ["input_hash"]
+    db.execute(f"INSERT INTO ledger.prediction_ledger ({','.join(cols)}) "
+               f"VALUES ({','.join(['?']*len(cols))})", [snap[k] for k in snap] + [h])
+
+def reconcile(db, case_number: str):
+    """When a real outcome lands (oos_date / dismissal / sale), resolve this case's unresolved
+    FORWARD-prediction rows against it — one-time pending->resolved, prediction fields never
+    touched. Idempotent (only outcome_type IS NULL rows). Called from create_case after the
+    case row is written."""
+    row = db.execute("SELECT oos_date, case_track, sale_scheduled_date FROM cases "
+                     "WHERE case_number=?", [case_number]).fetchone()
+    if not row:
+        return
+    oos = (row["oos_date"] or "").strip()
+    track = row["case_track"] or ""
+    outcome_type = outcome_date = None
+    if oos:
+        outcome_type, outcome_date = "oos_issued", oos
+    elif track in ("dismissed_owing", "dismissed_paid"):
+        outcome_type = "dismissed"          # a dismissal has no single 'outcome date' we trust
+    elif row["sale_scheduled_date"]:
+        outcome_type, outcome_date = "sale", row["sale_scheduled_date"]
+    if not outcome_type:
+        return                              # no resolving signal yet
+    now_iso = datetime.now().isoformat()
+    for r in db.execute(
+            "SELECT id, projected_oos FROM ledger.prediction_ledger WHERE case_number=? "
+            "AND outcome_type IS NULL AND prediction_basis IN ('judged','next_hearing','filed')",
+            [case_number]).fetchall():
+        err = None
+        if outcome_type == "oos_issued" and r["projected_oos"] and outcome_date:
+            try:
+                err = (datetime.strptime(outcome_date, "%Y-%m-%d")
+                       - datetime.strptime(r["projected_oos"], "%Y-%m-%d")).days
+            except Exception:
+                err = None
+        db.execute("UPDATE ledger.prediction_ledger SET outcome_type=?, outcome_date=?, "
+                   "error_days=?, resolved_at=? WHERE id=?",
+                   [outcome_type, outcome_date, err, now_iso, r["id"]])
+
+def sweep_expired(db) -> int:
+    """Batch: mark forward predictions whose projected_oos passed by > PREDICTION_EXPIRY_DAYS
+    with no outcome as expired_no_oos (a measured miss). Batch, not per-case — a case that goes
+    quiet is exactly when it needs this. Returns count marked."""
+    now = datetime.now(); n = 0
+    for r in db.execute(
+            "SELECT id, projected_oos FROM ledger.prediction_ledger WHERE outcome_type IS NULL "
+            "AND prediction_basis IN ('judged','next_hearing','filed') "
+            "AND projected_oos IS NOT NULL").fetchall():
+        try:
+            if (now - datetime.strptime(r["projected_oos"], "%Y-%m-%d")).days > PREDICTION_EXPIRY_DAYS:
+                db.execute("UPDATE ledger.prediction_ledger SET outcome_type='expired_no_oos', "
+                           "resolved_at=? WHERE id=?", [now.isoformat(), r["id"]])
+                n += 1
+        except Exception:
+            pass
+    return n
 
 # ─── API ROUTES ───────────────────────────────────────────────
 
@@ -645,6 +764,18 @@ async def create_case(data: dict):
         rep = (write.get("rep_assigned") or "").strip()
         if rep:
             db.execute("INSERT OR IGNORE INTO reps (name) VALUES (?)", [rep])
+
+        # Prediction ledger (design §6): record this prediction if it meaningfully changed,
+        # then reconcile any unresolved forward predictions against a real outcome. This is the
+        # sanctioned WRITE-path log point (never the read paths). `merged` carries both the case
+        # inputs and the compute_projection outputs (incl. basis). Wrapped so ledger logging can
+        # never break a case write.
+        try:
+            merged["case_number"] = cn
+            log_prediction(db, merged, merged)
+            reconcile(db, cn)
+        except Exception:
+            pass
 
     return {"status":"ok","case_number":cn}
 

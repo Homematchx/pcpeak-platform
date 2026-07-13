@@ -32,6 +32,11 @@ def snapshot(table):
         rows = [dict(r) for r in db.execute(f"SELECT * FROM ledger.{table} ORDER BY id").fetchall()]
     return len(rows), hashlib.sha256(json.dumps(rows, sort_keys=True, default=str).encode()).hexdigest()
 
+def rows_by_id(table):
+    with main.get_db() as db:
+        return {r["id"]: json.dumps(dict(r), sort_keys=True, default=str)
+                for r in db.execute(f"SELECT * FROM ledger.{table}").fetchall()}
+
 def setup_ledger_fixtures():
     # init_db (called first in run()) creates the real ledger schema; just seed dummy rows,
     # honoring the NOT NULL columns (model_version, prediction_basis, input_hash).
@@ -44,6 +49,7 @@ def run():
     main.init_db()                     # main schema (cases/events/reps/...); get_db attaches ledger.db
     setup_ledger_fixtures()
     pl0, ra0 = snapshot("prediction_ledger"), snapshot("rep_actions")
+    pl_ids0, ra_ids0 = rows_by_id("prediction_ledger"), rows_by_id("rep_actions")
 
     # ── A. STRUCTURAL DR-SAFETY: a raw pcpeak.db dump/restore cannot reference ledger.db ──
     raw = sqlite3.connect(main.DB_PATH)          # main only — ledger NOT attached to this conn
@@ -73,7 +79,15 @@ def run():
         r2 = client.post("/api/cases", json={"case_number":"TX-99-00001","property_address":"1 Main St"})
         r3 = client.post("/api/events/TX-99-00001", json=[{"event_date":"2025-06-01","event_type":"JUDGMENT","description":"x"}])
     check("restore POSTs succeeded (200)", r1.status_code==200 and r2.status_code==200 and r3.status_code==200)
-    check("restore path leaves prod-owned tables byte-identical", snapshot("prediction_ledger")==pl0 and snapshot("rep_actions")==ra0)
+    # create_case now LOGS a prediction (append-only), so the invariant is no longer
+    # "byte-identical" — it's "no pre-existing prod-owned row is deleted or mutated" (append OK).
+    pl_now, ra_now = rows_by_id("prediction_ledger"), rows_by_id("rep_actions")
+    check("restore preserves every pre-existing prediction_ledger row unchanged (append-only)",
+          all(pl_now.get(i) == v for i, v in pl_ids0.items()))
+    check("restore preserves every pre-existing rep_actions row unchanged",
+          all(ra_now.get(i) == v for i, v in ra_ids0.items()))
+    check("restore never deleted a prod-owned row (count only grew or held)",
+          len(pl_now) >= len(pl_ids0) and len(ra_now) >= len(ra_ids0))
 
     # ── D. Legit append (logging) + one-time column-fill (reconcile) still WORK ──
     ok = False
