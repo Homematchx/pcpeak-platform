@@ -1238,7 +1238,9 @@ function renderDetail(c) {
   const cbdg = {low:"bdg-green",medium:"bdg-amber",high:"bdg-red"}[ex.complexity||"medium"];
   const dNote = pr.daysToOOS!==null ? (pr.daysToOOS>0 ? `~${pr.daysToOOS} days away` : "Past projected — check docket") : "";
   const acq = getAcqPriority(ex);
-  const statusBdg = oosIssued ? `<span class="bdg bdg-green">OOS Issued</span>` :
+  const dbadge = dismissedBadge(c);
+  const statusBdg = dbadge ? dbadge :
+                    oosIssued ? `<span class="bdg bdg-green">OOS Issued</span>` :
                     hasJ      ? `<span class="bdg bdg-amber">OOS Pending</span>` :
                     ex.nextHearingDate ? `<span class="bdg bdg-blue">Trial Scheduled</span>` :
                                 `<span class="bdg bdg-blue">Pre-Judgment</span>`;
@@ -2139,6 +2141,21 @@ function caseTrack(c){
   return hasJ ? "judged_pending" : "active";
 }
 
+// Dismissed-but-owing is a LIVE LEAD, not a closed case: dismissal != resolved (the tax
+// balance is the distress signal — see the $72k TX-23-00423 case). Without this, a dismissed
+// case has a judgment_date so it reads as "OOS Pending"/amber — misleading. Returns badge
+// HTML for dismissed cases (owing = amber lead w/ balance; paid = muted/dead), "" otherwise.
+function dismissedBadge(c){
+  var t=caseTrack(c);
+  if(t!=="dismissed_owing" && t!=="dismissed_paid") return "";
+  if(t==="dismissed_paid")
+    return `<span class="bdg" style="background:var(--surface3);color:var(--text3);border:1px solid var(--border2)">Dismissed &middot; paid</span>`;
+  var pi=(c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel)||{};
+  var bal=pi.current_tax_balance;
+  var amt=(bal!=null) ? "OWES "+fmtC(bal) : "still owes (balance unknown)";
+  return `<span class="bdg bdg-amber" title="Case dismissed/non-suited but taxes remain owed — a live lead, not a resolved case (dismissal ≠ resolved)">&#9888; DISMISSED &middot; ${amt}</span>`;
+}
+
 function getFilteredCases(){
   var q = (window._search||"").trim().toLowerCase();
   var f = window._filters||{};
@@ -2232,7 +2249,9 @@ function renderList() {
   list.innerHTML = pageItems.map(c => {
     const ex = c.extracted, city = CITIES[c.city]||CITIES.dallas, pr = project(c);
     const hasJ = !!ex.judgmentDate, oos = ex.orderOfSaleIssued;
-    const ds = pr.oosConfirmed ? "OOS issued"
+    const dbadge = dismissedBadge(c);
+    const ds = dbadge ? ""     // dismissed cases don't have a meaningful OOS projection
+             : pr.oosConfirmed ? "OOS issued"
              : pr.projectionStale ? "proj. failed"
              : pr.daysToOOS!==null ? (pr.daysToOOS>0?`~${pr.daysToOOS}d to OOS`:"OOS due") : "";
     const acq = getAcqPriority(ex);
@@ -2254,6 +2273,7 @@ function renderList() {
             var dflt=nl?'No valid DCAD account — manual lookup owed (not enriched)':'Extracted account is malformed — needs correction (not enriched)';
             var tip=(c.account_note||dflt).replace(/"/g,'&quot;');
             return `<span title="${tip}" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${nl?'#8a5a00':'#8a1f1f'};color:#fff;border:1px solid ${nl?'#8a5a00':'#8a1f1f'}">&#9888; ${nl?'NEEDS ACCT':'BAD ACCT'}</span>`;})()}
+          ${dbadge}
           ${ds?`<span style="font-size:10px;color:${acqDot};font-weight:600">${ds}</span>`:""}
           ${rep?`<span style="font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text2);border:1px solid var(--border2)">&#128100; ${rep}</span>`:""}
         </div>
