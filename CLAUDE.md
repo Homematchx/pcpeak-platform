@@ -465,6 +465,32 @@ an Order of Sale; 3 already have it), and scorecard.py selected calibration case
 - **OPEN:** the 3 prod-facing BPP cases (TX-26-01188/01373/01377) need a data sync +
   production merge to take effect live; batch-1/2 BPP cases are local-only (held).
 
+### BPP: escalated from detect-and-skip to NEVER STORE + PURGED (2026-07-13)
+Direction changed — the platform must not store personal-property data at all, not just
+exclude it from math. Three structural guards ("physically impossible, not procedurally
+discouraged" — same standard as ledger.db), then a purge:
+- **Search-level filter — NOT feasible (verified live).** `case_type` is uniformly
+  "TAX DELINQUENCY" (real + personal + null); the portal Smart Search has zero filters; the
+  real/personal split lives ONLY in the docket Comment field, unknowable until the docket is
+  fetched. So "zero portal contact" is impossible — the Comment check (already before Claude
+  extraction) is the earliest detection the data allows.
+- **`sync_to_prod.py` structural filter** — `local_cases()` selects `WHERE property_type IS NOT
+  'personal' AND property_type IS NOT 'unknown' AND case_track IS NOT 'personal_property'`, so
+  NO path (default / --update-existing / a forgotten --only) can push a BPP (or undetermined)
+  case. Direct structural fix for the 36-case incident. Verified: --only on a BPP case refused.
+- **`property_type='unknown'` review state** — a new scrape with no docket Comment is tagged
+  'unknown' (not silently 'real') and held from sync until a human confirms. The 3 existing
+  null cases (TX-25-00492/22-01443/23-00553) are already-live likely-real closed foreclosures —
+  deliberately NOT backfilled (would mislabel real cases).
+- **Guarded delete** — `DELETE /api/cases/{cn}` deletes ONLY when the row is
+  property_type='personal', enforced IN THE WHERE CLAUSE (`DELETE FROM cases WHERE case_number=?
+  AND property_type='personal'`) — a real case number matches 0 rows and is refused (409), DB-
+  level not caller-trusted. test_bpp_delete_guard.py 11/11; verified live on prod (real case
+  refused + survives).
+- **PURGED both sides (2026-07-13):** 21 BPP deleted from prod (via the guarded endpoint) and
+  local. Both now 148→**127 cases, 0 BPP**, non-BPP unchanged at 127, 0 orphan events. The
+  platform no longer stores personal-property data anywhere.
+
 ### Pre-launch review — 3 live-data defects fixed + deployed (2026-07-11)
 1. **OOS projection self-check + staleness.** compute_projection/project() ignored a real
    oos_date and showed a fabricated projected date at 85% (all 10 confirmed cases), and 53
