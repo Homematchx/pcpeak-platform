@@ -33,14 +33,11 @@ def snapshot(table):
     return len(rows), hashlib.sha256(json.dumps(rows, sort_keys=True, default=str).encode()).hexdigest()
 
 def setup_ledger_fixtures():
+    # init_db (called first in run()) creates the real ledger schema; just seed dummy rows,
+    # honoring the NOT NULL columns (model_version, prediction_basis, input_hash).
     with main.get_db() as db:
-        db.execute("CREATE TABLE IF NOT EXISTS ledger.prediction_ledger "
-                   "(id INTEGER PRIMARY KEY AUTOINCREMENT, case_number TEXT, projected_oos TEXT, "
-                   " confidence_pct INTEGER, prediction_basis TEXT, outcome_type TEXT, error_days INTEGER)")
-        db.execute("CREATE TABLE IF NOT EXISTS ledger.rep_actions "
-                   "(id INTEGER PRIMARY KEY AUTOINCREMENT, case_number TEXT, rep TEXT, action_type TEXT)")
-        db.execute("INSERT INTO ledger.prediction_ledger (case_number,projected_oos,confidence_pct,prediction_basis) VALUES ('TX-99-00001','2026-09-01',55,'judged')")
-        db.execute("INSERT INTO ledger.prediction_ledger (case_number,projected_oos,confidence_pct,prediction_basis) VALUES ('TX-99-00002','2026-10-01',40,'filed')")
+        db.execute("INSERT INTO ledger.prediction_ledger (case_number,model_version,prediction_basis,projected_oos,confidence_pct,input_hash) VALUES ('TX-99-00001','test-v1','judged','2026-09-01',55,'h1')")
+        db.execute("INSERT INTO ledger.prediction_ledger (case_number,model_version,prediction_basis,projected_oos,confidence_pct,input_hash) VALUES ('TX-99-00002','test-v1','filed','2026-10-01',40,'h2')")
         db.execute("INSERT INTO ledger.rep_actions (case_number,rep,action_type) VALUES ('TX-99-00001','alice','contact_made')")
 
 def run():
@@ -82,7 +79,7 @@ def run():
     ok = False
     try:
         with main.get_db() as db:
-            db.execute("INSERT INTO ledger.prediction_ledger (case_number,projected_oos,confidence_pct,prediction_basis) VALUES ('TX-99-00003','2026-11-01',30,'judged')")
+            db.execute("INSERT INTO ledger.prediction_ledger (case_number,model_version,prediction_basis,projected_oos,confidence_pct,input_hash) VALUES ('TX-99-00003','test-v1','judged','2026-11-01',30,'h3')")
             db.execute("UPDATE ledger.prediction_ledger SET outcome_type='oos_issued', error_days=12 WHERE case_number='TX-99-00003'")
             db.execute("INSERT INTO ledger.rep_actions (case_number,rep,action_type) VALUES ('TX-99-00003','bob','offer')")
         ok = True

@@ -255,6 +255,55 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(case_status);
         CREATE INDEX IF NOT EXISTS idx_cases_stage ON cases(stage);
         CREATE INDEX IF NOT EXISTS idx_events_case ON docket_events(case_number);
+
+        -- ── PROD-OWNED schema in the attached `ledger` file (design doc §4/§5/§13). Both
+        -- tables are append-only (+ a one-time reconcile column-fill on prediction_ledger);
+        -- the get_db() authorizer denies DELETE/DROP on them, and they live in a separate
+        -- file so a raw pcpeak.db restore can't touch them. ──
+        CREATE TABLE IF NOT EXISTS ledger.prediction_ledger (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_number          TEXT NOT NULL,
+            predicted_at         TEXT NOT NULL DEFAULT (datetime('now')),
+            model_version        TEXT NOT NULL,
+            prediction_basis     TEXT NOT NULL,          -- confirmed|judged|next_hearing|filed|none|na_bpp
+            projected_oos        TEXT,
+            confidence_pct       INTEGER,
+            days_to_oos          INTEGER,
+            filing_to_judgment_months INTEGER,
+            in_city              TEXT,
+            in_complexity        TEXT,
+            in_stage             TEXT,
+            in_filed_date        TEXT,
+            in_judgment_date     TEXT,
+            in_next_hearing_date TEXT,
+            in_oos_issued        INTEGER,
+            used_joos_days       INTEGER,
+            used_ftj_low         INTEGER,
+            used_ftj_high        INTEGER,
+            input_hash           TEXT NOT NULL,          -- change-detection (new row only on meaningful change)
+            outcome_type         TEXT,                   -- NULL until resolved; oos_issued|dismissed|sale|expired_no_oos
+            outcome_date         TEXT,
+            error_days           INTEGER,                -- signed: actual_oos - projected_oos
+            resolved_at          TEXT
+        );
+        CREATE INDEX IF NOT EXISTS ledger.idx_pl_case  ON prediction_ledger(case_number, predicted_at);
+        CREATE INDEX IF NOT EXISTS ledger.idx_pl_open  ON prediction_ledger(case_number) WHERE outcome_type IS NULL;
+        CREATE INDEX IF NOT EXISTS ledger.idx_pl_model ON prediction_ledger(model_version);
+
+        CREATE TABLE IF NOT EXISTS ledger.rep_actions (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_number  TEXT NOT NULL,
+            rep          TEXT,
+            action_at    TEXT NOT NULL DEFAULT (datetime('now')),
+            action_type  TEXT NOT NULL,          -- contact_attempted|contact_made|response|offer|result
+            channel      TEXT,                   -- call|email|door|mail
+            response     TEXT,                   -- no_answer|callback|interested|not_interested|hostile
+            offer_amount REAL,
+            result       TEXT,                   -- deal|dead|pending|redeemed|lost
+            note         TEXT,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS ledger.idx_ra_case ON rep_actions(case_number, action_at);
         """)
     
     # Seed known benchmarks
@@ -287,6 +336,11 @@ def init_db():
             # excluded from real-estate timing/equity + the CITY_DATA calibration. Set by
             # discover.py at scrape time (cloud can't read dockets, so it's stored not derived).
             ("property_type", "TEXT"),
+            # DERIVED caches of the prod-owned rep_actions log (which lives in ledger.db).
+            # Recomputable from rep_actions at any time — see design §12 (WAL self-heal:
+            # authoritative writes are single-DB, these caches self-heal on next write).
+            ("deal_status", "TEXT"),      # not_contacted|contacted|in_conversation|offer_out|won|dead
+            ("last_action_at", "TEXT"),
         ]:
             if col not in cols:
                 db.execute(f"ALTER TABLE cases ADD COLUMN {col} {typedef}")
@@ -375,6 +429,17 @@ class CaseUpdate(BaseModel):
     ai_memo: Optional[str] = None
     complexity: Optional[str] = None
     notes: Optional[str] = None
+
+# ─── PREDICTION LEDGER CONSTANTS (see docs/prediction-ledger-design.md §3) ────
+# Bump on ANY change to compute_projection() logic OR the CITY_DATA constants. Every ledger
+# row stores the version it was made under, so calibration can compare accuracy across models
+# ("did the recalibration improve error?"). Format: date + short descriptor.
+MODEL_VERSION = "2026-07-13-ftj-frozen-joos-bimodal"
+
+# A forward prediction whose projected_oos has passed by more than this with no real outcome is
+# marked expired_no_oos (a measured miss, not a silent gap). Named, not inline — the ledger
+# should eventually tell us whether 90 is the right threshold (§12).
+PREDICTION_EXPIRY_DAYS = 90
 
 # ─── CITY BENCHMARKS ──────────────────────────────────────────
 CITY_DATA = {
