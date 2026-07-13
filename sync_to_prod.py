@@ -56,22 +56,25 @@ def api(method, path, body=None):
 
 
 def local_cases(db):
-    # STRUCTURAL BPP EXCLUSION — business personal-property suits must NEVER reach prod (a
-    # different legal instrument; this platform does not publish personal-property data).
-    # Filtered at the source so NO path — default, --update-existing, or a forgotten
-    # --only — can push one. This is the direct structural fix for the 2026-07-13 36-case
-    # incident: not "remember to hold BPP back," but physically impossible. `IS NOT` (not
-    # `!=`) so NULL/untagged property_type is KEPT (only an explicit BPP tag is excluded).
+    # STRUCTURAL EXCLUSION — only CONFIRMED real-property cases reach prod. Filtered at the
+    # source so NO path (default, --update-existing, or a forgotten --only) can push one:
+    #   - property_type='personal' — BPP, a different legal instrument; we don't publish
+    #     personal-property data. Direct structural fix for the 2026-07-13 36-case incident:
+    #     not "remember to hold BPP back," but physically impossible.
+    #   - property_type='unknown' — no docket Comment field; property type undetermined. Held
+    #     for manual review, never silently published as real.
+    # `IS NOT` (not `!=`) so NULL/legacy-untagged rows are KEPT (only explicit tags excluded).
     rows = db.execute(
         "SELECT * FROM cases WHERE property_type IS NOT 'personal' "
-        "AND case_track IS NOT 'personal_property'").fetchall()
+        "AND property_type IS NOT 'unknown' AND case_track IS NOT 'personal_property'").fetchall()
     return {r["case_number"]: dict(r) for r in rows if r["case_number"]}
 
 
-def excluded_bpp_count(db):
-    return db.execute(
-        "SELECT COUNT(*) FROM cases WHERE property_type IS 'personal' "
-        "OR case_track IS 'personal_property'").fetchone()[0]
+def excluded_counts(db):
+    bpp = db.execute("SELECT COUNT(*) FROM cases WHERE property_type IS 'personal' "
+                     "OR case_track IS 'personal_property'").fetchone()[0]
+    unk = db.execute("SELECT COUNT(*) FROM cases WHERE property_type IS 'unknown'").fetchone()[0]
+    return bpp, unk
 
 
 def local_events(db, case_number):
@@ -129,9 +132,11 @@ def main():
 
     db = sqlite3.connect(DB_PATH); db.row_factory = sqlite3.Row
     local = local_cases(db)
-    n_bpp = excluded_bpp_count(db)
+    n_bpp, n_unk = excluded_counts(db)
     if n_bpp:
         print(f"BPP structurally excluded (never synced — personal property): {n_bpp}")
+    if n_unk:
+        print(f"Undetermined property type held for manual review (not synced): {n_unk}")
 
     if args.only:
         want = {c.strip() for c in args.only.split(",") if c.strip()}

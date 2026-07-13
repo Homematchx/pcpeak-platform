@@ -1008,10 +1008,19 @@ class Discoverer:
             _track = case_track_of(_ptype, _oos,
                                    extracted.get("judgmentType"),
                                    extracted.get("judgmentDate"), _bal)
+            # UNDETERMINED property type (no docket Comment field — the 'no docket' edge
+            # cases): do NOT silently default to real property. Tag 'unknown' so it is a
+            # visible, queryable manual-review state; sync_to_prod holds 'unknown' back from
+            # prod (same as 'personal') until a human confirms real vs personal.
+            _ptype_store = _ptype if _ptype else "unknown"
             with sqlite3.connect(str(DB_PATH)) as _db:
                 _db.execute("UPDATE cases SET case_track=?, property_type=? WHERE case_number=?",
-                            [_track, _ptype, cn]); _db.commit()
-            self.log("  Track: " + _track + (" [property_type=" + _ptype + "]" if _ptype else ""))
+                            [_track, _ptype_store, cn]); _db.commit()
+            if _ptype is None:
+                self.log("  ⚑ property type UNDETERMINED (no docket Comment) — tagged 'unknown' for "
+                         "manual review; held from prod sync (not silently treated as real)")
+            else:
+                self.log("  Track: " + _track + " [property_type=" + _ptype_store + "]")
         except Exception:
             pass
 
