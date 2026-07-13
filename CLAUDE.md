@@ -15,23 +15,21 @@ Full detail in "Pre-launch review — 3 live-data defects fixed + deployed" belo
 (batch-1/2 leads still held pending the dismissed-owing UI label). **Git history purge DEFERRED** —
 the disk alarm was false (macOS purgeable; 1.7GB free); see "DEFERRED — git history purge".
 
-**NEXT PRIORITY (fresh session, SCOPING/design only — do not build yet): a prediction ledger +
-outcome-capture layer.** All three defects point at the same structural gap: the platform makes
-predictions (projected OOS date, confidence) but never records them at the moment they're made,
-so it can't reconcile prediction vs actual outcome over time. `compute_projection` recomputes
-live every request (no history); `scorecard.py` backtests only against the CURRENT `oos_date`, so
-it can't measure calibration drift. Scope:
-- **Ledger:** append-only snapshot of each prediction (case, projected_oos, confidence, model
-  inputs, timestamp) when made — never overwritten.
-- **Outcome capture:** record the ACTUAL outcome (real oos_date / dismissal / sale) when it lands,
-  keyed back to the prediction that called it.
-- **Calibration view:** predicted-vs-actual over time, sliced by stage/complexity/city, always
-  showing n= (per [[city-data-frozen-sample-size]]). This is the evidence that would eventually
-  justify un-freezing CITY_DATA at ≥40 closed OOS cases.
-- **Connects to:** `compute_projection` (predictor), `scorecard.py` (current backtester), the
-  `oos_confirmed`/`projection_stale` flags from defect ① (outcome signals).
-- **Open scoping Qs:** storage (new table vs archive.py's raw-capture pattern); snapshot cadence
-  (every scrape vs only on state change); how to treat re-predictions as inputs update.
+**NEXT PRIORITY: BUILD the prediction ledger + outcome-capture layer. Design is APPROVED and
+written up in [`docs/prediction-ledger-design.md`](docs/prediction-ledger-design.md) — build
+from that doc.** It fully specifies two new tables (`prediction_ledger` append-only immutable
+predictions; `rep_actions` outcome-capture + cached `cases` columns), the reconciliation
+mechanism (log-on-meaningful-change + resolve-against-real-outcome + expiry sweep), and all
+resolved decisions. Highlights the build must honor:
+- **Log prod-only via `create_case`** (~main.py:526, the write choke point) — NEVER on the read
+  paths (~475/490). Dedup by `input_hash`; new row per meaningful change (never version-in-place).
+- **Constants** `MODEL_VERSION` + `PREDICTION_EXPIRY_DAYS = 90` next to `CITY_DATA`.
+- **`rep_actions` is IN-PHASE**, not a fast-follow (it's the half that answers whether accurate
+  predictions convert to deals).
+- **Changes NO constant** — CITY_DATA stays frozen; the ledger is the evidence that would justify
+  un-freezing at ≥40 closed cases (per [[city-data-frozen-sample-size]]).
+- **Connects to:** `compute_projection` (predictor), `scorecard.py` (migrate it to read the ledger
+  + report by `model_version`), the `oos_confirmed`/`projection_stale`/`case_track` outcome signals.
 
 ## Engineering standard for this project
 
