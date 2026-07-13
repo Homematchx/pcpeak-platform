@@ -1214,7 +1214,15 @@ function flags(ex) {
 // ═══════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════
-function fmt(d)  { if(!d) return "—"; return new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
+function fmt(d)  {
+  if(!d) return "—";
+  // A date-only string ("YYYY-MM-DD") parses as UTC midnight and renders a day EARLY in US
+  // (behind-UTC) local time — the OOS-timeline off-by-one. Parse date-only as LOCAL; let full
+  // datetimes (with a time component) pass through unchanged.
+  var s=String(d), m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  var dt = m ? new Date(+m[1], +m[2]-1, +m[3]) : new Date(s);
+  return dt.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+}
 function fmtC(n) { if(!n&&n!==0) return "—"; return "$"+parseFloat(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
 // ═══════════════════════════════════════════

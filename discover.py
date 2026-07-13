@@ -353,11 +353,14 @@ def save_to_db(extracted, memo, owner):
 
 
 class Discoverer:
-    def __init__(self, open_only=True, skip_biz=False):
+    def __init__(self, open_only=True, skip_biz=False, force=False):
         self.page = None
         self.browser = None
         self.open_only = open_only
         self.skip_biz = skip_biz
+        self.force = force   # re-scrape even cases marked "complete today" (the completeness
+                             # heuristic can be fooled — e.g. addr+debt present but sourced from
+                             # the WRONG document; --force re-downloads + re-extracts)
         self.stats = {"found": 0, "processed": 0, "skipped": 0, "errors": 0,
                       "invalid_account": 0, "no_account": 0}
 
@@ -700,8 +703,8 @@ class Discoverer:
         party = case_info.get("partyName", "")
         owner = classify(party)
 
-        # Skip only if processed today AND data is complete
-        if DB_PATH.exists():
+        # Skip only if processed today AND data is complete (bypassed by --force)
+        if DB_PATH.exists() and not self.force:
             with sqlite3.connect(str(DB_PATH)) as db:
                 row = db.execute(
                     "SELECT last_agent_run, property_address, total_due_filing "
@@ -775,22 +778,34 @@ class Discoverer:
         petition_href = ""          # persisted via save_to_db below (needs the row to exist first)
         href = case_info.get("href", "")
         try:
-            petition_href = await self.page.evaluate(
-                "(function(){"
-                "var links=document.querySelectorAll('a');"
-                "for(var i=0;i<links.length;i++){"
-                "if((links[i].innerText||'').trim()!=='View Document')continue;"
-                "var p=links[i].parentElement||links[i];"
-                "var ctx=(p.innerText||p.textContent||'')+'';"
-                "if(ctx.indexOf('ORIGINAL PETITION')>=0)return links[i].href;"
-                "}"
-                "var first=document.querySelector('a[href*=Document]');"
-                "return first?first.href:null;"
-                "})()")
+            # Identify the ORIGINAL PETITION document. Its link TITLE is often the property type
+            # ("- REAL PROPERTY" / "- PERSONAL PROPERTY"), NOT the word "petition" (older Dallas
+            # docket format), so matching only 'ORIGINAL PETITION' missed it and the code fell
+            # through to "the first document" — which grabbed the JUDGMENT and stored it as the
+            # petition (verified on 4 TX-23 cases). Now: match petition markers in the link's
+            # event context, EXCLUDE other instruments, and if none qualifies record NONE —
+            # never fall through to the wrong document.
+            _pet = await self.page.evaluate("""
+(function(){
+  var BAD=/JUDGMENT|ORDER OF SALE|\\bORDER\\b|ABSTRACT|WRIT|CITATION|AFFIDAVIT|MOTION|REQUEST FOR SERVICE|NON.?JURY|TRIAL|APPOINT|COST OF|CBP/i;
+  var PET=/ORIGINAL PETITION|REAL PROPERTY|PERSONAL PROPERTY/i;
+  function ctx(el){var t='';var n=el;for(var u=0;u<4&&n;u++){t+=' '+(n.innerText||n.textContent||'');n=n.parentElement;}return t.replace(/\\s+/g,' ');}
+  var links=document.querySelectorAll('a');
+  for(var i=0;i<links.length;i++){
+    if((links[i].innerText||'').trim()!=='View Document')continue;
+    var c=ctx(links[i]);
+    if(BAD.test(c))continue;
+    if(PET.test(c))return {href:links[i].href, why:c.slice(0,120)};
+  }
+  return {href:null, why:'NO petition-type document found — recording none (not falling through)'};
+})()
+""")
+            petition_href = (_pet or {}).get("href") or ""
+            self.log("  petition select: " + ((_pet or {}).get("why") or "none"))
             if petition_href:
-                # NOTE: petition_href is persisted by save_to_db (via extracted below),
-                # NOT here — the row doesn't exist yet, so an UPDATE would be a no-op
-                # (this was the bug that lost petition_href for ~81/112 first-scrape cases).
+                # persisted by save_to_db (via extracted below), not here — the row doesn't
+                # exist yet, so an UPDATE would be a no-op (that lost petition_href for
+                # ~81/112 first-scrape cases; fixed by routing through save_to_db).
                 self.log("  Downloading Original Petition...")
                 # Fetch the PDF bytes directly over the authenticated session
                 # instead of waiting for a browser 'download' event. The portal
@@ -1305,6 +1320,9 @@ async def main():
                         help="Stop after processing this many cases (0 = no limit)")
     parser.add_argument("--skip-existing", action="store_true",
                         help="Skip cases already present in the local DB")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-scrape even cases marked 'complete today' (re-download + "
+                             "re-extract; use when stored data may be from the wrong document)")
     args = parser.parse_args()
 
     if not any([args.pattern, args.name, args.case]):
@@ -1321,7 +1339,8 @@ async def main():
 
     await Discoverer(
         open_only=not args.include_closed,
-        skip_biz=args.individuals_only
+        skip_biz=args.individuals_only,
+        force=args.force
     ).run(args)
 
 
