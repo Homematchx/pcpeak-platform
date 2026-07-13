@@ -1,4 +1,6 @@
-data/db/pcpeak.db
+# SQLite DB files never belong in git — pcpeak.db (scraped) AND ledger.db (prod-owned
+# prediction_ledger/rep_actions). data/db/dump.sql (tracked snapshot) is unaffected (.sql).
+data/db/*.db
 data/db/*.db-shm
 data/db/*.db-wal
 

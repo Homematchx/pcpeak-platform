@@ -145,6 +145,12 @@ because nothing bad has happened yet.
   resolves). DB survives deploys — verified by forced redeploy keeping 48 cases.
 
 ### DB restore procedure (repopulate prod from local)
+- ⚠️ **`data/db/ledger.db` is a SEPARATE, PROD-OWNED file — never restore over it.** It holds
+  `prediction_ledger` + `rep_actions` (prod-generated, non-regenerable; see
+  `docs/prediction-ledger-design.md` §13). The restore below covers `pcpeak.db` ONLY. A raw
+  `pcpeak.db .dump`/restore physically can't touch `ledger.db` (different file — the structural
+  guard), so the procedure is safe as-is; just don't dump/restore `ledger.db` from local (local's
+  copy is empty). Back `ledger.db` up separately (Step 4 of the ledger build).
 - Source of truth: local `data/db/pcpeak.db` (git-ignored; can be bloated by dead
   free pages — `VACUUM INTO` gives a ~1.5MB clean copy). `data/db/dump.sql` is a
   tracked `.dump` snapshot; regenerate with

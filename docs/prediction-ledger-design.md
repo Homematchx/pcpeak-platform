@@ -55,6 +55,12 @@ MODEL_VERSION = "2026-07-12-ftj-frozen-joos-bimodal"
 PREDICTION_EXPIRY_DAYS = 90
 ```
 
+> **Storage location (decided 2026-07-12, see §13):** `prediction_ledger` and `rep_actions`
+> live in a SEPARATE database file, `data/db/ledger.db`, attached to every connection as
+> schema `ledger`. All DDL/DML below is created and referenced qualified — `ledger.prediction_ledger`,
+> `CREATE INDEX ledger.idx_pl_case …`. This is the structural guarantee that the raw
+> disaster-recovery restore of `pcpeak.db` cannot touch prod-owned data. Details in §13.
+
 ## 4. Table 1 — `prediction_ledger` (append-only, immutable predictions)
 
 ```sql
@@ -326,9 +332,49 @@ enter real actions until the backup is green. Rough effort: small (a scheduled 2
 ~half a session — deliberately mid-phase, not deferred past it.
 
 **Recommended order (single phase):**
-1. **Restore guard** (blocker) — tested green before any table holds real data.
-2. Schema + constants (`MODEL_VERSION`, `PREDICTION_EXPIRY_DAYS`).
+1. **Restore guard** (blocker) — tested green before any table holds real data. *(Done: ledger.db
+   attach + authorizer + structural DR-safety, `backend/test_restore_guard.py` 17/17 green.)*
+2. Schema + constants (`MODEL_VERSION`, `PREDICTION_EXPIRY_DAYS`) — created in `ledger.db`.
 3. Log + reconcile in `create_case` — live ledger rows begin.
-4. **Backup of prod-owned tables** — gates step 5.
+4. **Backup of prod-owned tables** — gates step 5 (now just "copy `ledger.db`").
 5. `rep_actions` API + UI — opens to reps only after (4) is green.
 6. `scorecard.py` migration to prod reads.
+
+## 13. Prod-owned data lives in a separate file — `ledger.db` (structural DR guard)
+
+**Decision:** `prediction_ledger` + `rep_actions` live in `data/db/ledger.db` (on the Railway
+volume, beside `pcpeak.db`), ATTACHed to every `get_db()` connection as schema `ledger`.
+
+**Why separate file, not just the authorizer.** The authorizer (§ step 1) only protects
+connections opened by `get_db()`. The disaster-recovery path — a raw `sqlite3 pcpeak.db .dump`
+piped through a `railway run … executescript` — is a *different* connection that never installs
+the authorizer, so it bypasses it entirely. Worse: a `.dump` emits `DROP TABLE IF EXISTS` for
+every table, and once `init_db` runs, `pcpeak.db` would carry empty prod-owned tables whose DROP
+would wipe prod's real data on restore. Physical separation closes this **structurally**: a dump
+of `pcpeak.db` cannot reference tables in a different file, so the raw restore leaves `ledger.db`
+untouched by construction — no procedural discipline required, which is the right robustness level
+for a path run under pressure from a runbook. The authorizer stays as defense-in-depth.
+
+**Proven (`backend/test_restore_guard.py`, 17/17):** a raw `pcpeak.db .dump` excludes both
+prod-owned tables; applying that dump via `executescript` (the real raw restore, bypassing all
+Python guards) leaves `ledger.db` byte-identical; authorizer still denies DELETE/DROP; cross-DB
+join `ledger.prediction_ledger ⋈ cases` works; normal restore path (create_case) leaves them intact.
+
+**Q1 — WAL cross-file atomicity (answered).** Both files run WAL; a multi-file commit is atomic
+per-file but not across a *host crash* mid-commit (normal app errors roll back both — no gap).
+We do NOT rely on cross-file atomicity. Authoritative, non-regenerable writes (a `rep_actions`
+row) go to `ledger.db` in a **single-DB transaction** — atomic under WAL, never the lost half.
+The paired main-DB columns (`projected_oos`/`confidence_pct`, `deal_status`/`last_action_at`) are
+**derived caches**, recomputable from authoritative data. So a crash-split leaves at most a stale
+cache on one case, which **self-heals on that case's next write** (create_case recomputes the
+projection columns; a rep-action recomputes deal_status). No authoritative row is ever lost; no
+manual reconciliation is ever needed. Build rule: the `rep_actions` insert is its own single-DB
+write; the cache update is separate + derived.
+
+**Q2 — cross-attached-DB join performance (measured, not assumed).** At 1,000 cases / 50,000
+ledger rows / 5,000 rep_actions (≫ near-term): per-write dedup **0.04 ms** (the only hot-path
+query), calibration group-by **15 ms**, full-batch reconcile cross-DB join **240 ms** (per-case
+it's filtered → sub-ms), offline ROI join ~1.1 s. `EXPLAIN QUERY PLAN` confirms the join uses
+indexes on both sides across the ATTACH boundary. Not a concern at realistic scale; the only
+query that grows non-trivially is the offline ROI `COUNT(DISTINCT)` join, which would want a
+pre-aggregate only at hundreds of thousands of rows (years out).

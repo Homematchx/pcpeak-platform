@@ -23,6 +23,12 @@ from pydantic import BaseModel
 # ─── CONFIG ───────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent.parent
 DB_PATH  = BASE_DIR / "data" / "db" / "pcpeak.db"
+# PROD-OWNED data lives in a SEPARATE database file (see docs/prediction-ledger-design.md
+# §11-12). It is ATTACHed to every connection as schema `ledger`. Because it is a distinct
+# file, the local→prod disaster-recovery path — a raw `sqlite3 pcpeak.db .dump` / restore —
+# physically cannot reference, drop, or overwrite it: the structural guarantee that a
+# procedural guard can't give for a path run under pressure from a runbook.
+LEDGER_DB_PATH = BASE_DIR / "data" / "db" / "ledger.db"
 PDF_DIR  = BASE_DIR / "data" / "pdfs"
 PDF_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -116,7 +122,13 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.set_authorizer(_restore_guard_authorizer)   # deny DELETE/DROP on prod-owned tables
+    # Attach the prod-owned data file as schema `ledger` (created on first use). Both files
+    # run WAL for concurrency; cross-file crash atomicity is intentionally NOT relied on —
+    # authoritative prod-owned writes are single-DB (atomic), main-DB columns are derived
+    # caches that self-heal on next write (design doc §12).
+    conn.execute("ATTACH DATABASE ? AS ledger", (str(LEDGER_DB_PATH),))
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA ledger.journal_mode=WAL")
     try:
         yield conn
         conn.commit()
