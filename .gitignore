@@ -22,3 +22,6 @@ __pycache__/
 # repo lean. PDFs anywhere are ignored to catch stray downloads too.
 data/pdfs/
 *.pdf
+
+# macOS Finder metadata — never track
+.DS_Store
