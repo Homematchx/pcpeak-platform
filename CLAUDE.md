@@ -509,13 +509,19 @@ discouraged" — same standard as ledger.db), then a purge:
 Deployed 1&2 to prod via cherry-pick (f7a3003 still held out); synced 3's data to the 112
 prod cases only (held batch-1/2 leads NOT pushed — they still need the dismissed-owing UI label).
 
-### DEFERRED — git history purge (disk was a false alarm)
-The 56MB "critical" reading was macOS APFS immediate-free; purgeable space reclaimed to
-**1.7GB**, so the urgency is gone. The 315MB corpus-in-.git-history is still pure waste worth
-purging eventually (needs `pip install git-filter-repo`; rewrites main+production; removes
-data/pdfs from the prod deploy too — harmless, frontend uses petition_href URLs). Railway
-trigger confirmed SAFE for force-push (watches branch HEAD, not SHA lineage). Do it
-deliberately later, not under (false) disk pressure.
+### DONE — git history purge (2026-07-13): .git 316M → 1.1M
+Executed with `git-filter-repo` (single script; git 2.39.2). Purged from ALL history:
+`data/pdfs/` (~160M) + **`data/db/pcpeak.db` (192M — the DOMINANT bloat, a SQLite DB committed
+to history early, discovered mid-rewrite)** + 8 stray root `*.pdf` (petition PDFs committed to
+root early). LEFT `data/db/dump.sql` intact (intentionally-tracked restore snapshot, 28 commits).
+- **On-disk data UNTOUCHED (verified byte-for-byte):** live `data/db/pcpeak.db` same size
+  (3698688) / sha256 (e9310b29…) / 127 cases before & after; 146 `data/pdfs` PDFs still on disk.
+  The purge only rewrote git HISTORY — untracked/gitignored working files are invisible to it.
+- Local `production` branch created from origin/production so BOTH refs rewrote in one pass;
+  single `git push --force origin main production` (main 7330f3a, production 7bce569). Railway
+  (watches production HEAD, not SHA lineage) deployed cleanly: /api/cases,stats,reps → 200,
+  127 cases, frontend 200. fsck clean. Freed ~315M; disk 3.2GB.
+- New clones are now tiny. If future scrapes ever re-commit a DB/PDF, re-sweep the same way.
 
 ### Future enhancement (not urgent) — capture the real judgment amount
 The docket's "Total Judgment: of $0.00" is a Tyler source quirk (the real award is in the
