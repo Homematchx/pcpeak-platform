@@ -233,10 +233,12 @@ exists with new-row-per-change.
 - **API (rep_actions):** `POST /api/cases/{cn}/actions` (append), `GET /api/cases/{cn}/actions`
   (history); update the cached `deal_status`/`last_action_at` on append. Frontend UI for logging
   actions is a follow-up within this phase.
-- **Sync:** `prediction_ledger` and `rep_actions` should ride the existing local↔prod sync path;
-  since logging is prod-side via `create_case`, the ledger is generated on prod — confirm whether
-  `rep_actions` (entered by reps on prod) needs to sync *back* to local (likely yes, so local
-  analysis/scorecard sees them).
+- **Sync / prod-owned data access — RESOLVED by §11 (2026-07-13), superseding the earlier "likely
+  yes":** there is NO rep_actions sync-back and NO reverse sync. Both prod-owned tables are
+  generated + owned on prod; `scorecard.py` reads them **directly via the prod API** (Step 6), and
+  durability is a **separate one-directional prod→local backup dump** (Step 4) — NOT a live mirror.
+  Analysis access and durability are kept distinct (see §11). The Step-4 backup pulls via a
+  token-gated `GET /api/ledger/export` (the same read endpoint Step 6 uses); no local write-back.
 
 ## 9. Scope boundary (what this is NOT, this phase)
 

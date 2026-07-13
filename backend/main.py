@@ -10,12 +10,13 @@ import json
 import os
 import re
 import hashlib
+import hmac
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional, List
 from contextlib import contextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
@@ -811,6 +812,26 @@ async def delete_bpp_case(case_number: str):
         # It WAS a BPP case and is now gone — remove its docket events too.
         db.execute("DELETE FROM docket_events WHERE case_number=?", [case_number])
     return {"status": "deleted", "case_number": case_number, "was": "personal_property"}
+
+@app.get("/api/ledger/export")
+async def ledger_export(x_ledger_token: str = Header(default="")):
+    """Read-only export of the PROD-OWNED tables (prediction_ledger + rep_actions) — the access
+    path for the durability backup (Step 4) and scorecard analysis (Step 6, design §11). No local
+    write-back; prod is the source of truth for these.
+
+    TOKEN-GATED (unlike the otherwise-open API): rep_actions holds rep contact/offer data that must
+    not be world-readable. Fail-CLOSED — if LEDGER_EXPORT_TOKEN isn't configured in the env, the
+    endpoint is unavailable (503), never open by accident. Constant-time token compare."""
+    want = os.environ.get("LEDGER_EXPORT_TOKEN", "")
+    if not want:
+        raise HTTPException(503, "ledger export not configured (LEDGER_EXPORT_TOKEN unset)")
+    if not x_ledger_token or not hmac.compare_digest(x_ledger_token, want):
+        raise HTTPException(401, "unauthorized")
+    with get_db() as db:
+        pl = [dict(r) for r in db.execute("SELECT * FROM ledger.prediction_ledger ORDER BY id")]
+        ra = [dict(r) for r in db.execute("SELECT * FROM ledger.rep_actions ORDER BY id")]
+    return {"prediction_ledger": pl, "rep_actions": ra,
+            "counts": {"prediction_ledger": len(pl), "rep_actions": len(ra)}}
 
 # ─── REP ROSTER ───────────────────────────────────────────────
 # The reps table is the source of truth for the assignable-rep list. Cases
