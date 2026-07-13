@@ -85,11 +85,37 @@ def account_status_of(acct):
         return "resolved"                          # at least one usable 17-char account
     return "invalid"                               # something was extracted, but it's malformed
 
+# ─── PROD-OWNED DATA GUARD (see docs/prediction-ledger-design.md §11-12) ────────
+# prediction_ledger + rep_actions are generated and OWNED by prod (ledger via create_case,
+# rep_actions via the rep UI). They cannot be regenerated from local scraping, so the
+# local→prod restore/push path must NEVER delete, drop, or wholesale-overwrite them.
+# Both are append-only (+ a one-time reconcile column-fill), so a DELETE or DROP against
+# them is ALWAYS wrong — restore, bug, or otherwise. Enforced at the SQLite engine level by
+# an authorizer that denies DELETE/DROP on these tables while allowing the legitimate INSERT
+# (logging) and UPDATE (reconcile). Installed on EVERY connection, so the tables are
+# protected the instant they exist — before they ever hold real data.
+PROD_OWNED_TABLES = ("prediction_ledger", "rep_actions")
+
+def _restore_guard_authorizer(action, arg1, arg2, db_name, trigger_name):
+    if action in (sqlite3.SQLITE_DELETE, sqlite3.SQLITE_DROP_TABLE) and arg1 in PROD_OWNED_TABLES:
+        return sqlite3.SQLITE_DENY
+    return sqlite3.SQLITE_OK
+
+def assert_restore_safe(target_tables):
+    """Tripwire for any FUTURE bulk/restore/reset code that clears or replaces tables:
+    refuse if it targets a prod-owned table. Restore is scraped-data-only. (There is
+    intentionally no such bulk path today; this keeps it that way if one is ever added.)"""
+    hit = [t for t in target_tables if t in PROD_OWNED_TABLES]
+    if hit:
+        raise RuntimeError(f"restore guard: refusing to touch prod-owned table(s) {hit} "
+                           f"— not restorable from local (design doc §11-12)")
+
 # ─── DATABASE ─────────────────────────────────────────────────
 @contextmanager
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.set_authorizer(_restore_guard_authorizer)   # deny DELETE/DROP on prod-owned tables
     conn.execute("PRAGMA journal_mode=WAL")
     try:
         yield conn
