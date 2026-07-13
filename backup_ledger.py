@@ -68,28 +68,39 @@ def main():
     dump_path.write_text(json.dumps(before, sort_keys=True, default=str))
     fp_dump = fingerprint(json.loads(dump_path.read_text()))
 
-    # ── RE-READ (after) to prove the source is unchanged / snapshot-consistent ──
+    # ── RE-READ (after) — a CONTENTION report, not a pass/fail. Unlike the static
+    # history-purge source, this ledger is LIVE: create_case may append a prediction (or
+    # reconcile may fill outcome columns) mid-window. That does NOT invalidate the dump —
+    # the dump is a faithful point-in-time snapshot as of the `before` read; any concurrent
+    # activity lands in the next backup. So the PASS/FAIL is `dump == before` (faithfulness);
+    # before/after is reported for visibility. Running with no sync active keeps it uncontested. ──
     after = fetch_export()
     fp1 = fingerprint(after)
 
-    source_unchanged = (fp0 == fp1)
-    dump_faithful = (fp_dump == fp0)
+    dump_faithful = (fp_dump == fp0)          # the real integrity guarantee
+    uncontested = (fp0 == fp1)                # informational: was the window quiet?
 
     print(f"\nDUMP written: {dump_path}")
     print(f"  dump prediction_ledger : {fp_dump['prediction_ledger']}")
     print(f"  dump rep_actions       : {fp_dump['rep_actions']}")
     print(f"  dump sha256            : {fp_dump['sha256']}")
-    print("\nAFTER (source, re-read):")
+    print("\nAFTER (source, re-read — contention check):")
     print(f"  prediction_ledger rows : {fp1['prediction_ledger']}")
     print(f"  rep_actions rows       : {fp1['rep_actions']}")
     print(f"  sha256                 : {fp1['sha256']}")
     print("\nVERIFICATION:")
-    print(f"  source unchanged during backup (read-only / consistent) : {'PASS' if source_unchanged else 'FAIL'}")
-    print(f"  dump faithful (fingerprint == source)                   : {'PASS' if dump_faithful else 'FAIL'}")
+    print(f"  dump faithful (dump fingerprint == before snapshot)  : {'PASS' if dump_faithful else 'FAIL'}  <- integrity gate")
+    if uncontested:
+        print(f"  window uncontested (source identical before/after)   : yes")
+    else:
+        print(f"  window uncontested (source identical before/after)   : NO — concurrent write during backup")
+        print(f"    ↳ pred_ledger {fp0['prediction_ledger']}→{fp1['prediction_ledger']}, "
+              f"rep_actions {fp0['rep_actions']}→{fp1['rep_actions']}. The dump is a consistent "
+              f"snapshot as of the BEFORE read; the delta lands in the next backup. Not a failure.")
 
-    ok = source_unchanged and dump_faithful
-    print("\n" + ("BACKUP VERIFIED CLEAN" if ok else "BACKUP VERIFICATION FAILED — do not trust this dump"))
-    sys.exit(0 if ok else 1)
+    print("\n" + ("BACKUP VERIFIED CLEAN (faithful point-in-time snapshot)" if dump_faithful
+                  else "BACKUP VERIFICATION FAILED — dump does not match the source snapshot; do not trust it"))
+    sys.exit(0 if dump_faithful else 1)
 
 
 if __name__ == "__main__":

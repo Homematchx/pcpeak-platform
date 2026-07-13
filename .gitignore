@@ -25,3 +25,6 @@ data/pdfs/
 
 # macOS Finder metadata — never track
 .DS_Store
+
+# Ledger backup dumps — prod-owned data snapshots; local durability only, never in git
+data/backups/
