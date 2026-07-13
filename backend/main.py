@@ -658,6 +658,29 @@ async def update_case(case_number: str, data: CaseUpdate):
                    list(updates.values()) + [case_number])
     return {"status":"ok"}
 
+@app.delete("/api/cases/{case_number}")
+async def delete_bpp_case(case_number: str):
+    """Delete a case ONLY if it is business personal property (property_type='personal').
+
+    This platform does not store personal-property data. The BPP constraint is enforced IN THE
+    DELETE's WHERE CLAUSE — the query is structurally incapable of removing a real-property (or
+    NULL / 'unknown') row, no matter what case_number is passed. It is NOT an application-level
+    check that trusts the caller: a real case number simply matches 0 rows and is refused. Same
+    "physically impossible, not procedurally discouraged" standard as the ledger.db guard."""
+    with get_db() as db:
+        cur = db.execute(
+            "DELETE FROM cases WHERE case_number=? AND property_type='personal'", [case_number])
+        if cur.rowcount == 0:
+            row = db.execute("SELECT property_type FROM cases WHERE case_number=?", [case_number]).fetchone()
+            if row is None:
+                raise HTTPException(404, f"{case_number} not found")
+            raise HTTPException(409, f"refused: {case_number} is not a personal-property case "
+                                     f"(property_type={row['property_type']!r}); this endpoint can "
+                                     f"only delete BPP")
+        # It WAS a BPP case and is now gone — remove its docket events too.
+        db.execute("DELETE FROM docket_events WHERE case_number=?", [case_number])
+    return {"status": "deleted", "case_number": case_number, "was": "personal_property"}
+
 # ─── REP ROSTER ───────────────────────────────────────────────
 # The reps table is the source of truth for the assignable-rep list. Cases
 # store the rep NAME (denormalized) for display; rename cascades to cases, and
