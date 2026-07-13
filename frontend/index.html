@@ -726,10 +726,19 @@ async function syncFromPlatform() {
       else { cases.push(v3case); added++; }
     }
 
+    // PRUNE cases that were platform-sourced but no longer exist on the platform (e.g. a case
+    // deleted server-side — a purged BPP case). Match by the "_platform" id suffix so local-only
+    // drafts (Date.now() ids) are NEVER touched. Without this the merge was add/update-only, so a
+    // deleted case lingered in localStorage forever and kept showing in search after a hard refresh.
+    const platformNums = new Set(platformCases.map(pc => pc.case_number));
+    const beforeLen = cases.length;
+    cases = cases.filter(c => !(String(c.id).endsWith("_platform") && !platformNums.has(c.extracted?.caseNumber)));
+    const pruned = beforeLen - cases.length;
+
     save();
     renderList();
     updateHdr();
-    if (status) status.textContent = platformCases.length + " cases · last sync " + new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+    if (status) status.textContent = platformCases.length + " cases · last sync " + new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}) + (pruned ? " · pruned " + pruned : "");
     if (btn) { btn.textContent = "✓ Synced"; setTimeout(()=>{btn.textContent="↺ Sync";btn.disabled=false;}, 2000); }
 
     // Auto-select first case on load
