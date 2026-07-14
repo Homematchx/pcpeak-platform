@@ -226,6 +226,31 @@ def init_db():
             notes       TEXT
         );
 
+        -- Front-end scrape TRIGGER queue. The live site can't scrape (no browser in cloud;
+        -- scraping is deliberately local). Instead the browser enqueues a job here (token-gated),
+        -- a local worker on the Mac (scrape_worker.py) polls this queue OUTBOUND, claims a job,
+        -- runs the real discover.py CLI locally, and PATCHes status/result back. Nothing ever
+        -- connects INTO the Mac. State machine: queued -> claimed -> running -> done | failed
+        -- (done/failed are terminal). `request` is the normalized input JSON ({case_number} or
+        -- {pattern, individuals_only}); `result` is the worker's snapshot (cases found + each
+        -- one's guardrail outcome + prod_ready, which is 0/held — the trigger scrapes, it does
+        -- NOT publish). Column names are authoritative here; every reader uses them verbatim.
+        CREATE TABLE IF NOT EXISTS scrape_jobs (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            request      TEXT NOT NULL,                    -- JSON: {"case_number":...} | {"pattern":...,"individuals_only":true}
+            label        TEXT,                             -- human label (the case# / pattern) for display
+            status       TEXT NOT NULL DEFAULT 'queued',   -- queued|claimed|running|done|failed
+            progress     TEXT,                             -- short worker-updated status line
+            result       TEXT,                             -- JSON snapshot on success
+            error        TEXT,                             -- failure detail
+            worker_id    TEXT,                             -- which worker claimed it
+            requested_by TEXT,                             -- token identity / 'operator'
+            requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+            claimed_at   TEXT,
+            finished_at  TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_scrape_jobs_status ON scrape_jobs(status, id);
+
         CREATE TABLE IF NOT EXISTS benchmarks (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             case_number     TEXT UNIQUE NOT NULL,
@@ -991,53 +1016,147 @@ async def trigger_agent_run(background_tasks: BackgroundTasks):
     return {"status":"queued","run_id":run_id,
             "message":"Agent run queued. Run `python agent/agent.py` to execute."}
 
-class CaseRunRequest(BaseModel):
-    case_number: str
+# ─── SCRAPE TRIGGER QUEUE ─────────────────────────────────────
+# The browser can't scrape (no cloud browser; scraping is local by design). It ENQUEUES a job
+# here; the Mac's scrape_worker.py polls, claims, runs the real discover.py CLI, and reports back.
+# Two fail-CLOSED tokens (same pattern as ledger export): SCRAPE_TRIGGER_TOKEN gates enqueue (who
+# may spend API/CAPTCHA credits + hit the live portal); SCRAPE_WORKER_TOKEN gates claim/patch (who
+# may drain the queue + write results). If a token env is unset the route is 503 — never open by
+# accident. Enqueue itself spends NO credits; only the worker running a job does.
+_SCRAPE_STATES = {"queued", "claimed", "running", "done", "failed"}
+_SCRAPE_TERMINAL = {"done", "failed"}
+MAX_QUEUED_SCRAPES = 20
+_CASE_RE = re.compile(r"^TX-\d{2}-\d{5}$")
+
+
+def _require_token(env_name: str, provided: str):
+    want = os.environ.get(env_name, "")
+    if not want:
+        raise HTTPException(503, f"scrape queue not configured ({env_name} unset)")
+    if not provided or not hmac.compare_digest(provided, want):
+        raise HTTPException(401, "unauthorized")
+
+
+def _job_out(row):
+    """Row -> JSON-friendly dict with request/result parsed back to objects."""
+    d = dict(row)
+    for k in ("request", "result"):
+        if d.get(k):
+            try:
+                d[k] = json.loads(d[k])
+            except (ValueError, TypeError):
+                pass
+    return d
+
+
+class ScrapeJobIn(BaseModel):
+    case_number: str = ""
     pattern: str = ""
+    individuals_only: bool = True
 
-@app.post("/api/agent/run-case")
-async def run_single_case(req: CaseRunRequest, background_tasks: BackgroundTasks):
-    """Run discover.py on a single case number or pattern in the background."""
-    import subprocess, os, threading
 
+class ScrapeJobClaim(BaseModel):
+    worker_id: str = "worker"
+
+
+class ScrapeJobPatch(BaseModel):
+    status: Optional[str] = None
+    progress: Optional[str] = None
+    result: Optional[dict] = None
+    error: Optional[str] = None
+
+
+@app.post("/api/scrape-jobs")
+async def create_scrape_job(job: ScrapeJobIn, x_scrape_token: str = Header(default="")):
+    """Enqueue a scrape (token-gated). Exactly one of case_number / pattern. Deduped against any
+    already-in-flight identical request; capped so a burst can't pile up credit-spending runs."""
+    _require_token("SCRAPE_TRIGGER_TOKEN", x_scrape_token)
+    cn = (job.case_number or "").strip().upper()
+    pat = (job.pattern or "").strip().upper()
+    if bool(cn) == bool(pat):
+        raise HTTPException(400, "provide exactly one of case_number or pattern")
+    if cn:
+        if not _CASE_RE.match(cn):
+            raise HTTPException(400, "case_number must look like TX-26-00009")
+        request = {"case_number": cn}
+        label = cn
+    else:
+        request = {"pattern": pat, "individuals_only": bool(job.individuals_only)}
+        label = pat
+    request_json = json.dumps(request, sort_keys=True)
     with get_db() as db:
-        result = db.execute(
-            "INSERT INTO agent_runs (status, started_at) VALUES ('running', datetime('now'))"
-        )
-        run_id = result.lastrowid
+        dup = db.execute(
+            "SELECT id FROM scrape_jobs WHERE request=? AND status IN ('queued','claimed','running')",
+            [request_json]).fetchone()
+        if dup:
+            raise HTTPException(409, f"an identical job is already in flight (job {dup[0]})")
+        queued = db.execute("SELECT COUNT(*) FROM scrape_jobs WHERE status='queued'").fetchone()[0]
+        if queued >= MAX_QUEUED_SCRAPES:
+            raise HTTPException(429, f"queue full ({queued} queued) — wait for the worker to drain it")
+        cur = db.execute(
+            "INSERT INTO scrape_jobs (request, label, status, requested_by) VALUES (?,?,'queued','operator')",
+            [request_json, label])
+        job_id = cur.lastrowid
+    return {"job_id": job_id, "status": "queued", "label": label}
 
-    def run_discover():
-        try:
-            env = os.environ.copy()
-            if req.case_number:
-                args = ["python3", "discover.py", "--case", req.case_number]
-            else:
-                args = ["python3", "discover.py", "--pattern", req.pattern, "--individuals-only"]
-            
-            proc = subprocess.run(
-                args,
-                capture_output=True, text=True,
-                cwd=BASE_DIR, env=env, timeout=600
-            )
-            status = "completed" if proc.returncode == 0 else "failed"
-            output = (proc.stdout or "") + (proc.stderr or "")
-            
-            with get_db() as db2:
-                db2.execute(
-                    "UPDATE agent_runs SET status=?, finished_at=datetime('now'), output=? WHERE id=?",
-                    [status, output[:2000], run_id]
-                )
-        except Exception as e:
-            with get_db() as db2:
-                db2.execute(
-                    "UPDATE agent_runs SET status='failed', finished_at=datetime('now'), output=? WHERE id=?",
-                    [str(e), run_id]
-                )
 
-    thread = threading.Thread(target=run_discover, daemon=True)
-    thread.start()
+@app.get("/api/scrape-jobs")
+async def list_scrape_jobs(limit: int = 20, x_scrape_token: str = Header(default="")):
+    _require_token("SCRAPE_TRIGGER_TOKEN", x_scrape_token)
+    with get_db() as db:
+        rows = db.execute("SELECT * FROM scrape_jobs ORDER BY id DESC LIMIT ?", [limit]).fetchall()
+    return [_job_out(r) for r in rows]
 
-    return {"status": "running", "run_id": run_id}
+
+@app.get("/api/scrape-jobs/{job_id}")
+async def get_scrape_job(job_id: int, x_scrape_token: str = Header(default="")):
+    _require_token("SCRAPE_TRIGGER_TOKEN", x_scrape_token)
+    with get_db() as db:
+        row = db.execute("SELECT * FROM scrape_jobs WHERE id=?", [job_id]).fetchone()
+    if not row:
+        raise HTTPException(404, "job not found")
+    return _job_out(row)
+
+
+@app.post("/api/scrape-jobs/claim")
+async def claim_scrape_job(claim: ScrapeJobClaim, x_worker_token: str = Header(default="")):
+    """Worker-only. Atomically claim the oldest queued job (single UPDATE ... RETURNING, so two
+    workers can never grab the same one). Returns {"job": null} when the queue is empty."""
+    _require_token("SCRAPE_WORKER_TOKEN", x_worker_token)
+    with get_db() as db:
+        row = db.execute(
+            "UPDATE scrape_jobs SET status='claimed', worker_id=?, claimed_at=datetime('now') "
+            "WHERE id=(SELECT id FROM scrape_jobs WHERE status='queued' ORDER BY id LIMIT 1) "
+            "RETURNING *", [claim.worker_id]).fetchone()
+    return {"job": _job_out(row) if row else None}
+
+
+@app.patch("/api/scrape-jobs/{job_id}")
+async def patch_scrape_job(job_id: int, patch: ScrapeJobPatch, x_worker_token: str = Header(default="")):
+    """Worker-only status/progress/result updates. A terminal status stamps finished_at."""
+    _require_token("SCRAPE_WORKER_TOKEN", x_worker_token)
+    sets, vals = [], []
+    if patch.status is not None:
+        if patch.status not in _SCRAPE_STATES:
+            raise HTTPException(400, f"invalid status '{patch.status}'")
+        sets.append("status=?"); vals.append(patch.status)
+        if patch.status in _SCRAPE_TERMINAL:
+            sets.append("finished_at=datetime('now')")
+    if patch.progress is not None:
+        sets.append("progress=?"); vals.append(patch.progress)
+    if patch.result is not None:
+        sets.append("result=?"); vals.append(json.dumps(patch.result))
+    if patch.error is not None:
+        sets.append("error=?"); vals.append(patch.error)
+    if not sets:
+        raise HTTPException(400, "nothing to update")
+    with get_db() as db:
+        exists = db.execute("SELECT 1 FROM scrape_jobs WHERE id=?", [job_id]).fetchone()
+        if not exists:
+            raise HTTPException(404, "job not found")
+        db.execute(f"UPDATE scrape_jobs SET {', '.join(sets)} WHERE id=?", vals + [job_id])
+        row = db.execute("SELECT * FROM scrape_jobs WHERE id=?", [job_id]).fetchone()
+    return _job_out(row)
 
 @app.get("/api/petition/{case_number}")
 async def get_petition_pdf(case_number: str):

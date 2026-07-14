@@ -7,6 +7,35 @@
 
 ## SESSION HANDOFF — 2026-07-14
 
+**FRONT-END SCRAPE TRIGGER — BUILT + isolated-tested (integration is the USER's live check).** A
+button on the live site to scrape a new case/pattern, calling the REAL `discover.py` CLI (never a
+reimplementation) so it inherits every guardrail — document selector, corroboration guard, BPP detection,
+`prod_ready` default-held — automatically. Analyze-with-AI's lesson applied in reverse: a governed trigger,
+not a competing tool. **Architecture (cloud can't scrape; the Mac can't be reached inbound):** inversion of
+control — the browser ENQUEUES a job in a cloud `scrape_jobs` queue; `scrape_worker.py` on the Mac POLLS it
+OUTBOUND, claims a job (atomic `UPDATE…RETURNING`, no double-grant), runs `python3 discover.py --case/--pattern`
+locally, and PATCHes status + a result snapshot back. Nothing connects INTO the Mac. State machine
+queued→claimed→running→done|failed; the worker shells out to the CLI so ZERO logic is duplicated. **Scraped
+cases land HELD (prod_ready=0)** — the trigger fills the review queue, never auto-publishes (approve+sync to
+publish). **Access control:** two fail-closed tokens (ledger-export pattern) — `SCRAPE_TRIGGER_TOKEN` (enqueue
+= who spends credits/hits the portal) + `SCRAPE_WORKER_TOKEN` (claim/patch = who drains the queue); 503 if
+unset; enqueue deduped (in-flight-only) + capped (MAX_QUEUED_SCRAPES=20). Trigger token lives in the browser's
+`sessionStorage` (cleared on tab close — the Analyze-with-AI key-exposure lesson). **Replaced the dead
+`/api/agent/run-case`** (it ran `subprocess discover.py` INSIDE the Railway container — no browser there, could
+never work) and removed its orphaned `triggerCaseRun`/`triggerAgent` frontend JS. **The two Run-button bugs
+were designed against + regression-tested, not assumed-fixed:** the `finished_at`/`completed_at` column class
+(backend test drives every transition and asserts the real columns are stamped) and the `syncPlatform()` typo
+(browser test asserts job-completion refreshes via the real `syncFromPlatform()` with ZERO pageerror); plus the
+worker is a separate process that reports failures explicitly instead of dying silently in a daemon thread.
+**Tests (all isolated, no network/portal/credits): `backend/test_scrape_jobs.py` 29/29** (fail-closed auth,
+both token roles, validation, dedup, cap, atomic claim, full state machine + column assertions), **`test_scrape_worker.py`
+18/18** (process_one running→done/failed, exception-never-crashes, real subprocess round-trip via a stub discover
+cmd + snapshot), **browser async-flow** (queued→running→done→preview→refresh, no JS error). All 4 prior backend
+suites + prod_ready gate still green. **NOT deployed / NOT live-verified from here** — the user runs the real
+end-to-end (browser→queue→Mac worker→real scrape→held result): see `docs/scrape-trigger-runbook.md` (local-first
+option needs no deploy; live needs the `git merge main` deploy + the 2 Railway env tokens + `python3 scrape_worker.py`).
+The endpoints ship fail-closed so deploying is inert until tokens are set. Code on `main` + the feature branch.
+
 **#3 RESOLVED — 'Analyze with AI' client-side path REMOVED + deployed. Step 5 is UNBLOCKED.**
 The ungoverned in-browser Analyze-with-AI path (user pastes docket + enters their OWN Anthropic key
 in localStorage → direct api.anthropic.com calls from the browser → localStorage-only draft, never

@@ -233,16 +233,24 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
     <div class="sbs">
       <div class="sbl">Load New Deals</div>
       <div style="background:var(--surface2);border-radius:var(--r);padding:14px 16px">
-        <div style="font-size:11px;color:var(--text3);line-height:1.7;margin-bottom:8px">
-          Scraping runs on your Mac, not in the cloud. From <span style="font-family:var(--FM)">~/Downloads/pcpeak_platform</span>:
+        <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:9px">
+          Scraping runs on your Mac (the worker), not the cloud. Enter a case&nbsp;# or a pattern; the
+          case is scraped through the full pipeline and lands <b>held for review</b> — not published.
         </div>
-        <div style="font-family:var(--FM);font-size:10px;background:var(--surface3);padding:9px 11px;border-radius:6px;line-height:1.95;color:var(--text2);overflow-x:auto;white-space:nowrap">
-          <div>export ANTHROPIC_API_KEY=sk-ant-&hellip;</div>
-          <div>python3 discover.py --pattern TX-26 --individuals-only</div>
-          <div>python3 sync_to_prod.py --dry-run&nbsp;&nbsp;<span style="color:var(--text3)"># preview</span></div>
-          <div>python3 sync_to_prod.py&nbsp;&nbsp;<span style="color:var(--text3)"># push here</span></div>
-        </div>
-        <div style="font-size:10px;color:var(--text3);margin-top:8px">Then press <b>Sync</b> (below) to refresh this view.</div>
+        <input id="scrape-input" placeholder="TX-26-00009  or  TX-26" oninput="onScrapeInput()"
+          style="width:100%;box-sizing:border-box;font-family:var(--FM);font-size:12px;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface);color:var(--text);outline:none">
+        <button class="btn btn-p" id="scrape-btn" onclick="triggerScrape()" disabled
+          style="width:100%;margin-top:8px;justify-content:center">&#9889; Scrape on my Mac</button>
+        <div id="scrape-status" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5"></div>
+        <div id="scrape-result" style="margin-top:8px"></div>
+        <details style="margin-top:10px">
+          <summary style="font-size:10px;color:var(--text3);cursor:pointer">or run it manually in a terminal</summary>
+          <div style="font-family:var(--FM);font-size:10px;background:var(--surface3);padding:9px 11px;border-radius:6px;line-height:1.95;color:var(--text2);overflow-x:auto;white-space:nowrap;margin-top:6px">
+            <div>python3 scrape_worker.py&nbsp;&nbsp;<span style="color:var(--text3)"># keep running on the Mac</span></div>
+            <div>python3 discover.py --case TX-26-00009&nbsp;&nbsp;<span style="color:var(--text3)"># or scrape directly</span></div>
+            <div>python3 sync_to_prod.py --approve TX-26-00009&nbsp;&nbsp;<span style="color:var(--text3)"># publish (deliberate)</span></div>
+          </div>
+        </details>
       </div>
     </div>
 
@@ -647,58 +655,107 @@ async function syncFromPlatform() {
   }
 }
 
-async function triggerAgent() {
-  try {
-    await fetch(PLATFORM_API + "/agent/run", {method:"POST"});
-  } catch(e) {}
+// ══════════════════════════════════════════════════════════════
+// SCRAPE TRIGGER — browser enqueues a job; the Mac worker runs discover.py and reports back.
+// The scraped case lands HELD (prod_ready=0); this only previews it, never publishes.
+// ══════════════════════════════════════════════════════════════
+function scrapeToken() {
+  var t = sessionStorage.getItem("scrape_token");
+  if (!t) {
+    t = (prompt("Enter the scrape trigger token (SCRAPE_TRIGGER_TOKEN):") || "").trim();
+    if (t) sessionStorage.setItem("scrape_token", t);   // sessionStorage: cleared on tab close
+  }
+  return t;
 }
 
-async function triggerCaseRun() {
-  var input = document.getElementById("case-input");
-  var btn = document.getElementById("run-btn");
-  var status = document.getElementById("run-status");
-  var val = (input ? input.value : "").trim().toUpperCase();
-  if (!val) { if(status) status.textContent = "Enter a case number or pattern"; return; }
+function onScrapeInput() {
+  var v = (document.getElementById("scrape-input").value || "").trim();
+  document.getElementById("scrape-btn").disabled = v.length < 4;
+}
 
-  // Determine if it's a full case number or pattern
+var _scrapePoll = null;
+function _scrapeReset(btn) { if (btn) { btn.disabled = false; btn.textContent = "⚡ Scrape on my Mac"; } }
+
+async function triggerScrape() {
+  var input = document.getElementById("scrape-input");
+  var btn = document.getElementById("scrape-btn");
+  var status = document.getElementById("scrape-status");
+  var resultEl = document.getElementById("scrape-result");
+  var val = (input.value || "").trim().toUpperCase();
+  if (!val) return;
+  var token = scrapeToken();
+  if (!token) { status.style.color = "var(--red)"; status.textContent = "A trigger token is required."; return; }
+
   var isCase = /^TX-\d{2}-\d{5}$/.test(val);
-  var body = isCase ? {case_number: val} : {case_number: "", pattern: val};
+  var body = isCase ? {case_number: val} : {pattern: val, individuals_only: true};
 
-  if(btn) { btn.disabled = true; btn.textContent = "Running..."; }
-  if(status) status.textContent = "Starting...";
+  btn.disabled = true; btn.textContent = "Queuing…";
+  status.style.color = "var(--text3)"; status.textContent = "Queuing " + val + "…";
+  resultEl.innerHTML = "";
 
   try {
-    var r = await fetch(PLATFORM_API + "/agent/run-case", {
+    var r = await fetch(PLATFORM_API + "/scrape-jobs", {
       method: "POST",
-      headers: {"Content-Type":"application/json"},
+      headers: {"Content-Type":"application/json", "X-Scrape-Token": token},
       body: JSON.stringify(body)
     });
+    if (r.status === 401) { sessionStorage.removeItem("scrape_token"); throw new Error("Bad token — re-enter and try again."); }
+    if (r.status === 409) throw new Error("That scrape is already in progress.");
+    if (r.status === 429) throw new Error("Queue is full — wait for the worker to drain it.");
+    if (r.status === 503) throw new Error("Scrape queue not configured on the server.");
+    if (!r.ok) throw new Error("Server error (" + r.status + ").");
     var data = await r.json();
-    var runId = data.run_id;
-    if(status) status.textContent = "Processing " + val + "...";
-
-    // Poll for completion
-    var poll = setInterval(async function() {
-      try {
-        var pr = await fetch(PLATFORM_API + "/agent/runs/" + runId);
-        var run = await pr.json();
-        if(run.status === "completed") {
-          clearInterval(poll);
-          if(btn) { btn.disabled = false; btn.textContent = "▶ Run"; }
-          if(status) status.textContent = "Done! Syncing...";
-          setTimeout(function() { syncFromPlatform(); }, 1000);
-        } else if(run.status === "failed") {
-          clearInterval(poll);
-          if(btn) { btn.disabled = false; btn.textContent = "▶ Run"; }
-          if(status) status.textContent = "Failed. Check terminal.";
-        }
-      } catch(e) {}
-    }, 3000);
-
-  } catch(e) {
-    if(btn) { btn.disabled = false; btn.textContent = "▶ Run"; }
-    if(status) status.textContent = "Cannot reach API.";
+    status.textContent = "Queued (job " + data.job_id + "). Waiting for the Mac worker…";
+    pollScrapeJob(data.job_id, val, btn, status, resultEl, token);
+  } catch (e) {
+    _scrapeReset(btn);
+    status.style.color = "var(--red)"; status.textContent = e.message;
   }
+}
+
+function pollScrapeJob(jobId, label, btn, status, resultEl, token) {
+  if (_scrapePoll) clearInterval(_scrapePoll);
+  _scrapePoll = setInterval(async function() {
+    try {
+      var r = await fetch(PLATFORM_API + "/scrape-jobs/" + jobId, {headers: {"X-Scrape-Token": token}});
+      if (!r.ok) return;
+      var job = await r.json();
+      if (job.status === "claimed" || job.status === "running") {
+        status.style.color = "var(--text3)";
+        status.textContent = job.progress || ("Scraping " + label + " on the Mac…");
+      } else if (job.status === "done") {
+        clearInterval(_scrapePoll); _scrapePoll = null;
+        _scrapeReset(btn);
+        status.style.color = "var(--green)"; status.textContent = "✓ Scraped — held for review.";
+        renderScrapeResult(resultEl, job.result);
+        setTimeout(function(){ syncFromPlatform(); }, 800);   // refresh the list (real fn, not the old typo)
+      } else if (job.status === "failed") {
+        clearInterval(_scrapePoll); _scrapePoll = null;
+        _scrapeReset(btn);
+        status.style.color = "var(--red)";
+        status.textContent = "✗ Failed: " + (((job.error || "").split("\n")[0]) || "see the worker log");
+      }
+    } catch(e) {}
+  }, 3000);
+}
+
+function renderScrapeResult(el, result) {
+  var esc = function(s){ return (s||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); };
+  if (!result || !result.cases || !result.cases.length) {
+    el.innerHTML = "<div style='font-size:11px;color:var(--text3)'>No case rows captured — check the worker log.</div>";
+    return;
+  }
+  var rows = result.cases.map(function(c){
+    var typ = c.property_type === "personal"
+      ? "<span style='color:var(--red)'>BPP · excluded</span>"
+      : (c.account_status && c.account_status !== "resolved")
+        ? "<span style='color:var(--amber,#c8912e)'>⚠ " + esc(c.account_status) + "</span>"
+        : "<span style='color:var(--green)'>real · resolved</span>";
+    return "<div style='font-size:11px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;margin-bottom:5px'>"
+      + "<span style='font-family:var(--FM);color:var(--accent)'>" + esc(c.case_number) + "</span> · " + typ
+      + " · <span style='color:var(--text3)'>held</span></div>";
+  }).join("");
+  el.innerHTML = rows + "<div style='font-size:10px;color:var(--text3);margin-top:2px'>Review, then approve to publish (<span style='font-family:var(--FM)'>sync_to_prod.py --approve</span>).</div>";
 }
 
 async function loadAgentStatus() {
