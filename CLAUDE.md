@@ -7,6 +7,29 @@
 
 ## SESSION HANDOFF — 2026-07-14
 
+**'Add Case Manually' (quick-add) REMOVED — governed Scrape trigger makes it redundant + it FABRICATED data.**
+Same ungoverned-localStorage anti-pattern as Analyze-with-AI (never POSTs; bypasses the pipeline/prod_ready
+gate; `Date.now()` ids), AND worse: it stamped hardcoded plausible-looking IDENTITY defaults onto every
+manual case — `judicialOfficer:"GINSBERG, CARL"`, `lawFirm:"LGBS (Linebarger)"`, `plaintiffAttorney:"ATKINS,
+ASHLY STEELE"`, a guessed benchmark, `abstractorFee:350`. Stripped the whole section + `doQuickAdd`/`checkQuickReady`
++ orphaned `// INIT` header; updated the prune comment; fixed the detail-card `Input: ${inputMethod}` →
+`Source:` (would now render "undefined"). Verified in Chromium: quick-add gone, Scrape trigger + case list
+intact, zero pageerrors. **⚠ AUDIT (the fabricated-default pattern is NOT isolated — a real recurring shape,
+mostly around `law_firm`/LGBS; decision pending, NOT yet fixed):**
+- `discover.py:301` — `extracted.get("lawFirm","LGBS")` **PERSISTS "LGBS" to the DB** (→ prod on sync) when
+  extraction returns no firm. Its siblings do it RIGHT (`judicial_officer`/`plaintiff_attorney` default `""`).
+  Highest severity — a fabricated firm is written as if real.
+- `discover.py:149` — the EXTRACTION_PROMPT JSON scaffold pre-fills `"lawFirm":"LGBS (Linebarger)"` (other
+  fields `""`) → primes Claude toward LGBS. Reinforces the save-time default.
+- `frontend platformToV3:503` — `pc.law_firm || "LGBS (Linebarger)"` **display-fabricates** the firm when the
+  backend value is null (siblings correctly `|| ""`).
+- Fee-constant class (separate category — payoff MODEL assumptions, not identity): `abstractorFee 350`,
+  `courtCosts 450`, `postJudgment 500` feed `totalPayoff` uniformly for every case.
+- NOT the bug (verified, legitimate): `CITY_DATA.firm` (per-jurisdiction reference metadata), the `KNOWN`
+  benchmarks (real values for real confirmed cases), the `§33.48`/"Dallas County LGBS" display labels.
+- **Recommended fix:** default `law_firm`/`lawFirm` to `""` (unknown) everywhere, matching the sibling fields
+  + the engineering standard (no field silently becomes a real-looking value); handle fee-constants separately.
+
 **FRONT-END SCRAPE TRIGGER — BUILT + isolated-tested (integration is the USER's live check).** A
 button on the live site to scrape a new case/pattern, calling the REAL `discover.py` CLI (never a
 reimplementation) so it inherits every guardrail — document selector, corroboration guard, BPP detection,

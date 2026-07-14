@@ -263,35 +263,6 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
 <div id="platform-status" style="font-size:11px;color:var(--text3)">Connecting to platform...</div>
     </div>
 
-    <div class="sbs">
-      <div class="sbl">Add Case Manually</div>
-
-      <div id="p-quick">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5">Fill in key fields from the petition — no AI call needed. Instant projection.</div>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-top:2px">Required</div>
-          <input id="q-casenum" placeholder="Case # (e.g. TX-26-00009)" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%" oninput="checkQuickReady()">
-          <input id="q-defendant" placeholder="Defendant name" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
-          <input id="q-address" placeholder="Property address" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
-          <input id="q-filed" type="date" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
-          <input id="q-total" type="number" placeholder="Total due at filing ($)" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
-          <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Optional but helpful</div>
-          <input id="q-court" placeholder="Court (e.g. 192nd District Court)" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
-          <input id="q-acct" placeholder="Account # (from petition)" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
-          <input id="q-defcount" type="number" placeholder="# of defendants" value="1" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
-          <input id="q-oldest" type="number" placeholder="Oldest delinquency year (e.g. 2018)" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
-          <select id="q-cbp" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
-            <option value="no">No CBP / citation by posting</option>
-            <option value="yes">CBP requested (address unknown)</option>
-          </select>
-          <select id="q-priorsuit" style="font-family:var(--FM);font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none;width:100%">
-            <option value="no">No prior suits</option>
-            <option value="yes">Prior related suit(s)</option>
-          </select>
-        </div>
-        <button class="btn btn-p" id="q-add-btn" style="width:100%;margin-top:10px;justify-content:center" onclick="doQuickAdd()" disabled>&#9889; Add Case Instantly</button>
-      </div>
-    </div>
 
     <div class="sbs">
       <div class="sbl">City / Jurisdiction</div>
@@ -402,70 +373,6 @@ const SBDG = {Faster:"bdg-green",Moderate:"bdg-amber",Slower:"bdg-red",Varies:"b
 let selCity = "dallas";
 let cases = JSON.parse(localStorage.getItem("tfi_v5") || "[]");
 let activeId = null;
-
-// ═══════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════
-function checkQuickReady() {
-  const cn = (document.getElementById("q-casenum")||{}).value||"";
-  const btn = document.getElementById("q-add-btn");
-  if (btn) btn.disabled = cn.trim().length < 5;
-}
-
-function doQuickAdd() {
-  const caseNum   = (document.getElementById("q-casenum").value||"").trim();
-  const defendant = (document.getElementById("q-defendant").value||"").trim();
-  const address   = (document.getElementById("q-address").value||"").trim();
-  const filedDate = document.getElementById("q-filed").value||"";
-  const totalDue  = parseFloat(document.getElementById("q-total").value)||0;
-  const court     = (document.getElementById("q-court").value||"").trim();
-  const acct      = (document.getElementById("q-acct").value||"").trim();
-  const defCount  = parseInt(document.getElementById("q-defcount").value)||1;
-  const oldestYr  = parseInt(document.getElementById("q-oldest").value)||0;
-  const cbp       = document.getElementById("q-cbp").value==="yes";
-  const priorSuit = document.getElementById("q-priorsuit").value==="yes";
-  const delinqYrs = oldestYr ? (new Date().getFullYear()-oldestYr) : 0;
-
-  // Auto-determine complexity
-  let complexity = "low";
-  if (defCount >= 5 || (cbp && priorSuit) || delinqYrs >= 15) complexity = "high";
-  else if (defCount >= 3 || cbp || priorSuit || delinqYrs >= 8) complexity = "medium";
-
-  const ex = {
-    caseNumber: caseNum, court: court||"Dallas District Court",
-    judicialOfficer: "GINSBERG, CARL", filedDate, judgmentDate: "", judgmentType: "none",
-    caseStatus: "open", defendant, allDefendants: [defendant], plaintiffs: [],
-    propertyAddress: address, propertyLegalDescription: "", accountNumber: acct,
-    lawFirm: "LGBS (Linebarger)", plaintiffAttorney: "ATKINS, ASHLY STEELE",
-    defendantAttorney: "", adLitemAppointed: false, adLitemName: "",
-    totalDueAtFiling: totalDue, delinquencyYears: [], oldestDelinquencyYear: oldestYr,
-    taxBreakdown: [], abstractorFee: 350, defCount,
-    citationByPostingRequested: cbp, rule106SubstituteService: false,
-    priorRelatedSuits: priorSuit ? ["See petition"] : [],
-    estateHeirSituation: false, continuanceCount: 0, trialResetCount: 0,
-    serviceIssues: cbp ? "Citation by posting requested — address unknown" : "",
-    nextHearingDate: "", keyDocketEvents: [],
-    orderOfSaleIssued: false, orderOfSaleDate: "", noticeOfJudgmentDate: "",
-    complexity, complexityReason: `Auto-assessed: ${defCount} defendant(s), ${delinqYrs}yr delinquent, CBP:${cbp}, prior:${priorSuit}`,
-    similarToBenchmark: complexity==="low" ? "TX-25-00492 (Hedge)" : complexity==="high" ? "TX-23-00042 (Williams)" : "TX-25-01777 (Stewart)",
-    benchmarkNotes: "Quick-add entry — upload petition PDF for full extraction",
-    aiNotes: "Quick-added without AI extraction. Key fields entered manually."
-  };
-
-  const cobj = {
-    id: Date.now().toString(), city: selCity, extracted: ex,
-    memo: `Quick-add entry for ${caseNum}. ${defendant} — ${address}. Filed ${filedDate}. Total due: $${totalDue.toLocaleString()}. Complexity: ${complexity.toUpperCase()}. Upload the petition PDF and re-analyze for full AI extraction and intelligence memo.`,
-    uploadedAt: new Date().toISOString(), fileNames: [], inputMethod: "quick"
-  };
-  cases.push(cobj); save(); renderList(); selectCase(cobj.id);
-  // Clear form
-  ["q-casenum","q-defendant","q-address","q-court","q-acct","q-total","q-oldest"].forEach(id => {
-    const el = document.getElementById(id); if(el) el.value="";
-  });
-  document.getElementById("q-filed").value = "";
-  document.getElementById("q-defcount").value = "1";
-  document.getElementById("q-add-btn").disabled = true;
-}
 
 // ══════════════════════════════════════════════════════════════
 // PLATFORM API INTEGRATION
@@ -624,9 +531,11 @@ async function syncFromPlatform() {
     }
 
     // PRUNE platform-derived cases that no longer exist on the platform (server-deleted, e.g. a
-    // purged BPP case) — regardless of id scheme. A case is a LOCAL DRAFT (always kept) only if it
-    // carries a draft marker (inputMethod / uploadedAt, set by quick-add);
-    // everything else is platform-derived and is pruned if its case_number isn't on the platform.
+    // purged BPP case) — regardless of id scheme. A case is treated as a LOCAL DRAFT (kept) only if
+    // it carries a draft marker (uploadedAt). NOTE: both ungoverned draft-creators (Analyze-with-AI,
+    // quick-add) have been removed, so no NEW local drafts are created — every case now comes from
+    // platformToV3; the `inputMethod` half of this check is therefore vestigial (kept only so any
+    // legacy localStorage draft still survives a sync). Worth a dedicated simplification later.
     // (The earlier "_platform"-id-only prune missed legacy-synced cases whose ids predate that
     // suffix — which is how purged BPP kept the count at the pre-purge 148.) Guarded: never prune
     // against an empty platform list — a failed/suspicious fetch must not wipe the local mirror.
@@ -1388,7 +1297,7 @@ function renderDetail(c) {
         <div class="card"><div class="chd"><div class="ct">Raw extracted data</div><div class="cs">All AI-parsed fields</div></div>
           <div style="background:var(--surface2);border-radius:var(--rs);padding:12px;font-family:var(--FM);font-size:11px;color:var(--text2);overflow-x:auto;white-space:pre-wrap;max-height:320px;overflow-y:auto">${JSON.stringify(ex,null,2)}</div>
         </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">Analyzed ${new Date(c.uploadedAt).toLocaleString()} &middot; Input: ${c.inputMethod} &middot; Files: ${(c.fileNames||[]).join(", ")||"none"}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Synced ${new Date(c.uploadedAt).toLocaleString()} &middot; Source: ${(c.fileNames||[]).join(", ")||"none"}</div>
       </div>
     </div>`;
 }
