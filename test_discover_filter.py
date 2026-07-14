@@ -32,6 +32,8 @@ def run():
     # narrowing to open-only is a deliberate opt-in. A regression here re-blinds the moat.
     check("Discoverer() default open_only is False (closed INCLUDED by default)",
           D.Discoverer().open_only is False)
+    check("Discoverer() default count_only is False", D.Discoverer().count_only is False)
+    check("Discoverer(count_only=True) sets the pre-flight flag", D.Discoverer(count_only=True).count_only is True)
 
     # open + individuals (the trigger's narrow mode)
     p = D.partition_page(ROWS, open_only=True, skip_biz=True)

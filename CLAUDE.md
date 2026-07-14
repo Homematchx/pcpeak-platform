@@ -27,7 +27,9 @@ AGAINST the mission, now made structurally correct instead of patched. **INVERTE
 - **Cost tradeoff (accepted):** default-include-closed makes a broad pattern scrape heavier (more portal
   hits + Claude + enrichment). Mitigated by skip-existing / already-complete-today, the MAX_QUEUED cap,
   and the visible "open-only" checkbox for when speed matters — mission-completeness is not something a
-  rep has to remember to opt into.
+  rep has to remember to opt into. **Pre-flight: `discover.py --pattern X --count-only`** searches +
+  paginates + COUNTS only (no docket/Claude/enrichment; doesn't even need ANTHROPIC_API_KEY) → reports
+  "Found N | would process W (with current flags)" so you know the scale before committing to a run.
 - **Sweep:** this silent-exclusion pattern lived at the discovery gate in TWO spots (`open_only` +
   `skip_biz`/`individuals_only`); both are now visible opt-ins. Clean elsewhere — the case-list API's
   `case_status` filter is opt-in (returns all by default), and sync's `SYNCABLE_WHERE` is the deliberate

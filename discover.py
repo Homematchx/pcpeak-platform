@@ -376,7 +376,7 @@ def save_to_db(extracted, memo, owner):
 
 
 class Discoverer:
-    def __init__(self, open_only=False, skip_biz=False, force=False):
+    def __init__(self, open_only=False, skip_biz=False, force=False, count_only=False):
         self.page = None
         self.browser = None
         self.open_only = open_only
@@ -384,8 +384,10 @@ class Discoverer:
         self.force = force   # re-scrape even cases marked "complete today" (the completeness
                              # heuristic can be fooled — e.g. addr+debt present but sourced from
                              # the WRONG document; --force re-downloads + re-extracts)
+        self.count_only = count_only  # PRE-FLIGHT: search + paginate + count only; process NOTHING
+                                      # (no docket fetch / Claude / enrichment). Cheap scale preview.
         self.stats = {"found": 0, "processed": 0, "skipped": 0, "closed_skipped": 0,
-                      "errors": 0, "invalid_account": 0, "no_account": 0}
+                      "would_process": 0, "errors": 0, "invalid_account": 0, "no_account": 0}
 
     def log(self, msg):
         print("[" + datetime.now().strftime("%H:%M:%S") + "] " + str(msg))
@@ -1165,14 +1167,19 @@ class Discoverer:
                     self.stats["closed_skipped"] += part["closed"]
                     self.log("  (" + str(part["closed"]) +
                              " CLOSED cases excluded (--open-only mode))")
-                self.log("Found " + str(len(rows)) + " | Processing " + str(len(targets)))
-                for i, case in enumerate(targets):
-                    self.log("[" + str(i+1) + "/" + str(len(targets)) + "] " +
-                             case["caseNumber"] + " | " + case.get("partyName", ""))
-                    await self.process_one_case(case)
-                    if i < len(targets) - 1:
-                        await self.back_to_search_results()
-                        await asyncio.sleep(1)
+                self.stats["would_process"] += len(targets)
+                if self.count_only:
+                    self.log("Found " + str(len(rows)) + " | would process " +
+                             str(len(targets)) + " (count-only — nothing scraped)")
+                else:
+                    self.log("Found " + str(len(rows)) + " | Processing " + str(len(targets)))
+                    for i, case in enumerate(targets):
+                        self.log("[" + str(i+1) + "/" + str(len(targets)) + "] " +
+                                 case["caseNumber"] + " | " + case.get("partyName", ""))
+                        await self.process_one_case(case)
+                        if i < len(targets) - 1:
+                            await self.back_to_search_results()
+                            await asyncio.sleep(1)
 
             elif args.pattern:
                 pattern = pad_pattern(args.pattern)
@@ -1213,10 +1220,12 @@ class Discoverer:
                         self.log("  (" + str(part["business"]) +
                                  " business entities excluded by --individuals-only)")
 
+                    self.stats["would_process"] += len(targets)
                     self.log("")
                     self.log("Page " + str(page_num) + ": " +
                              str(len(page_rows)) + " cases | " +
-                             str(len(targets)) + " to process")
+                             str(len(targets)) + (" would process (count-only)" if self.count_only
+                                                  else " to process"))
 
                     if os.environ.get("SCRAPE_DEBUG"):
                         try:
@@ -1236,25 +1245,28 @@ class Discoverer:
                         except Exception as pe:
                             self.log("  DEBUG pager dump failed: " + str(pe))
 
-                    for i, case in enumerate(targets):
-                        cn = case["caseNumber"]
-                        if args.limit and self.stats["processed"] >= args.limit:
-                            self.log("Reached --limit " + str(args.limit) + " — stopping.")
-                            hit_limit = True
-                            break
-                        if args.skip_existing and self._case_exists(cn):
-                            self.stats["skipped"] += 1
-                            self.log("  skip (already in DB): " + cn)
-                            continue
-                        o = classify(case["partyName"])
-                        tag = ("[IND]" if o["type"]=="individual"
-                               else "[EST]" if o["type"]=="estate" else "[BIZ]")
-                        self.log("[pg" + str(page_num) + " " +
-                                 str(i+1) + "/" + str(len(targets)) + "] " +
-                                 tag + " " + cn +
-                                 " | " + case.get("partyName",""))
-                        await self.process_one_case(case)
-                        await asyncio.sleep(3)
+                    # count-only: skip all per-case work (no docket / Claude / enrichment / DB),
+                    # just keep paginating below to tally the whole result set cheaply.
+                    if not self.count_only:
+                        for i, case in enumerate(targets):
+                            cn = case["caseNumber"]
+                            if args.limit and self.stats["processed"] >= args.limit:
+                                self.log("Reached --limit " + str(args.limit) + " — stopping.")
+                                hit_limit = True
+                                break
+                            if args.skip_existing and self._case_exists(cn):
+                                self.stats["skipped"] += 1
+                                self.log("  skip (already in DB): " + cn)
+                                continue
+                            o = classify(case["partyName"])
+                            tag = ("[IND]" if o["type"]=="individual"
+                                   else "[EST]" if o["type"]=="estate" else "[BIZ]")
+                            self.log("[pg" + str(page_num) + " " +
+                                     str(i+1) + "/" + str(len(targets)) + "] " +
+                                     tag + " " + cn +
+                                     " | " + case.get("partyName",""))
+                            await self.process_one_case(case)
+                            await asyncio.sleep(3)
 
                     if hit_limit:
                         break
@@ -1304,32 +1316,49 @@ class Discoverer:
         finally:
             self.log("")
             self.log("=" * 55)
-            self.log("COMPLETE")
             found = self.stats["found"]
-            proc = self.stats["processed"]
-            skip = self.stats["skipped"]
             closed = self.stats["closed_skipped"]
-            errs = self.stats["errors"]
-            self.log("  Found:     " + str(found))
-            self.log("  Processed: " + str(proc) +
-                     (" (of which BPP skip-records: " + str(self.stats["bpp_skipped"]) + ")"
-                      if self.stats.get("bpp_skipped") else ""))
-            self.log("  Skipped:   " + str(skip) + " (business / already-complete)")
-            self.log("  Closed:    " + str(closed) + " (excluded — default open-only)")
-            self.log("  Errors:    " + str(errs))
-            # Stats must add up (project standard): Found = Processed + Skipped + Closed + Errors.
-            # Only meaningful for list searches (pattern/name) where `found` is the grid total.
-            accounted = proc + skip + closed + errs
-            if found:
-                ok = "OK" if accounted == found else "MISMATCH — investigate"
-                self.log("  reconcile: " + str(proc) + "+" + str(skip) + "+" + str(closed) +
-                         "+" + str(errs) + " = " + str(accounted) + " vs Found " + str(found) +
-                         "  " + ok)
-            # Machine-readable line the worker/UI parse (decoupled from the human log format).
-            print("SCRAPE_SUMMARY " + json.dumps({
-                "found": found, "processed": proc, "skipped": skip,
-                "closed": closed, "errors": errs,
-                "bpp": self.stats.get("bpp_skipped", 0)}))
+            if self.count_only:
+                # PRE-FLIGHT summary — scale preview, nothing scraped.
+                would = self.stats["would_process"]
+                biz = self.stats["skipped"]
+                self.log("COUNT-ONLY (pre-flight — nothing scraped)")
+                self.log("  Found:         " + str(found) + " cases in the result grid")
+                self.log("  Would process: " + str(would) + " with the current flags")
+                if closed:
+                    self.log("  Closed excluded (--open-only): " + str(closed))
+                if biz:
+                    self.log("  Business excluded (--individuals-only): " + str(biz))
+                self.log("  → a real run would fetch+extract+enrich ~" + str(would) +
+                         " case(s) (minus any already scraped today).")
+                print("SCRAPE_SUMMARY " + json.dumps({
+                    "count_only": True, "found": found, "would_process": would,
+                    "closed": closed, "business": biz}))
+            else:
+                proc = self.stats["processed"]
+                skip = self.stats["skipped"]
+                errs = self.stats["errors"]
+                self.log("COMPLETE")
+                self.log("  Found:     " + str(found))
+                self.log("  Processed: " + str(proc) +
+                         (" (of which BPP skip-records: " + str(self.stats["bpp_skipped"]) + ")"
+                          if self.stats.get("bpp_skipped") else ""))
+                self.log("  Skipped:   " + str(skip) + " (business / already-complete)")
+                self.log("  Closed:    " + str(closed) + " (excluded — --open-only mode)")
+                self.log("  Errors:    " + str(errs))
+                # Stats must add up (project standard): Found = Processed + Skipped + Closed + Errors.
+                # Only meaningful for list searches (pattern/name) where `found` is the grid total.
+                accounted = proc + skip + closed + errs
+                if found:
+                    ok = "OK" if accounted == found else "MISMATCH — investigate"
+                    self.log("  reconcile: " + str(proc) + "+" + str(skip) + "+" + str(closed) +
+                             "+" + str(errs) + " = " + str(accounted) + " vs Found " + str(found) +
+                             "  " + ok)
+                # Machine-readable line the worker/UI parse (decoupled from the human log format).
+                print("SCRAPE_SUMMARY " + json.dumps({
+                    "found": found, "processed": proc, "skipped": skip,
+                    "closed": closed, "errors": errs,
+                    "bpp": self.stats.get("bpp_skipped", 0)}))
             if self.stats.get("resolved_account"):
                 self.log("  ✔ DCAD account resolved from address/owner: " + str(self.stats["resolved_account"]))
             flagged = self.stats["invalid_account"] + self.stats["no_account"]
@@ -1367,6 +1396,11 @@ async def main():
     parser.add_argument("--individuals-only",
                         action="store_true",
                         help="Skip business entities (individual owners only)")
+    parser.add_argument("--count-only",
+                        action="store_true",
+                        help="PRE-FLIGHT: search + paginate + count only, process NOTHING (no "
+                             "docket/Claude/enrichment). Cheap scale preview before a real run — "
+                             "reports how many cases the current flags would process.")
     parser.add_argument("--limit", type=int, default=0,
                         help="Stop after processing this many cases (0 = no limit)")
     parser.add_argument("--skip-existing", action="store_true",
@@ -1379,7 +1413,7 @@ async def main():
     if not any([args.pattern, args.name, args.case]):
         parser.print_help()
         return
-    if not ANTHROPIC_KEY:
+    if not ANTHROPIC_KEY and not args.count_only:
         print("ERROR: Set ANTHROPIC_API_KEY environment variable")
         return
     if not TWO_CAPTCHA_KEY:
@@ -1394,7 +1428,8 @@ async def main():
     await Discoverer(
         open_only=args.open_only,
         skip_biz=args.individuals_only,
-        force=args.force
+        force=args.force,
+        count_only=args.count_only
     ).run(args)
 
 
