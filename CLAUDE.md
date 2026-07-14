@@ -5,6 +5,40 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-07-14
+
+**#3 RESOLVED — 'Analyze with AI' client-side path REMOVED + deployed. Step 5 is UNBLOCKED.**
+The ungoverned in-browser Analyze-with-AI path (user pastes docket + enters their OWN Anthropic key
+in localStorage → direct api.anthropic.com calls from the browser → localStorage-only draft, never
+POSTs to prod, bypasses BPP detection / document-selection / enrichment / corroboration guard; its
+Date.now-id drafts were the root cause of the earlier stale-count bug) was **removed, not gated** —
+inappropriate to leave running as Step 5 opens the platform to real human input. Scoped exhaustively
+first, confirmed nothing else depended on it, then stripped end-to-end from `frontend/index.html`:
+API-key input UI + saveKey/clearKey/loadKey; PDF/Paste/Both input modes + upload zone + file chips +
+the input-method toggle (existed only to feed the analyze call); `doAnalyze()` and its two direct
+api.anthropic.com fetches; the loading overlay (`#lov`) + its helpers (only doAnalyze used them); all
+path-exclusive CSS. **Kept** the independent Quick-add manual-entry path (no key, no Anthropic call) —
+now the sole entry under the section (relabeled "Add Case Manually", always visible). Diff: 1 file,
++4/−358. Verified in Chromium (pinned to the pre-installed browser): page loads with zero JS errors,
+all removed markers gone, quick-add adds a case end-to-end (localStorage 0→1, `inputMethod:"quick"`).
+**Deployed via cherry-pick** (commit `f1dbaac` on `production`, matching every prior "Deploy …"
+cherry-pick) — clean, frontend-only, zero backend blast radius. ⚠ **LIVE click-through NOT done from
+this session** — the sandbox's egress policy 403-blocks outbound to the Railway host, so
+taxforeclosureanalyzer.com couldn't be reached to confirm Railway's build/serve. The deployed
+artifact is byte-identical to the verified local file; still, a human should load the live site once
+to confirm it serves clean (no console errors, quick-add works).
+
+**FOLLOW-UP (needs its OWN dedicated session — do NOT bundle) — `main`↔`production` have DIVERGED.**
+A straight `git merge main` into `production` is NOT the clean gate the docs imply: it hits **3
+content conflicts** (`CLAUDE.md`, `discover.py`, `frontend/index.html`) and would drag **~37 main-only
+commits** (ledger backend steps 1–4, BPP delete endpoint, property_intel/discover/sync_to_prod
+changes, tests, docs — ~902 insertions) onto the live branch at once. Much of that is described here as
+ALREADY on prod via individual cherry-picks, so the merge is a big reconciliation, not a deploy.
+**Before ANY real main→production merge: audit which of the 37 commits are already live (content-wise)
+via prior cherry-picks vs genuinely missing from prod, then reconcile deliberately.** Until then,
+keep deploying to prod by **cherry-picking specific commits** (the practice that actually works), never
+a bare merge. This is the same class as [[sync-approved-for-prod-gate]] — make the safe path structural.
+
 ## SESSION HANDOFF — 2026-07-13
 
 **Prediction-ledger build (design [`docs/prediction-ledger-design.md`](docs/prediction-ledger-design.md),
