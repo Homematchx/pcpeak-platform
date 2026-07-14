@@ -343,6 +343,14 @@ def init_db():
             # authoritative writes are single-DB, these caches self-heal on next write).
             ("deal_status", "TEXT"),      # not_contacted|contacted|in_conversation|offer_out|won|dead
             ("last_action_at", "TEXT"),
+            # PROD-APPROVAL GATE (default 0 = held). sync_to_prod.py pushes ONLY prod_ready=1
+            # cases, so a routine local→prod sync can never silently promote work-in-progress
+            # leads — the structural fix for the 2026-07-13 36-case premature-sync incident.
+            # Scraping (discover.py) never sets it, so every new scrape lands held; approval is
+            # a deliberate, explicit act (sync_to_prod.py --approve). A case already live on
+            # prod is implicitly approved (sync_to_prod reconciles it to 1). Local-only signal —
+            # never sent up (SKIP_CASE_FIELDS); prod carries the column but doesn't use it.
+            ("prod_ready", "INTEGER DEFAULT 0"),
         ]:
             if col not in cols:
                 db.execute(f"ALTER TABLE cases ADD COLUMN {col} {typedef}")

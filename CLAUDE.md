@@ -28,16 +28,42 @@ taxforeclosureanalyzer.com couldn't be reached to confirm Railway's build/serve.
 artifact is byte-identical to the verified local file; still, a human should load the live site once
 to confirm it serves clean (no console errors, quick-add works).
 
-**FOLLOW-UP (needs its OWN dedicated session — do NOT bundle) — `main`↔`production` have DIVERGED.**
-A straight `git merge main` into `production` is NOT the clean gate the docs imply: it hits **3
-content conflicts** (`CLAUDE.md`, `discover.py`, `frontend/index.html`) and would drag **~37 main-only
-commits** (ledger backend steps 1–4, BPP delete endpoint, property_intel/discover/sync_to_prod
-changes, tests, docs — ~902 insertions) onto the live branch at once. Much of that is described here as
-ALREADY on prod via individual cherry-picks, so the merge is a big reconciliation, not a deploy.
-**Before ANY real main→production merge: audit which of the 37 commits are already live (content-wise)
-via prior cherry-picks vs genuinely missing from prod, then reconcile deliberately.** Until then,
-keep deploying to prod by **cherry-picking specific commits** (the practice that actually works), never
-a bare merge. This is the same class as [[sync-approved-for-prod-gate]] — make the safe path structural.
+**`main`↔`production` DIVERGENCE — RECONCILED (verified lossless + runtime-neutral).** The scary
+framing (37 commits / 902 insertions / 3 conflicts) was real at the HISTORY level but the AUDIT showed
+the divergence was entirely NON-RUNTIME: `git diff origin/production origin/main` for **`backend/main.py`
+is EMPTY** (the deployed server was already in sync via prod's bundled "Deploy …" cherry-picks) and
+**`frontend/index.html` was byte-identical** (this session's cherry-pick synced it). The only real deltas
+were docs (`CLAUDE.md`, design doc, `.gitignore`), tests, LOCAL-only tools (`discover.py`/`property_intel.py`/
+`sync_to_prod.py`/`backup_ledger.py`/`payment_backfill.py`), and `.DS_Store`/`.pyc` cruft — none served by
+Railway. Reconciled with ONE deliberate merge (commit `03915ad` on `production`): the 2 remaining conflicts
+(`CLAUDE.md`, `discover.py`) resolved by taking main (verified a strict superset — prod's BPP funcs + doc
+sections all already in main), everything else auto-merged. **Fingerprint-verified (the ledger.db/git-purge
+standard):** served artifacts unchanged before→after — `backend/main.py` `b702bbb8…`, `frontend/index.html`
+`003f951d…` on prod == main == reconciled; and **reconciled tree == origin/main exactly** (nothing lost,
+nothing extra). Result: `git diff origin/main origin/production` is now EMPTY — the documented `git merge
+main` deploy gate works cleanly again; future deploys carry doc/tool catch-up automatically, no more
+cherry-pick gymnastics. (Railway redeployed the identical runtime; a human should still glance at the live
+site — this sandbox's egress policy 403-blocks the Railway host so no click-through was possible here.)
+
+**`prod_ready` GATE BUILT — the structural fix for the 36-case premature-sync incident ([[sync-approved-for-prod-gate]]).**
+`sync_to_prod.py` now pushes a case ONLY if `cases.prod_ready=1`. New scrapes default to `0` (held —
+`discover.py` never sets it, and its SELECT-then-UPDATE preserves the flag across re-scrapes), so a routine
+sync can NEVER silently promote work-in-progress leads — not "remember to hold back," but structurally
+impossible. Approval is explicit: `--approve "<case,…>"` (revoke `--unapprove`, inspect `--pending`); a case
+already LIVE on prod is implicitly approved (reconciled to 1 at run start, so `--update-existing` keeps
+working for public cases). ONE source-of-truth predicate `SYNCABLE_WHERE` (prod_ready=1 + the existing
+BPP/unknown exclusions) that every push path (default / `--update-existing` / `--only`) runs through — no
+bypass. `prod_ready` is LOCAL-only (added to `SKIP_CASE_FIELDS`, never sent up); `ensure_schema()` self-heals
+the column on a pre-migration local DB. Migration added to `backend/main.py` init_db (`INTEGER DEFAULT 0`,
+verified idempotent + new-row default 0 against a real DB). **`test_prod_ready_gate.py` 21/21** (pure-DB, no
+network: held-never-syncable, default-held, BPP-still-excluded-when-approved, reconcile, approve/revoke,
+pending, + a 34-held/2-approved incident simulation). All 4 existing backend suites still green (11/19/17/9).
+The gate works locally immediately; the `backend/main.py` column is dormant on prod (prod doesn't use it) and
+will reach prod harmlessly on the next `git merge main` deploy — no separate deploy needed.
+
+**PRE-STEP-5 SEQUENCING (per user, 2026-07-14): both blockers now DONE — divergence reconciled, prod_ready
+gate built. Step 5 (rep_actions API+UI) is next.** Reminder: Step 5 opens the platform to real,
+non-regenerable HUMAN input — start it fresh with the same checkpoint discipline (ledger.db / git-purge).
 
 ## SESSION HANDOFF — 2026-07-13
 
