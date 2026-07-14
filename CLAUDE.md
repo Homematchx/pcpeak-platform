@@ -36,9 +36,13 @@ mostly around `law_firm`/LGBS; decision pending, NOT yet fixed):**
   yet the KNOWN benchmarks show it extracting DIFFERENT real values ATKINS vs ZOKAIE = genuinely read from the
   doc, not defaulted). **USER's live check after deploy: re-scrape TX-23-00379 or TX-23-00423 and confirm
   law_firm still shows LGBS** (it's a real, common Dallas answer — must come from the doc, and now does).
-- **STILL OPEN (fee-constant class, separate decision):** `abstractorFee 350` / `courtCosts 450` /
-  `postJudgment 500` feed `totalPayoff` uniformly — payoff MODEL assumptions, not identity fabrication. Keep as
-  a documented model or surface as explicit assumptions — not yet touched.
+- **TRACKED FOLLOW-UP (LOW priority — do NOT build now; decided 2026-07-14):** the fee constants
+  `abstractorFee 350` / `courtCosts 450` / `postJudgment 500` (frontend `equity()`/payoff calc ~894, rendered in
+  the payoff table ~1293–1306) feed `totalPayoff` uniformly. This is a MODELING-ASSUMPTION-WITHOUT-A-LABEL
+  problem, NOT identity fabrication — so the fix is a UI LABEL, not a data change. **Do NOT remove or zero them**
+  (that makes the payoff estimate worse). Scope: label them clearly in the payoff UI as estimates — e.g.
+  "Estimated fees — typical Dallas range" — so they read as an estimate, not case-specific fact. Small, cosmetic,
+  no calc change. Sequenced AFTER: law_firm fix (DONE) + the user's live scrape-trigger verification.
 
 **FRONT-END SCRAPE TRIGGER — BUILT + isolated-tested (integration is the USER's live check).** A
 button on the live site to scrape a new case/pattern, calling the REAL `discover.py` CLI (never a
