@@ -1066,8 +1066,14 @@ async def get_stats():
         total = db.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
         pre_j = db.execute("SELECT COUNT(*) FROM cases WHERE stage='pre_judgment'").fetchone()[0]
         judged = db.execute("SELECT COUNT(*) FROM cases WHERE judgment_date IS NOT NULL AND oos_issued=0").fetchone()[0]
-        oos = db.execute("SELECT COUNT(*) FROM cases WHERE oos_issued=1").fetchone()[0]
-        pulled = db.execute("SELECT COUNT(*) FROM cases WHERE stage='sale_pulled'").fetchone()[0]
+        # A pulled sale is its own (latest) stage — count it as sale_pulled, not oos_issued, so
+        # the portfolio buckets stay mutually exclusive AND the "Sale Pulled" stat matches the
+        # card badge. Count sale_pulled by the DATE field (not just the stage column), since a
+        # re-scrape recomputes stage from orderOfSaleIssued and would otherwise revert it to
+        # oos_issued (discover.py doesn't yet capture sale-pulled events — see known gaps).
+        _pulled_where = "(stage='sale_pulled' OR (sale_pulled_date IS NOT NULL AND TRIM(sale_pulled_date)!=''))"
+        oos = db.execute(f"SELECT COUNT(*) FROM cases WHERE oos_issued=1 AND NOT {_pulled_where}").fetchone()[0]
+        pulled = db.execute(f"SELECT COUNT(*) FROM cases WHERE {_pulled_where}").fetchone()[0]
         last_run = db.execute("SELECT started_at FROM agent_runs ORDER BY id DESC LIMIT 1").fetchone()
         return {
             "total_cases": total,
