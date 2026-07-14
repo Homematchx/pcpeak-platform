@@ -52,11 +52,35 @@ the first time; start it in a clean session (same checkpoint discipline as ledge
   trigger). ⚠ **"1 case" is based on CURRENT data — re-check as more older-vintage (TX-23/earlier) cases
   get backfilled**, since older dockets are where duplicate same-named entries appear.
 
-**NEXT — Step 5 (rep_actions API+UI):** `POST /api/cases/{cn}/actions` + `GET .../actions`, cached
-`deal_status`/`last_action_at`, basic logging UI. GATE IS GREEN (Step 4 backup verified). Then Step 6
-(scorecard.py → read the ledger via the prod API, §11). **Open follow-up chips:** structural `prod_ready`
-gate on sync_to_prod ([[sync-approved-for-prod-gate]]); the #3 docket-parse fix. Apply
-[[prod-history-fingerprint-proof]] to anything touching prod/ledger data.
+**Live-site review (2026-07-13) — 4 findings; Step 5 now HELD pending #3:**
+- **#1 stale localStorage / count mismatch (FIXED + DEPLOYED).** "Analyzed Cases 148" vs "Total 127":
+  the localStorage prune only removed `_platform`-id cases, missing legacy-synced cases with older
+  `Date.now()` ids — so purged BPP held the count at the pre-purge 148 (real, browsable, not cosmetic).
+  Prune is now id-agnostic: keep only genuine local drafts (`inputMethod`/`uploadedAt`) or on-platform
+  case numbers; guarded vs an empty platform list. Reload drops to 127.
+- **#2 sale-pulled stat/badge contradiction (FIXED + DEPLOYED).** "0 SALE PULLED" stat vs a card badged
+  SALE PULLED (TX-23-00569): stat counted `stage='sale_pulled'` but the derivation checks
+  `orderOfSaleIssued` first → a pulled sale reads oos_issued. Stat now counts sale-pulled by the DATE
+  field OR stage (excluded from oos bucket); `caseStage` checks sale-pulled first; stored stage corrected.
+  Live: sale_pulled=1. ⚠ **FOLLOW-UP: `discover.py` does NOT capture sale-pulled docket events at all** —
+  TX-23-00569's sale_pulled_date is seeded/benchmark data, not scraped. Capturing pulls (a real distress
+  signal — sale scheduled then withdrawn = bankruptcy/payoff/challenge, property resurfaces) is unbuilt.
+- **#3 'Analyze with AI' — PRE-EXISTING UNGOVERNED CLIENT-SIDE PATH, PENDING DECISION (not acted on).**
+  Not built this session. User pastes a docket, enters their OWN Anthropic key (stored in localStorage),
+  and it calls api.anthropic.com DIRECT from the browser to extract + memo, saving a case to localStorage
+  only. It **never POSTs to prod** (doesn't reach reps/ledger/sync guards) BUT bypasses the extraction
+  pipeline entirely — no BPP detection, no document-selection, no enrichment — and its Date.now-id drafts
+  are what caused #1. Plus the key sits in localStorage (XSS-readable). **DECISION NEEDED before Step 5:
+  keep as a power-user local tool, or remove/gate it.** Step 5 is HELD until resolved.
+- **#4 export ANTHROPIC_API_KEY=sk-ant-… — NON-ISSUE.** `&hellip;` (HTML ellipsis) — instructional
+  placeholder in the Load-New-Deals command snippet, not a real key.
+
+**NEXT — Step 5 (rep_actions API+UI) is HELD pending the #3 decision.** When unblocked:
+`POST /api/cases/{cn}/actions` + `GET .../actions`, cached `deal_status`/`last_action_at`, logging UI
+(gate green — Step 4 backup verified). Then Step 6 (scorecard.py → read the ledger via prod API, §11).
+**Open follow-ups:** the #3 keep-or-remove decision; sale-pulled event capture in discover.py (from #2);
+structural `prod_ready` gate on sync_to_prod ([[sync-approved-for-prod-gate]]); the OOS-event docket-parse
+fix (task chip). Apply [[prod-history-fingerprint-proof]] to anything touching prod/ledger data.
 
 **Standard reinforced this session (apply to anything touching prod or history):** capture a
 baseline fingerprint (size + sha256 + row count) BEFORE, and re-verify it AFTER — prove data is
