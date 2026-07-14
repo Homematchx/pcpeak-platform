@@ -64,6 +64,26 @@ def classify(name):
         return {"type":"business","priority":"medium","contact":"Formal letter to registered agent"}
     return {"type":"individual","priority":"high","contact":"Door knock first, then direct mail"}
 
+
+def partition_page(rows, open_only, skip_biz):
+    """Split a page of result rows into what we process vs. what each filter drops — COUNTING
+    every drop so the Found total always reconciles (Found = targets + closed + business, and
+    downstream Processed+Skipped+Errors over the targets). Pure (only depends on classify), so
+    it's unit-tested without the portal. open_only keeps OPEN or blank-status rows; skip_biz
+    drops business-type parties. Returns {"targets", "closed", "business"}."""
+    if open_only:
+        kept = [r for r in rows
+                if "OPEN" in (r.get("status", "") or "").upper() or (r.get("status", "") or "") == ""]
+    else:
+        kept = list(rows)
+    closed = len(rows) - len(kept)
+    business = 0
+    if skip_biz:
+        before = len(kept)
+        kept = [r for r in kept if classify(r.get("partyName", ""))["type"] != "business"]
+        business = before - len(kept)
+    return {"targets": kept, "closed": closed, "business": business}
+
 def valid_dcad_accounts(acct):
     """A Dallas DCAD account is exactly 17 CHARACTERS — usually all digits, but some
     parcels (condos/townhomes/special) use 17-char ALPHANUMERIC IDs (e.g.
@@ -364,8 +384,8 @@ class Discoverer:
         self.force = force   # re-scrape even cases marked "complete today" (the completeness
                              # heuristic can be fooled — e.g. addr+debt present but sourced from
                              # the WRONG document; --force re-downloads + re-extracts)
-        self.stats = {"found": 0, "processed": 0, "skipped": 0, "errors": 0,
-                      "invalid_account": 0, "no_account": 0}
+        self.stats = {"found": 0, "processed": 0, "skipped": 0, "closed_skipped": 0,
+                      "errors": 0, "invalid_account": 0, "no_account": 0}
 
     def log(self, msg):
         print("[" + datetime.now().strftime("%H:%M:%S") + "] " + str(msg))
@@ -1136,11 +1156,16 @@ class Discoverer:
                 await self.go_to_portal_and_search(args.name)
                 rows = await self.get_case_list_from_current_page()
                 self.stats["found"] = len(rows)
-                targets = ([r for r in rows
-                            if "OPEN" in r.get("status", "").upper()]
-                           if self.open_only else rows)
-                self.log("Found " + str(len(rows)) + " | Processing " +
-                         str(len(targets)) + " OPEN")
+                # Same root cause as the pattern path: count closed-excluded so Found reconciles.
+                # skip_biz=False here — businesses are filtered (and counted) per-case in
+                # process_one_case on this path, not at the page level.
+                part = partition_page(rows, self.open_only, skip_biz=False)
+                targets = part["targets"]
+                if part["closed"]:
+                    self.stats["closed_skipped"] += part["closed"]
+                    self.log("  (" + str(part["closed"]) +
+                             " CLOSED cases excluded by default — pass --include-closed to keep)")
+                self.log("Found " + str(len(rows)) + " | Processing " + str(len(targets)))
                 for i, case in enumerate(targets):
                     self.log("[" + str(i+1) + "/" + str(len(targets)) + "] " +
                              case["caseNumber"] + " | " + case.get("partyName", ""))
@@ -1173,24 +1198,20 @@ class Discoverer:
                     total_found += len(page_rows)
                     self.stats["found"] = total_found
 
-                    # Respect --include-closed: default keeps only OPEN (or
-                    # blank-status) rows; with open_only=False, take every row
-                    # (judgment/OOS/dismissed) — needed to backfill closed cases.
-                    if self.open_only:
-                        targets = [r for r in page_rows
-                                   if "OPEN" in r.get("status","").upper()
-                                   or r.get("status","") == ""]
-                    else:
-                        targets = list(page_rows)
-                    if self.skip_biz:
-                        pre_filter_count = len(targets)
-                        targets = [r for r in targets
-                                   if classify(r["partyName"])["type"] != "business"]
-                        biz_excluded = pre_filter_count - len(targets)
-                        if biz_excluded:
-                            self.stats["skipped"] += biz_excluded
-                            self.log("  (" + str(biz_excluded) +
-                                     " business entities excluded by --individuals-only)")
+                    # Respect --include-closed: default keeps only OPEN (or blank-status) rows;
+                    # with open_only=False, take every row (judgment/OOS/dismissed) — needed to
+                    # backfill closed cases. Both filters COUNT their drops (partition_page) so
+                    # the Found total reconciles instead of silently shedding closed cases.
+                    part = partition_page(page_rows, self.open_only, self.skip_biz)
+                    targets = part["targets"]
+                    if part["closed"]:
+                        self.stats["closed_skipped"] += part["closed"]
+                        self.log("  (" + str(part["closed"]) +
+                                 " CLOSED cases excluded by default — pass --include-closed to keep)")
+                    if part["business"]:
+                        self.stats["skipped"] += part["business"]
+                        self.log("  (" + str(part["business"]) +
+                                 " business entities excluded by --individuals-only)")
 
                     self.log("")
                     self.log("Page " + str(page_num) + ": " +
@@ -1284,10 +1305,31 @@ class Discoverer:
             self.log("")
             self.log("=" * 55)
             self.log("COMPLETE")
-            self.log("  Found:     " + str(self.stats["found"]))
-            self.log("  Processed: " + str(self.stats["processed"]))
-            self.log("  Skipped:   " + str(self.stats["skipped"]))
-            self.log("  Errors:    " + str(self.stats["errors"]))
+            found = self.stats["found"]
+            proc = self.stats["processed"]
+            skip = self.stats["skipped"]
+            closed = self.stats["closed_skipped"]
+            errs = self.stats["errors"]
+            self.log("  Found:     " + str(found))
+            self.log("  Processed: " + str(proc) +
+                     (" (of which BPP skip-records: " + str(self.stats["bpp_skipped"]) + ")"
+                      if self.stats.get("bpp_skipped") else ""))
+            self.log("  Skipped:   " + str(skip) + " (business / already-complete)")
+            self.log("  Closed:    " + str(closed) + " (excluded — default open-only)")
+            self.log("  Errors:    " + str(errs))
+            # Stats must add up (project standard): Found = Processed + Skipped + Closed + Errors.
+            # Only meaningful for list searches (pattern/name) where `found` is the grid total.
+            accounted = proc + skip + closed + errs
+            if found:
+                ok = "OK" if accounted == found else "MISMATCH — investigate"
+                self.log("  reconcile: " + str(proc) + "+" + str(skip) + "+" + str(closed) +
+                         "+" + str(errs) + " = " + str(accounted) + " vs Found " + str(found) +
+                         "  " + ok)
+            # Machine-readable line the worker/UI parse (decoupled from the human log format).
+            print("SCRAPE_SUMMARY " + json.dumps({
+                "found": found, "processed": proc, "skipped": skip,
+                "closed": closed, "errors": errs,
+                "bpp": self.stats.get("bpp_skipped", 0)}))
             if self.stats.get("resolved_account"):
                 self.log("  ✔ DCAD account resolved from address/owner: " + str(self.stats["resolved_account"]))
             flagged = self.stats["invalid_account"] + self.stats["no_account"]

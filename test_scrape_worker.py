@@ -46,7 +46,7 @@ class FakeApi:
 
 
 STUB = '''#!/usr/bin/env python3
-import argparse, os, sqlite3, sys
+import argparse, json, os, sqlite3, sys
 ap = argparse.ArgumentParser()
 ap.add_argument("--case", default=""); ap.add_argument("--pattern", default="")
 ap.add_argument("--individuals-only", action="store_true")
@@ -62,7 +62,9 @@ cn = a.case or "TX-26-90001"
 conn.execute("INSERT OR REPLACE INTO cases (case_number, property_type, account_status, prod_ready, "
              "property_intel) VALUES (?,?,?,?,?)", [cn, "real", "resolved", 0, '{"market_value": 100}'])
 conn.commit(); conn.close()
-print("stub scraped", cn); sys.exit(0)
+print("stub scraped", cn)
+print("SCRAPE_SUMMARY " + json.dumps({"found":1,"processed":1,"skipped":0,"closed":0,"errors":0,"bpp":0}))
+sys.exit(0)
 '''
 
 
@@ -80,6 +82,15 @@ def run():
           W.build_discover_args({"pattern": "TX-26"}) == ["--pattern", "TX-26", "--individuals-only"])
     check("args for a pattern with individuals_only off",
           W.build_discover_args({"pattern": "TX-26", "individuals_only": False}) == ["--pattern", "TX-26"])
+
+    # ── parse_summary: pulls the SCRAPE_SUMMARY line; ignores everything else ──
+    out = ("Page 1: 110 cases | 2 to process\n"
+           "  (108 CLOSED cases excluded by default — pass --include-closed to keep)\n"
+           'SCRAPE_SUMMARY {"found":110,"processed":0,"skipped":2,"closed":108,"errors":0,"bpp":0}\n')
+    s = W.parse_summary(out)
+    check("parse_summary finds the breakdown", s and s["found"] == 110 and s["closed"] == 108)
+    check("parse_summary None when absent", W.parse_summary("no summary here\n") is None)
+    check("parse_summary ignores malformed line", W.parse_summary("SCRAPE_SUMMARY {bad json\n") is None)
 
     # ── empty queue: process_one returns False, no work ──
     api = FakeApi(None)
@@ -144,6 +155,8 @@ def run():
     check("full stub cycle → done with the scraped case in the result",
           api.statuses() == ["running", "done"] and
           api.patches[-1][1]["result"]["cases"][0]["case_number"] == "TX-26-88888")
+    check("full stub cycle → result carries the parsed SCRAPE_SUMMARY breakdown",
+          api.patches[-1][1]["result"].get("summary", {}).get("found") == 1)
 
     if env_db is not None:
         os.environ["STUB_DB"] = env_db

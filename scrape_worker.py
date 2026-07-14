@@ -57,6 +57,21 @@ def build_discover_args(request):
     return args
 
 
+def parse_summary(out):
+    """Pull the machine-readable `SCRAPE_SUMMARY {json}` line discover.py prints at the end
+    (Found / Processed / Skipped / Closed / Errors). Returns the dict, or None if absent.
+    Decoupled from the human log format on purpose. Last match wins."""
+    found = None
+    for line in (out or "").splitlines():
+        line = line.strip()
+        if line.startswith("SCRAPE_SUMMARY "):
+            try:
+                found = json.loads(line[len("SCRAPE_SUMMARY "):])
+            except ValueError:
+                pass
+    return found
+
+
 def run_discover(request, discover_cmd=None, cwd=None, timeout=1200):
     """Run the real discover.py CLI. Returns (returncode, stdout, stderr)."""
     cmd = (discover_cmd or DISCOVER_CMD) + build_discover_args(request)
@@ -110,8 +125,13 @@ def process_one(claim_fn, patch_fn, run_fn, snapshot_fn, log=print):
         if rc == 0:
             result = snapshot_fn(request)
             result["stdout_tail"] = (out or "")[-RESULT_TRUNC:]
+            summary = parse_summary(out)          # Found/Closed/Business breakdown, if present
+            if summary:
+                result["summary"] = summary
             patch_fn(job_id, status="done", progress="done", result=result)
-            log(f"  ✓ done  job {job_id} ({label}) — {result.get('found', '?')} case(s), held")
+            log(f"  ✓ done  job {job_id} ({label}) — {result.get('found', '?')} saved, held"
+                + (f" (found {summary['found']}, {summary['closed']} closed, "
+                   f"{summary['skipped']} business/skip)" if summary else ""))
         else:
             detail = ((err or "") + "\n" + (out or "")).strip()[-RESULT_TRUNC:]
             patch_fn(job_id, status="failed", error=f"discover exited {rc}\n{detail}")

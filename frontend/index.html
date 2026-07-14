@@ -650,11 +650,24 @@ function pollScrapeJob(jobId, label, btn, status, resultEl, token) {
 
 function renderScrapeResult(el, result) {
   var esc = function(s){ return (s||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); };
-  if (!result || !result.cases || !result.cases.length) {
-    el.innerHTML = "<div style='font-size:11px;color:var(--text3)'>No case rows captured — check the worker log.</div>";
+  // Filter breakdown from discover's summary — so "3 saved" isn't a bare number with no
+  // account of the other 107 (e.g. "110 found → 108 closed · 2 business/skip · 0 saved").
+  var s = result && result.summary;
+  var breakdown = "";
+  if (s) {
+    breakdown = "<div style='font-size:11px;color:var(--text2);margin-bottom:6px;line-height:1.5'>"
+      + "<b>" + s.found + "</b> found → <b>" + s.closed + "</b> closed · <b>" + s.skipped + "</b> business/skip"
+      + (s.errors ? " · <b style='color:var(--red)'>" + s.errors + "</b> errors" : "")
+      + " · <b style='color:var(--green)'>" + s.processed + "</b> saved (held)</div>";
+  }
+  var cases = (result && result.cases) || [];
+  if (!cases.length) {
+    el.innerHTML = breakdown + "<div style='font-size:11px;color:var(--text3)'>"
+      + (s ? "0 new cases saved — every result was filtered out (closed / business) or already on file."
+           : "No case rows captured — check the worker log.") + "</div>";
     return;
   }
-  var rows = result.cases.map(function(c){
+  var rows = cases.map(function(c){
     var typ = c.property_type === "personal"
       ? "<span style='color:var(--red)'>BPP · excluded</span>"
       : (c.account_status && c.account_status !== "resolved")
@@ -664,7 +677,7 @@ function renderScrapeResult(el, result) {
       + "<span style='font-family:var(--FM);color:var(--accent)'>" + esc(c.case_number) + "</span> · " + typ
       + " · <span style='color:var(--text3)'>held</span></div>";
   }).join("");
-  el.innerHTML = rows + "<div style='font-size:10px;color:var(--text3);margin-top:2px'>Review, then approve to publish (<span style='font-family:var(--FM)'>sync_to_prod.py --approve</span>).</div>";
+  el.innerHTML = breakdown + rows + "<div style='font-size:10px;color:var(--text3);margin-top:2px'>Review, then approve to publish (<span style='font-family:var(--FM)'>sync_to_prod.py --approve</span>).</div>";
 }
 
 async function loadAgentStatus() {

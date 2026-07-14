@@ -7,6 +7,27 @@
 
 ## SESSION HANDOFF — 2026-07-14
 
+**Scrape-filter STATS now RECONCILE + the breakdown is surfaced (silent-number-gap fixed).** A
+`--pattern TX-23-004 --individuals-only` trigger run reported `Found: 110, Processed: 0, Skipped: 2`
+— 108 CLOSED cases were dropped by the default open-only filter WITHOUT being counted (the business
+filter counted its drops; the closed filter didn't), so Found never reconciled. NOT a scrape gap
+(pagination walked all 11 pages; Found 110 == manual portal count) — purely the filter shedding rows
+uncounted, which violated the "stats must add up" standard. Fixes: (1) extracted a pure
+`discover.partition_page(rows, open_only, skip_biz)` that COUNTS every drop → `{targets, closed,
+business}`, used in BOTH the pattern and `--name` paths (same root cause swept), with a new
+`closed_skipped` stat; the COMPLETE summary now prints a `Closed:` line + a `reconcile:
+Processed+Skipped+Closed+Errors == Found` check, plus a machine-readable `SCRAPE_SUMMARY {json}` line.
+(2) `scrape_worker.parse_summary()` reads that line into the job `result.summary`; the trigger UI's
+`renderScrapeResult` shows the breakdown — "**110 found → 108 closed · 2 business/skip · 0 saved
+(held)**" — so a rep sees where the other 107 went instead of a bare "3 cases". Also aligned the
+`--name` open-filter predicate to keep blank-status rows as open (matching the pattern path).
+**Tests: `test_discover_filter.py` 11/11** (partition_page reconciles on every branch: open+indiv,
+include-closed, no-filter, name-mode, empty), **`test_scrape_worker.py` 22/22** (+parse_summary +
+result carries the breakdown), browser check (breakdown renders incl. the 0-saved explanatory line,
+zero pageerror). All 9 suites green. discover.py/scrape_worker.py are LOCAL tools (pull, no deploy);
+the `renderScrapeResult` breakdown is a FRONTEND change — shows on the live site after the next deploy
+(degrades gracefully: no `summary` → old behavior).
+
 **`purge_test_case.py` — the STANDARD guarded cleanup for stub/test cases (use it, don't hand-roll a DELETE).**
 Test scrapes (the scrape-trigger stub, any throwaway `TX-99-xxxxx`) leave a fake case in the held queue.
 This deletes ONE entirely (its `cases` row + `docket_events`) but ONLY if it is a true throwaway — same
