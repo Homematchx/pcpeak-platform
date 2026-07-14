@@ -146,7 +146,7 @@ Return ONLY valid JSON with NO markdown:
 "caseStatus":"open","judgmentDate":"","judgmentType":"none",
 "defendant":"","allDefendants":[{"name":"","address":"","serviceStatus":"unserved","serviceMethod":"","isInRemOnly":false,"notes":""}],
 "propertyAddress":"","legalDescription":"","accountNumber":"",
-"lawFirm":"LGBS (Linebarger)","plaintiffAttorney":"","totalDueAtFiling":0,
+"lawFirm":"","plaintiffAttorney":"","totalDueAtFiling":0,
 "delinquencyYears":[],"oldestDelinquencyYear":0,
 "taxBreakdown":[{"entity":"","taxAmt":0,"penaltyInterest":0,"total":0}],
 "defCount":1,"citationByPostingRequested":false,"rule106SubstituteService":false,
@@ -298,7 +298,10 @@ def save_to_db(extracted, memo, owner):
             "property_address": extracted.get("propertyAddress", ""),
             "account_number": extracted.get("accountNumber", ""),
             "petition_href": extracted.get("petitionHref") or None,
-            "law_firm": extracted.get("lawFirm", "LGBS"),
+            # Default to "" (unknown), matching plaintiff_attorney/judicial_officer — never
+            # fabricate a firm. LGBS is the common Dallas answer but must come from the document,
+            # not a hardcoded default silently written onto a case that may be another firm.
+            "law_firm": extracted.get("lawFirm", ""),
             "plaintiff_attorney": extracted.get("plaintiffAttorney", ""),
             "total_due_filing": extracted.get("totalDueAtFiling") or None,
             "oldest_delinquency_year": extracted.get("oldestDelinquencyYear") or None,

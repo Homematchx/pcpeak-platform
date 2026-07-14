@@ -18,7 +18,7 @@ intact, zero pageerrors. **⚠ AUDIT (the fabricated-default pattern is NOT isol
 mostly around `law_firm`/LGBS; decision pending, NOT yet fixed):**
 - `discover.py:301` — `extracted.get("lawFirm","LGBS")` **PERSISTS "LGBS" to the DB** (→ prod on sync) when
   extraction returns no firm. Its siblings do it RIGHT (`judicial_officer`/`plaintiff_attorney` default `""`).
-  Highest severity — a fabricated firm is written as if real.
+  Highest severity — a fabricated firm is written as if real. **FIXED → `""`.**
 - `discover.py:149` — the EXTRACTION_PROMPT JSON scaffold pre-fills `"lawFirm":"LGBS (Linebarger)"` (other
   fields `""`) → primes Claude toward LGBS. Reinforces the save-time default.
 - `frontend platformToV3:503` — `pc.law_firm || "LGBS (Linebarger)"` **display-fabricates** the firm when the
@@ -27,8 +27,18 @@ mostly around `law_firm`/LGBS; decision pending, NOT yet fixed):**
   `courtCosts 450`, `postJudgment 500` feed `totalPayoff` uniformly for every case.
 - NOT the bug (verified, legitimate): `CITY_DATA.firm` (per-jurisdiction reference metadata), the `KNOWN`
   benchmarks (real values for real confirmed cases), the `§33.48`/"Dallas County LGBS" display labels.
-- **Recommended fix:** default `law_firm`/`lawFirm` to `""` (unknown) everywhere, matching the sibling fields
-  + the engineering standard (no field silently becomes a real-looking value); handle fee-constants separately.
+- **FIXED (2026-07-14): all 3 law_firm sites default to `""` now, matching `plaintiff_attorney`/`judicial_officer`.**
+  No-regression on real LGBS cases verified: the save + display sites are pass-through by construction (a present
+  "LGBS (Linebarger)" is preserved; only ABSENCE becomes ""), and a Chromium spot-check of platformToV3 fed
+  TX-23-00379 (real LGBS) + a null case confirmed LGBS preserved / null→"" (no fabrication), zero pageerrors.
+  ⚠ The extraction-PROMPT site can't be live-verified from the sandbox (no API key + portal egress blocked) —
+  but the sibling `plaintiffAttorney` is the proof-of-mechanism (identical empty-scaffold treatment, no rule,
+  yet the KNOWN benchmarks show it extracting DIFFERENT real values ATKINS vs ZOKAIE = genuinely read from the
+  doc, not defaulted). **USER's live check after deploy: re-scrape TX-23-00379 or TX-23-00423 and confirm
+  law_firm still shows LGBS** (it's a real, common Dallas answer — must come from the doc, and now does).
+- **STILL OPEN (fee-constant class, separate decision):** `abstractorFee 350` / `courtCosts 450` /
+  `postJudgment 500` feed `totalPayoff` uniformly — payoff MODEL assumptions, not identity fabrication. Keep as
+  a documented model or surface as explicit assumptions — not yet touched.
 
 **FRONT-END SCRAPE TRIGGER — BUILT + isolated-tested (integration is the USER's live check).** A
 button on the live site to scrape a new case/pattern, calling the REAL `discover.py` CLI (never a
