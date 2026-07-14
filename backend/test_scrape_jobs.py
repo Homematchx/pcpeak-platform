@@ -139,6 +139,19 @@ def run():
               c.post("/api/scrape-jobs", json={"case_number": "TX-26-00009"},
                      headers=TRIG).status_code == 200)
 
+        # ── include_closed: default INCLUDES closed (the moat); pattern request stores the choice ──
+        check("ScrapeJobIn.include_closed defaults True", main.ScrapeJobIn().include_closed is True)
+        rp = c.post("/api/scrape-jobs", json={"pattern": "TX-23-9"}, headers=TRIG).json()
+        gp = c.get(f"/api/scrape-jobs/{rp['job_id']}", headers=TRIG).json()
+        check("pattern enqueue defaults include_closed=True in the stored request",
+              gp["request"]["include_closed"] is True and gp["request"]["individuals_only"] is True)
+        rp2 = c.post("/api/scrape-jobs",
+                     json={"pattern": "TX-23-8", "include_closed": False, "individuals_only": False},
+                     headers=TRIG).json()
+        gp2 = c.get(f"/api/scrape-jobs/{rp2['job_id']}", headers=TRIG).json()
+        check("pattern enqueue with include_closed=False is stored (narrow mode)",
+              gp2["request"]["include_closed"] is False and gp2["request"]["individuals_only"] is False)
+
     print("-" * 56)
     total, passed = len(_results), sum(_results)
     print(f"{passed}/{total} passed")

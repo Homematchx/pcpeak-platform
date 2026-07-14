@@ -82,6 +82,13 @@ def run():
           W.build_discover_args({"pattern": "TX-26"}) == ["--pattern", "TX-26", "--individuals-only"])
     check("args for a pattern with individuals_only off",
           W.build_discover_args({"pattern": "TX-26", "individuals_only": False}) == ["--pattern", "TX-26"])
+    # include_closed: the moat is INCLUDED by default; --open-only only when explicitly opted out
+    check("pattern default INCLUDES closed (no --open-only)",
+          "--open-only" not in W.build_discover_args({"pattern": "TX-26"}))
+    check("pattern include_closed=False → --open-only (narrow mode)",
+          "--open-only" in W.build_discover_args({"pattern": "TX-26", "include_closed": False}))
+    check("pattern include_closed=True → no --open-only",
+          "--open-only" not in W.build_discover_args({"pattern": "TX-26", "include_closed": True}))
 
     # ── parse_summary: pulls the SCRAPE_SUMMARY line; ignores everything else ──
     out = ("Page 1: 110 cases | 2 to process\n"

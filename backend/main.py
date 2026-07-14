@@ -1053,6 +1053,10 @@ class ScrapeJobIn(BaseModel):
     case_number: str = ""
     pattern: str = ""
     individuals_only: bool = True
+    # Discovery captures the full picture by DEFAULT (closed cases = the OOS / dismissed-owing
+    # moat). include_closed=False is the deliberate narrow-mode opt-in (worker → discover
+    # --open-only). Only meaningful for pattern searches; a --case scrape hits that case regardless.
+    include_closed: bool = True
 
 
 class ScrapeJobClaim(BaseModel):
@@ -1081,7 +1085,8 @@ async def create_scrape_job(job: ScrapeJobIn, x_scrape_token: str = Header(defau
         request = {"case_number": cn}
         label = cn
     else:
-        request = {"pattern": pat, "individuals_only": bool(job.individuals_only)}
+        request = {"pattern": pat, "individuals_only": bool(job.individuals_only),
+                   "include_closed": bool(job.include_closed)}
         label = pat
     request_json = json.dumps(request, sort_keys=True)
     with get_db() as db:

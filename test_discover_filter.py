@@ -28,7 +28,12 @@ ROWS = [
 
 
 def run():
-    # open + individuals (the trigger's mode)
+    # DEFAULT SEMANTICS (design principle): discovery INCLUDES closed cases by default —
+    # narrowing to open-only is a deliberate opt-in. A regression here re-blinds the moat.
+    check("Discoverer() default open_only is False (closed INCLUDED by default)",
+          D.Discoverer().open_only is False)
+
+    # open + individuals (the trigger's narrow mode)
     p = D.partition_page(ROWS, open_only=True, skip_biz=True)
     check("open+indiv: 2 CLOSED counted", p["closed"] == 2)
     check("open+indiv: 1 business counted", p["business"] == 1)          # 404 (403 already closed)

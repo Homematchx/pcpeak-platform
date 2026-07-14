@@ -376,7 +376,7 @@ def save_to_db(extracted, memo, owner):
 
 
 class Discoverer:
-    def __init__(self, open_only=True, skip_biz=False, force=False):
+    def __init__(self, open_only=False, skip_biz=False, force=False):
         self.page = None
         self.browser = None
         self.open_only = open_only
@@ -1164,7 +1164,7 @@ class Discoverer:
                 if part["closed"]:
                     self.stats["closed_skipped"] += part["closed"]
                     self.log("  (" + str(part["closed"]) +
-                             " CLOSED cases excluded by default — pass --include-closed to keep)")
+                             " CLOSED cases excluded (--open-only mode))")
                 self.log("Found " + str(len(rows)) + " | Processing " + str(len(targets)))
                 for i, case in enumerate(targets):
                     self.log("[" + str(i+1) + "/" + str(len(targets)) + "] " +
@@ -1198,16 +1198,16 @@ class Discoverer:
                     total_found += len(page_rows)
                     self.stats["found"] = total_found
 
-                    # Respect --include-closed: default keeps only OPEN (or blank-status) rows;
-                    # with open_only=False, take every row (judgment/OOS/dismissed) — needed to
-                    # backfill closed cases. Both filters COUNT their drops (partition_page) so
-                    # the Found total reconciles instead of silently shedding closed cases.
+                    # DEFAULT takes every row (judgment/OOS/dismissed CLOSED cases included — the
+                    # moat). --open-only narrows to OPEN (or blank-status) rows for fast lead-gen.
+                    # Both filters COUNT their drops (partition_page) so the Found total reconciles
+                    # instead of silently shedding closed cases.
                     part = partition_page(page_rows, self.open_only, self.skip_biz)
                     targets = part["targets"]
                     if part["closed"]:
                         self.stats["closed_skipped"] += part["closed"]
                         self.log("  (" + str(part["closed"]) +
-                                 " CLOSED cases excluded by default — pass --include-closed to keep)")
+                                 " CLOSED cases excluded (--open-only mode))")
                     if part["business"]:
                         self.stats["skipped"] += part["business"]
                         self.log("  (" + str(part["business"]) +
@@ -1355,12 +1355,18 @@ async def main():
     parser.add_argument("--case",
                         nargs="+",
                         help="Exact case number(s): TX-26-00009")
+    parser.add_argument("--open-only",
+                        action="store_true",
+                        help="Lead-gen mode: scrape OPEN cases only, EXCLUDING closed. Faster/"
+                             "cheaper, but SKIPS the moat (OOS-issued + dismissed-owing are CLOSED). "
+                             "Default now INCLUDES closed — narrowing is a deliberate opt-in.")
     parser.add_argument("--include-closed",
                         action="store_true",
-                        help="Also process CLOSED cases")
+                        help="(Deprecated no-op — closed cases are INCLUDED by default now; "
+                             "kept for backward compatibility.)")
     parser.add_argument("--individuals-only",
                         action="store_true",
-                        help="Skip business entities")
+                        help="Skip business entities (individual owners only)")
     parser.add_argument("--limit", type=int, default=0,
                         help="Stop after processing this many cases (0 = no limit)")
     parser.add_argument("--skip-existing", action="store_true",
@@ -1382,8 +1388,11 @@ async def main():
     else:
         print("✓ TWO_CAPTCHA_KEY loaded (len %d, src %s)" % (len(TWO_CAPTCHA_KEY), _ENV_FILE or "shell env"))
 
+    # DISCOVERY DEFAULT (design principle): capture the full picture — INCLUDE closed cases —
+    # unless the caller deliberately narrows with --open-only. Closed cases are the mission
+    # (OOS-timing ledger + dismissed-owing inventory); the gate must never silently exclude them.
     await Discoverer(
-        open_only=not args.include_closed,
+        open_only=args.open_only,
         skip_biz=args.individuals_only,
         force=args.force
     ).run(args)

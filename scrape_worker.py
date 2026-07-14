@@ -54,6 +54,10 @@ def build_discover_args(request):
     args = ["--pattern", request["pattern"]]
     if request.get("individuals_only", True):
         args.append("--individuals-only")
+    # Discovery INCLUDES closed by default (the moat). Only narrow to open-only when the
+    # request explicitly opts out — include_closed defaults True, so absence keeps the default.
+    if not request.get("include_closed", True):
+        args.append("--open-only")
     return args
 
 

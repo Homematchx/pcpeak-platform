@@ -239,6 +239,17 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
         </div>
         <input id="scrape-input" placeholder="TX-26-00009  or  TX-26" oninput="onScrapeInput()"
           style="width:100%;box-sizing:border-box;font-family:var(--FM);font-size:12px;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface);color:var(--text);outline:none">
+        <div style="display:flex;flex-direction:column;gap:5px;margin-top:8px;font-size:11px;color:var(--text2)">
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+            <input type="checkbox" id="scrape-include-closed" checked>
+            <span>Include closed cases <span style="color:var(--text3)">(OOS &middot; dismissed-owing — the moat)</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+            <input type="checkbox" id="scrape-individuals" checked>
+            <span>Individuals only <span style="color:var(--text3)">(skip businesses)</span></span>
+          </label>
+          <div style="font-size:10px;color:var(--text3);line-height:1.5">Applies to pattern searches. Unchecking &ldquo;include closed&rdquo; is faster but skips the OOS / dismissed-owing moat.</div>
+        </div>
         <button class="btn btn-p" id="scrape-btn" onclick="triggerScrape()" disabled
           style="width:100%;margin-top:8px;justify-content:center">&#9889; Scrape on my Mac</button>
         <div id="scrape-status" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5"></div>
@@ -596,7 +607,14 @@ async function triggerScrape() {
   if (!token) { status.style.color = "var(--red)"; status.textContent = "A trigger token is required."; return; }
 
   var isCase = /^TX-\d{2}-\d{5}$/.test(val);
-  var body = isCase ? {case_number: val} : {pattern: val, individuals_only: true};
+  // Read the visible toggles (default TRUE if missing) — no invisible defaults: closed cases
+  // are INCLUDED unless the rep deliberately unchecks "include closed" for a fast open-only run.
+  var icEl = document.getElementById("scrape-include-closed");
+  var ioEl = document.getElementById("scrape-individuals");
+  var incClosed = icEl ? icEl.checked : true;
+  var indivOnly = ioEl ? ioEl.checked : true;
+  var body = isCase ? {case_number: val}
+                    : {pattern: val, individuals_only: indivOnly, include_closed: incClosed};
 
   btn.disabled = true; btn.textContent = "Queuing…";
   status.style.color = "var(--text3)"; status.textContent = "Queuing " + val + "…";

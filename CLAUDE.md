@@ -7,6 +7,39 @@
 
 ## SESSION HANDOFF — 2026-07-14
 
+**DESIGN PRINCIPLE (stated, alongside fingerprint-proof + prod_ready) — DISCOVERY CAPTURES THE FULL
+PICTURE BY DEFAULT; NARROWING IS A DELIBERATE, VISIBLE OPT-IN.** The discovery/search gate must never
+silently exclude the mission data. Every OOS-issued case and every dismissed-owing lead is CLOSED, so
+`discover.py`'s old `open_only=True` default (exclude closed unless `--include-closed`) structurally
+blinded routine scrapes to BOTH core moats — and the scrape trigger had NO way to override it at all
+(frontend hardcoded `individuals_only:true`, no `include_closed` field on `ScrapeJobIn`, worker never
+passed `--include-closed`), so once Step 5 opens the site to reps, nobody could ever capture an OOS or
+dismissed-owing case through the button. Same class as the prod_ready gate: a default that quietly worked
+AGAINST the mission, now made structurally correct instead of patched. **INVERTED (Option 1):**
+- `discover.py` default is now `open_only=False` (**include closed**). `--open-only` is the deliberate
+  narrow-mode opt-in (fast lead-gen, skips the moat); `--include-closed` kept as an accepted no-op
+  (backward-compat + scorecard's printed hint). `__init__` default flipped to `False` too.
+- Trigger exposes BOTH filters as VISIBLE checkboxes (Load New Deals), each **checked by default**:
+  "Include closed cases (OOS · dismissed-owing)" and "Individuals only (skip businesses)". No invisible
+  default is acceptable even when the default VALUE is reasonable — individuals-only stays default-on but
+  is now visible/overridable. `ScrapeJobIn.include_closed: bool = True`; worker adds `--open-only` only
+  when a request opts out. A `--case` scrape hits that case regardless of status (unaffected).
+- **Cost tradeoff (accepted):** default-include-closed makes a broad pattern scrape heavier (more portal
+  hits + Claude + enrichment). Mitigated by skip-existing / already-complete-today, the MAX_QUEUED cap,
+  and the visible "open-only" checkbox for when speed matters — mission-completeness is not something a
+  rep has to remember to opt into.
+- **Sweep:** this silent-exclusion pattern lived at the discovery gate in TWO spots (`open_only` +
+  `skip_biz`/`individuals_only`); both are now visible opt-ins. Clean elsewhere — the case-list API's
+  `case_status` filter is opt-in (returns all by default), and sync's `SYNCABLE_WHERE` is the deliberate
+  documented prod_ready/BPP gate. The capture layer (`oos_date`/`sale_pulled_date`/`case_track`) was NOT
+  touched — it was already proven correct; the gap was purely the discovery gate one level upstream.
+- **Tests: `test_discover_filter.py` 12/12** (+ default open_only False), **`test_scrape_worker.py` 25/25**
+  (+ build_discover_args: default no `--open-only`, opt-out adds it), **`test_scrape_jobs.py` 32/32**
+  (+ include_closed default True, pattern request stores the choice), browser check (both checkboxes
+  render default-checked; default body `include_closed:true`, unchecked `false`; zero pageerror). All 9
+  suites green. discover.py/scrape_worker.py are LOCAL (pull); the trigger checkboxes are a FRONTEND
+  change (next deploy). ⚠ Do NOT let this regress to open-only-by-default — it re-blinds the moat.
+
 **Scrape-filter STATS now RECONCILE + the breakdown is surfaced (silent-number-gap fixed).** A
 `--pattern TX-23-004 --individuals-only` trigger run reported `Found: 110, Processed: 0, Skipped: 2`
 — 108 CLOSED cases were dropped by the default open-only filter WITHOUT being counted (the business
