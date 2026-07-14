@@ -25,24 +25,6 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
 .sbs{padding:20px;border-bottom:1px solid var(--border)}
 .sbs:last-child{border-bottom:none}
 .sbl{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
-/* INPUT TOGGLE */
-.itog{display:flex;background:var(--surface2);border-radius:var(--rs);padding:3px;margin-bottom:14px;gap:2px}
-.tbtn{flex:1;font-family:var(--FB);font-size:12px;font-weight:500;padding:7px 6px;border:none;background:transparent;color:var(--text3);cursor:pointer;border-radius:5px;transition:all .15s;text-align:center;white-space:nowrap}
-.tbtn.on{background:var(--surface);color:var(--accent);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-/* UPLOAD */
-.uzn{border:1.5px dashed var(--border2);border-radius:var(--r);padding:22px 16px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2);position:relative}
-.uzn:hover,.uzn.dov{border-color:var(--accent2);background:var(--blue-bg)}
-.uzn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
-.uzi{font-size:24px;margin-bottom:6px;opacity:.5}
-.uzt{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:3px}
-.uzs{font-size:11px;color:var(--text3);line-height:1.5}
-.uzchips{display:flex;gap:6px;justify-content:center;margin-top:8px;flex-wrap:wrap}
-.uzchip{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--surface3);color:var(--text3);font-family:var(--FM)}
-/* PASTE */
-.pa{width:100%;font-family:var(--FM);font-size:11px;padding:10px 12px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);resize:vertical;min-height:160px;line-height:1.5;transition:border-color .15s}
-.pa:focus{outline:none;border-color:var(--accent2);background:var(--surface)}
-.pa::placeholder{color:var(--text3)}
-.ph{font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5}
 /* CITY */
 .cgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .cbtn{font-family:var(--FB);font-size:12px;font-weight:500;padding:8px 10px;border-radius:var(--rs);border:1.5px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;transition:all .15s;text-align:left;display:flex;flex-direction:column;gap:1px}
@@ -157,20 +139,6 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
 /* KNOWN CASES */
 .kcase{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:12px 14px;margin-bottom:8px}
 .kcase-t{font-size:12px;font-weight:600;color:var(--accent);font-family:var(--FM);margin-bottom:6px}
-/* LOADING */
-.lov{display:none;position:fixed;inset:0;background:rgba(28,27,24,.55);z-index:200;align-items:center;justify-content:center}
-.lov.on{display:flex}
-.lcard{background:var(--surface);border-radius:var(--r);padding:32px 40px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.12);max-width:340px;width:90%}
-.lspin{width:40px;height:40px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
-@keyframes spin{to{transform:rotate(360deg)}}
-.lt{font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px;font-family:var(--FD)}
-.lsteps{margin-top:10px;display:flex;flex-direction:column;gap:4px}
-.lstep{font-size:12px;display:flex;align-items:center;gap:6px;justify-content:center;padding:2px 0}
-.ls-done{color:var(--green)}.ls-active{color:var(--accent);font-weight:600}.ls-wait{color:var(--text3)}
-/* DOC CHIPS */
-.dchip{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);margin-bottom:6px;font-size:12px}
-.dname{flex:1;color:var(--text2);font-family:var(--FM);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dst{font-size:10px;font-weight:600;padding:2px 6px;border-radius:10px;background:var(--green-bg);color:var(--green)}
 /* EMPTY */
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:420px;gap:14px;color:var(--text3);text-align:center}
 .eico{font-size:52px;opacity:.3}
@@ -198,14 +166,6 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
 </style>
 </head>
 <body>
-
-<div class="lov" id="lov">
-  <div class="lcard">
-    <div class="lspin"></div>
-    <div class="lt">Analyzing Case</div>
-    <div class="lsteps" id="lsteps"></div>
-  </div>
-</div>
 
 <!-- MANAGE REPS -->
 <div id="rep-mgr" style="display:none;position:fixed;inset:0;background:rgba(28,27,24,.55);z-index:300;align-items:center;justify-content:center" onclick="if(event.target===this)closeRepMgr()">
@@ -295,56 +255,10 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
 <div id="platform-status" style="font-size:11px;color:var(--text3)">Connecting to platform...</div>
     </div>
 
-    <div class="sbs" id="api-key-section">
-      <div class="sbl">Anthropic API Key <span id="key-status" style="font-size:10px;color:var(--green);font-weight:400;letter-spacing:0;text-transform:none"></span></div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <input type="password" id="api-key-input" placeholder="sk-ant-..." 
-          style="flex:1;font-family:var(--FM);font-size:11px;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--surface2);color:var(--text);outline:none"
-          oninput="saveKey(this.value)">
-        <button onclick="clearKey()" style="background:none;border:1px solid var(--border2);border-radius:var(--rs);padding:6px 8px;cursor:pointer;color:var(--text3);font-size:11px">Clear</button>
-      </div>
-      <div style="font-size:10px;color:var(--text3);margin-top:5px;line-height:1.5">Your key is stored locally in this browser only. Never shared. Get yours at <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent2)">console.anthropic.com</a></div>
-    </div>
-
     <div class="sbs">
-      <div class="sbl">Input Method</div>
-      <div class="itog">
-        <button class="tbtn on" id="m-upload" onclick="setMode('upload')">&#128196; PDF</button>
-        <button class="tbtn" id="m-paste" onclick="setMode('paste')">&#128203; Paste</button>
-        <button class="tbtn" id="m-both" onclick="setMode('both')">&#128279; Both</button>
-        <button class="tbtn" id="m-quick" onclick="setMode('quick')">&#9889; Quick</button>
-      </div>
+      <div class="sbl">Add Case Manually</div>
 
-      <div id="p-upload">
-        <div class="uzn" id="uzn">
-          <input type="file" id="fin" multiple accept=".pdf,.txt,.png,.jpg,.jpeg">
-          <div class="uzi">&#128193;</div>
-          <div class="uzt">Drop petition or docket sheet</div>
-          <div class="uzs">PDF, image, or text &mdash; AI extracts everything</div>
-          <div class="uzchips"><span class="uzchip">PDF</span><span class="uzchip">TXT</span><span class="uzchip">IMG</span></div>
-        </div>
-        <div id="dlist" style="margin-top:8px"></div>
-      </div>
-
-      <div id="p-paste" style="display:none">
-        <textarea class="pa" id="ptxt" placeholder="Paste docket text or petition text here...
-
-Example:
-TX-25-01777 | DALLAS COUNTY vs. BENNY J. STEWART
-Case Number TX-25-01777
-Court 134th District Court
-File Date 10/28/2025
-DEFENDANT STEWART, BENNY J.
-
-Events:
-10/28/2025 NEW CASE FILED
-11/05/2025 CITATION issued
-12/11/2025 Served
-07/20/2026 Non Jury Trial 10:05 AM"></textarea>
-        <div class="ph">Paste full docket or petition text. All fields extracted automatically.</div>
-      </div>
-
-      <div id="p-quick" style="display:none">
+      <div id="p-quick">
         <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5">Fill in key fields from the petition — no AI call needed. Instant projection.</div>
         <div style="display:flex;flex-direction:column;gap:6px">
           <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-top:2px">Required</div>
@@ -369,8 +283,6 @@ Events:
         </div>
         <button class="btn btn-p" id="q-add-btn" style="width:100%;margin-top:10px;justify-content:center" onclick="doQuickAdd()" disabled>&#9889; Add Case Instantly</button>
       </div>
-
-      <button class="btn btn-p" style="width:100%;margin-top:12px;justify-content:center" id="abtn" onclick="doAnalyze()" disabled>&#10022; Analyze with AI</button>
     </div>
 
     <div class="sbs">
@@ -482,8 +394,6 @@ const SBDG = {Faster:"bdg-green",Moderate:"bdg-amber",Slower:"bdg-red",Varies:"b
 let selCity = "dallas";
 let cases = JSON.parse(localStorage.getItem("tfi_v5") || "[]");
 let activeId = null;
-let files = [];
-let mode = "upload";
 
 // ═══════════════════════════════════════════
 // INIT
@@ -547,27 +457,6 @@ function doQuickAdd() {
   document.getElementById("q-filed").value = "";
   document.getElementById("q-defcount").value = "1";
   document.getElementById("q-add-btn").disabled = true;
-}
-
-function saveKey(val) {
-  if (val.trim()) {
-    localStorage.setItem("tfi_apikey", val.trim());
-    document.getElementById("key-status").textContent = "✓ Saved";
-    document.getElementById("key-status").style.color = "var(--green)";
-  }
-}
-function clearKey() {
-  localStorage.removeItem("tfi_apikey");
-  document.getElementById("api-key-input").value = "";
-  document.getElementById("key-status").textContent = "";
-}
-function loadKey() {
-  const k = localStorage.getItem("tfi_apikey");
-  if (k) {
-    document.getElementById("api-key-input").value = k;
-    document.getElementById("key-status").textContent = "✓ Saved";
-    document.getElementById("key-status").style.color = "var(--green)";
-  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -728,7 +617,7 @@ async function syncFromPlatform() {
 
     // PRUNE platform-derived cases that no longer exist on the platform (server-deleted, e.g. a
     // purged BPP case) — regardless of id scheme. A case is a LOCAL DRAFT (always kept) only if it
-    // carries a draft marker (inputMethod / uploadedAt, set by quick-add + Analyze-with-AI);
+    // carries a draft marker (inputMethod / uploadedAt, set by quick-add);
     // everything else is platform-derived and is pruned if its case_number isn't on the platform.
     // (The earlier "_platform"-id-only prune missed legacy-synced cases whose ids predate that
     // suffix — which is how purged BPP kept the count at the pre-purge 148.) Guarded: never prune
@@ -831,233 +720,11 @@ function init() {
   renderCities();
   renderCaseLog();
   renderList();
-  initUpload();
-  loadKey();
-  document.getElementById("ptxt").addEventListener("input", checkReady);
   if (cases.length) selectCase(cases[cases.length-1].id);
   // Auto-sync from platform on load — silent, immediate
   syncFromPlatform();
   setInterval(syncFromPlatform, 30000);
   setInterval(loadAgentStatus, 10000);
-}
-
-// ═══════════════════════════════════════════
-// MODE TOGGLE
-// ═══════════════════════════════════════════
-function setMode(m) {
-  mode = m;
-  ["upload","paste","both","quick"].forEach(x => {
-    const btn = document.getElementById("m-"+x);
-    if (btn) btn.classList.toggle("on", x === m);
-  });
-  document.getElementById("p-upload").style.display = (m==="upload"||m==="both") ? "block" : "none";
-  document.getElementById("p-paste").style.display  = (m==="paste" ||m==="both") ? "block" : "none";
-  document.getElementById("p-quick").style.display  = (m==="quick") ? "block" : "none";
-  const abtn = document.getElementById("abtn");
-  if (abtn) abtn.style.display = (m==="quick") ? "none" : "block";
-  checkReady();
-}
-
-function checkReady() {
-  const hasPaste = (document.getElementById("ptxt").value||"").trim().length > 20;
-  const hasFiles = files.length > 0;
-  let ready = false;
-  if (mode==="upload") ready = hasFiles;
-  if (mode==="paste")  ready = hasPaste;
-  if (mode==="both")   ready = hasFiles || hasPaste;
-  document.getElementById("abtn").disabled = !ready;
-}
-
-// ═══════════════════════════════════════════
-// UPLOAD
-// ═══════════════════════════════════════════
-function initUpload() {
-  const zone = document.getElementById("uzn");
-  const inp  = document.getElementById("fin");
-  inp.addEventListener("change", e => addFiles(Array.from(e.target.files)));
-  zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("dov"); });
-  zone.addEventListener("dragleave", () => zone.classList.remove("dov"));
-  zone.addEventListener("drop", e => {
-    e.preventDefault(); zone.classList.remove("dov");
-    addFiles(Array.from(e.dataTransfer.files));
-  });
-}
-
-function addFiles(newFiles) {
-  files = [...files, ...newFiles];
-  renderFiles();
-  checkReady();
-}
-
-function removeFile(i) {
-  files.splice(i,1);
-  renderFiles();
-  checkReady();
-}
-
-function renderFiles() {
-  document.getElementById("dlist").innerHTML = files.map((f,i) =>
-    `<div class="dchip">
-      <span style="font-size:16px">${f.type.includes("pdf")?"&#128196;":"&#128247;"}</span>
-      <span class="dname">${f.name}</span>
-      <span class="dst">Ready</span>
-      <button style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:13px;padding:0 2px" onclick="removeFile(${i})">&#215;</button>
-    </div>`
-  ).join("");
-}
-
-function readFile(file) {
-  return new Promise((res, rej) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.split(",")[1];
-      let mt = file.type || "";
-      if (!mt || mt === "application/octet-stream") {
-        if (file.name.endsWith(".pdf")) mt = "application/pdf";
-        else if (file.name.endsWith(".png")) mt = "image/png";
-        else if (/\.jpe?g$/.test(file.name)) mt = "image/jpeg";
-        else mt = "text/plain";
-      }
-      res({ base64, mt });
-    };
-    reader.onerror = rej;
-    reader.readAsDataURL(file);
-  });
-}
-
-// ═══════════════════════════════════════════
-// MAIN ANALYZE — handles all three modes
-// ═══════════════════════════════════════════
-async function doAnalyze() {
-  const paste = (document.getElementById("ptxt").value||"").trim();
-  const hasFiles = files.length > 0;
-  const hasPaste = paste.length > 20;
-
-  if (!hasFiles && !hasPaste) { alert("Please upload a file or paste text first."); return; }
-
-  showLoading(["Reading input...","Extracting case data...","Matching benchmarks...","Writing intelligence memo...","Done"]);
-
-  try {
-    // Build message content
-    const content = [];
-
-    // Add files if present
-    if (hasFiles) {
-      stepTo(0);
-      const fdata = await Promise.all(files.map(readFile));
-      for (let i = 0; i < files.length; i++) {
-        const {base64, mt} = fdata[i];
-        if (mt === "application/pdf") {
-          content.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:base64}});
-        } else if (mt.startsWith("image/")) {
-          content.push({type:"image", source:{type:"base64", media_type:mt, data:base64}});
-        } else {
-          // text file — decode and add as text
-          const txt = atob(base64);
-          content.push({type:"text", text:"FILE CONTENTS ("+files[i].name+"):\n"+txt});
-        }
-      }
-    }
-
-    // Add pasted text if present
-    if (hasPaste) {
-      content.push({type:"text", text:"PASTED CASE TEXT (docket / petition):\n" + paste});
-    }
-
-    // Instruction at end
-    content.push({type:"text", text:"Extract all case data from the above input and return the JSON object as specified."});
-
-    // ── EXTRACTION CALL ──
-    stepTo(1);
-    const sysPrompt = `You are an expert Texas tax foreclosure case analyst for PC Peak Development.
-
-CONFIRMED BENCHMARK CASES for calibration (all Dallas County, LGBS, Judge Ginsberg):
-- TX-23-00042 (Williams/Motley, HIGH complexity): 8 defendants, address unknown at filing (CBP), estate/heir, taxes since 2002, 3 continuances, 4 resets, ad litem. RESULT: 37 months filing to judgment, 89 days judgment to OOS. CONFIRMED COMPLETE.
-- TX-25-00492 (Hedge, LOW complexity): 1 defendant, Rule 106 needed, 1 continuance, default judgment, taxes 2021-2024. RESULT: 14 months filing to judgment. OOS ~Aug 2026.
-- TX-25-01777 (Stewart, LOW complexity): 1 defendant, served in 43 days (fastest), no complications, trial 07/20/2026. PENDING.
-
-Extract ALL case information from the provided input and return ONLY valid JSON with no markdown, no backticks, no explanation:
-{"caseNumber":"","court":"","judicialOfficer":"","filedDate":"YYYY-MM-DD","judgmentDate":"","judgmentType":"default|nonjury|none","caseStatus":"open|closed","defendant":"","allDefendants":[],"plaintiffs":[],"propertyAddress":"","propertyLegalDescription":"","accountNumber":"","lawFirm":"","plaintiffAttorney":"","defendantAttorney":"","adLitemAppointed":false,"adLitemName":"","totalDueAtFiling":0,"delinquencyYears":[],"oldestDelinquencyYear":0,"taxBreakdown":[{"entity":"","taxAmt":0,"penaltyInterest":0,"total":0}],"abstractorFee":0,"defCount":1,"citationByPostingRequested":false,"rule106SubstituteService":false,"priorRelatedSuits":[],"estateHeirSituation":false,"continuanceCount":0,"trialResetCount":0,"serviceIssues":"","nextHearingDate":"YYYY-MM-DD","keyDocketEvents":[{"date":"YYYY-MM-DD","event":"","type":"filing|service|hearing|judgment|oos|motion"}],"orderOfSaleIssued":false,"orderOfSaleDate":"","noticeOfJudgmentDate":"","complexity":"low|medium|high","complexityReason":"","similarToBenchmark":"","benchmarkNotes":"","aiNotes":""}
-
-Complexity rules: low=1-2 defs+known address+taxes<8yrs+no estate+no prior suits; medium=3-4 defs OR service issues OR 8-15yr OR 1 prior suit; high=5+ defs OR estate/heir OR 15+yr OR multiple prior suits OR address unknown at filing.`;
-
-    const apiKey = localStorage.getItem("tfi_apikey") || "";
-    if (!apiKey) { hideLoading(); alert("Please enter your Anthropic API key in the top of the left panel first.\n\nGet one free at console.anthropic.com"); return; }
-    const r1 = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {"Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true"},
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 4000,
-        system: sysPrompt,
-        messages: [{role:"user", content}]
-      })
-    });
-    const d1 = await r1.json();
-    if (d1.error) throw new Error("API error: " + d1.error.message);
-    const raw = (d1.content||[]).find(b => b.type==="text")?.text || "";
-    let ex;
-    try {
-      ex = JSON.parse(raw.replace(/```json|```/g,"").trim());
-    } catch(e) {
-      // Try to extract JSON from response
-      const m = raw.match(/\{[\s\S]+\}/);
-      if (m) ex = JSON.parse(m[0]);
-      else throw new Error("Could not parse AI response. Raw: " + raw.slice(0,200));
-    }
-
-    // ── MEMO CALL ──
-    stepTo(3);
-    const city = CITIES[selCity];
-    const r2 = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {"Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true"},
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 900,
-        messages: [{role:"user", content: `You are a Texas real estate acquisition analyst for PC Peak Development. Write a 3-paragraph intelligence memo in plain prose (no headers, no markdown, no bullet points) covering: (1) key timeline risks and complexity drivers compared to known benchmarks, (2) projected OOS window for ${city.n}, key docket watch dates, and what would change the projection, (3) acquisition opportunity assessment with specific recommended next steps.
-
-Confirmed Dallas County LGBS benchmarks (same firm + Judge Ginsberg across all):
-- TX-23-00042 (Williams, HIGH, 8 defendants, estate): 37 months filing to judgment, 89 days judgment to OOS. CONFIRMED COMPLETE.
-- TX-25-00492 (Hedge, LOW, 1 defendant, default): 14 months filing to judgment. OOS ~Aug 2026.
-- TX-25-01777 (Stewart, LOW, 1 defendant, 43-day service): Trial 07/20/2026. No complications.
-
-This case: ${JSON.stringify(ex)}
-City: ${city.n} | Complexity: ${ex.complexity||"medium"} | Benchmark range: ${JSON.stringify(city.ftj[ex.complexity||"medium"])} months filing-to-judgment, ${city.joos[ex.complexity||"medium"]} days judgment-to-OOS
-
-Be direct and specific. Reference which benchmark this most resembles and why.`}]
-      })
-    });
-    const d2 = await r2.json();
-    const memo = (d2.content||[]).find(b => b.type==="text")?.text || "";
-
-    stepTo(4);
-    const cobj = {
-      id: Date.now().toString(),
-      city: selCity,
-      extracted: ex,
-      memo,
-      uploadedAt: new Date().toISOString(),
-      fileNames: files.map(f=>f.name),
-      inputMethod: hasFiles && hasPaste ? "both" : hasFiles ? "file" : "paste"
-    };
-    cases.push(cobj);
-    save();
-    // Reset inputs
-    files = [];
-    renderFiles();
-    document.getElementById("ptxt").value = "";
-    document.getElementById("fin").value = "";
-    checkReady();
-    renderList();
-    selectCase(cobj.id);
-    hideLoading();
-
-  } catch(err) {
-    hideLoading();
-    alert("Analysis error: " + err.message);
-    console.error(err);
-  }
 }
 
 // ═══════════════════════════════════════════
@@ -1547,7 +1214,7 @@ function renderDetail(c) {
         <div class="card"><div class="chd"><div class="ct">Complete case timeline</div><div class="cs">All events &middot; Pulsing dot = projected &middot; Source labeled per event</div></div>
           <div class="tlw">${tlHTML}</div>
         </div>
-        <div class="alert al-i">&#8505; For the most complete timeline, use &ldquo;Both&rdquo; mode and paste the full docket text alongside the petition PDF.</div>
+        <div class="alert al-i">&#8505; For the most complete timeline, run the case through the platform pipeline (discover.py) so the full docket and petition are captured.</div>
       </div>
 
       <div class="tp" id="tp-fin">
@@ -2498,27 +2165,6 @@ function impData() {
   };
   i.click();
 }
-
-// ═══════════════════════════════════════════
-// LOADING
-// ═══════════════════════════════════════════
-let _steps = [];
-function showLoading(steps) {
-  _steps = steps.map((s,i) => ({t:s, s:i===0?"active":"wait"}));
-  document.getElementById("lov").classList.add("on");
-  _renderSteps();
-}
-function stepTo(i) {
-  _steps = _steps.map((s,j) => ({...s, s:j<i?"done":j===i?"active":"wait"}));
-  _renderSteps();
-}
-function _renderSteps() {
-  const ic = {done:"&#9989;",active:"&#9654;",wait:"&#9675;"};
-  document.getElementById("lsteps").innerHTML = _steps.map(s =>
-    `<div class="lstep ls-${s.s}">${ic[s.s]} ${s.t}</div>`
-  ).join("");
-}
-function hideLoading() { document.getElementById("lov").classList.remove("on"); }
 
 // GO
 init();
