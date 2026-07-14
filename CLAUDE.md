@@ -7,44 +7,56 @@
 
 ## SESSION HANDOFF — 2026-07-13
 
-**Prediction-ledger build is underway** (design in [`docs/prediction-ledger-design.md`](docs/prediction-ledger-design.md);
-6-step order in §12). **Steps 1–3 DONE + tested; NEXT is Step 4 (backup).** Everything below is on
-`main`; the LEDGER BACKEND (steps 1–3) is NOT yet deployed to prod — it deploys as one unit
-(ledger.db attach + schema + logging) at a deliberate activation beat, likely after Step 4.
+**Prediction-ledger build (design [`docs/prediction-ledger-design.md`](docs/prediction-ledger-design.md),
+6-step order §12): Steps 1–4 DONE, tested, and LIVE ON PROD. NEXT is Step 5 (rep_actions API+UI) —
+gated and ready to start FRESH.** Step 5 opens the platform to real, non-regenerable HUMAN input for
+the first time; start it in a clean session (same checkpoint discipline as ledger.db / the git purge).
 
-**Shipped this session:**
-- **Ledger Step 1 — restore guard (structural).** prod-owned tables (`prediction_ledger`,
-  `rep_actions`) live in a SEPARATE file `data/db/ledger.db`, ATTACHed as schema `ledger`. A raw
-  `pcpeak.db` dump/restore physically can't touch them (different file); a get_db() SQLite
-  authorizer also denies DELETE/DROP on them (append-only). `backend/test_restore_guard.py` 19/19.
-- **Ledger Step 2 — schema + constants.** `prediction_ledger` (24 col) + `rep_actions` (11 col) in
-  ledger.db + all indexes; `deal_status`/`last_action_at` cache cols on `cases`; `MODEL_VERSION` +
-  `PREDICTION_EXPIRY_DAYS=90` next to CITY_DATA. Zero drift vs design §4/§5.
-- **Ledger Step 3 — log_prediction + reconcile in create_case (WRITE path only).** compute_projection
-  returns `basis`; log-on-meaningful-change (input_hash over prediction DRIVERS, not confidence/stage);
-  reconcile resolves forward predictions vs real outcome with signed error_days; `sweep_expired`
-  batch → expired_no_oos. `basis` stays the true branch (staleness is display-only). test_ledger.py 17/17.
-- **BPP escalated to NEVER-STORE + purged.** sync_to_prod structurally excludes `property_type IS
-  NOT 'personal'/'unknown'`; no-docket cases → `property_type='unknown'` review state (held from
-  sync); guarded `DELETE /api/cases/{cn}` deletes ONLY personal-property (WHERE-clause enforced,
-  DB-level — real case → 409, test 11/11); **purged 21 BPP from local + prod** (both 148→127, 0 BPP,
-  non-BPP unchanged). See "BPP: escalated…PURGED" below. **DEPLOYED to prod:** dismissed-owing label
-  + guarded delete endpoint.
-- **localStorage prune fix.** Frontend synced platform cases add/update-ONLY, so a case deleted
-  server-side lingered in localStorage forever (a purged BPP case survived a hard refresh). Sync now
-  prunes platform-sourced cases (`_platform` id) no longer on the platform; local drafts untouched.
-  Deployed. (Root cause: backend was clean; GET /api/cases/{cn}=404 the whole time.)
-- **Git-history purge DONE.** `.git` 316M→1.1M. Purged data/pdfs + **data/db/pcpeak.db (192M, the
-  real bloat)** + stray root *.pdf from ALL history; left dump.sql. **On-disk data proven untouched
-  byte-for-byte** (pcpeak.db size/sha256/127-case count identical before+after). Force-pushed both
-  main+production; Railway deployed clean. See "DONE — git history purge" below.
+**Ledger build shipped this session (Steps 1–4):**
+- **Step 1 — restore guard (structural).** prod-owned tables (`prediction_ledger`, `rep_actions`)
+  live in a SEPARATE file `data/db/ledger.db`, ATTACHed as schema `ledger`; a raw `pcpeak.db`
+  dump/restore physically can't touch them, and a get_db() authorizer denies DELETE/DROP (append-only).
+  `backend/test_restore_guard.py` 19/19.
+- **Step 2 — schema + constants.** `prediction_ledger` (24 col) + `rep_actions` (11 col) in ledger.db
+  + indexes; `deal_status`/`last_action_at` cache cols on `cases`; `MODEL_VERSION` +
+  `PREDICTION_EXPIRY_DAYS=90` next to CITY_DATA.
+- **Step 3 — log_prediction + reconcile in create_case (WRITE path only, never reads).**
+  compute_projection returns `basis`; log-on-meaningful-change (input_hash over DRIVERS, not
+  confidence/stage); reconcile → signed error_days; sweep_expired → expired_no_oos. test_ledger.py 17/17.
+- **Step 4 — backup + LEDGER BACKEND DEPLOYED LIVE.** Token-gated `GET /api/ledger/export`
+  (`X-Ledger-Token` vs `LEDGER_EXPORT_TOKEN`, constant-time, **fail-closed** 503 if unset — rep_actions
+  is sensitive). `backup_ledger.py` pulls both tables → timestamped dump in `data/backups/` (gitignored;
+  archive is eventual durable target, paused). **Contention-assumption fix:** the before/after check is
+  now a CONTENTION REPORT, not a false-fail — PASS/FAIL is strictly dump==before (faithful point-in-time
+  snapshot); a live append during the window is benign. test_ledger_backup.py 9/9. **Deployed to prod**
+  (backend/main.py → production); `LEDGER_EXPORT_TOKEN` set in Railway (stored in Anthropic_API_KEY.env);
+  seeded + backup verified live: before/dump/after all sha 71b56f5f, dump-faithful PASS. §8/§11
+  contradiction resolved: NO rep_actions sync-back; scorecard reads prod directly; backup is a separate
+  prod→local dump. **The prod ledger is LIVE and logging predictions on every sync.**
 
-**NEXT: Ledger Step 4 — backup of the prod-owned tables** (`prediction_ledger` + `rep_actions` →
-local/archive). Per design §12 it's now just "copy `ledger.db`" (single file). It GATES Step 5
-(rep_actions API/UI go-live to reps) — reps don't enter real (non-regenerable) actions until the
-backup is green. Then Step 5 (rep_actions API+UI), Step 6 (scorecard.py → read the ledger via the
-prod API per §11). Sub-decision still open (design §8): does `rep_actions` need to sync back to local
-for scorecard, or does scorecard read prod directly (§11 says prod-direct).
+**Bug report fixed this session (TX-23-00379, pre-Step-5 data-integrity pass):**
+- **#1 wrong-source-document (data integrity).** discover.py's petition selector matched only
+  'ORIGINAL PETITION' then fell through to the FIRST document — grabbing the JUDGMENT and storing it as
+  the petition on **4 TX-23 cases** (older docket format: the petition link title is the property type
+  '- REAL PROPERTY', not "petition"), so no defendant addresses were captured. FIXED: match petition
+  markers (ORIGINAL PETITION | REAL/PERSONAL PROPERTY), EXCLUDE other instruments, record NONE if no
+  petition qualifies (never fall through); logs chosen context. Added `--force` (the "complete today"
+  guard was fooled by addr+debt present-but-from-the-wrong-doc). **Re-scraped all 4; full 127-case
+  content re-audit CLEAN (0 wrong docs on any live case — no blind spot).** TX-23-00379: 14 defendants +
+  real Exhibit A total 46,463.65 (was judgment 83,750.45). TX-23-00423 (live lead) verified: petition,
+  10842 Addie Road populated, owner+lienholder set sane. 4 synced to prod.
+- **#2 date off-by-one (display).** `fmt()` parsed date-only "YYYY-MM-DD" as UTC → a day early in local
+  time. Backend DB values were CORRECT (confirmed both DBs). Fixed to parse date-only as local; deployed.
+- **#3 OOS event/document-title mislabel — SCOPED + TRACKED (background task), low priority.** Only
+  **1 case affected (TX-23-00379)** — the only case with 2+ same-named "ISSUE ORDER OF SALE" events (the
+  trigger). ⚠ **"1 case" is based on CURRENT data — re-check as more older-vintage (TX-23/earlier) cases
+  get backfilled**, since older dockets are where duplicate same-named entries appear.
+
+**NEXT — Step 5 (rep_actions API+UI):** `POST /api/cases/{cn}/actions` + `GET .../actions`, cached
+`deal_status`/`last_action_at`, basic logging UI. GATE IS GREEN (Step 4 backup verified). Then Step 6
+(scorecard.py → read the ledger via the prod API, §11). **Open follow-up chips:** structural `prod_ready`
+gate on sync_to_prod ([[sync-approved-for-prod-gate]]); the #3 docket-parse fix. Apply
+[[prod-history-fingerprint-proof]] to anything touching prod/ledger data.
 
 **Standard reinforced this session (apply to anything touching prod or history):** capture a
 baseline fingerprint (size + sha256 + row count) BEFORE, and re-verify it AFTER — prove data is
