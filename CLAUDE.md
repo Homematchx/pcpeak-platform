@@ -7,6 +7,18 @@
 
 ## SESSION HANDOFF — 2026-07-14
 
+**`purge_test_case.py` — the STANDARD guarded cleanup for stub/test cases (use it, don't hand-roll a DELETE).**
+Test scrapes (the scrape-trigger stub, any throwaway `TX-99-xxxxx`) leave a fake case in the held queue.
+This deletes ONE entirely (its `cases` row + `docket_events`) but ONLY if it is a true throwaway — same
+"constraint a real row fails" discipline as the BPP delete guard: REFUSES if the case is (a) live on prod,
+(b) approved (`prod_ready=1`), or (c) has real content (`property_address`/`ai_memo`) — so a real case, even a
+genuinely-held local lead, can't be nuked; the constraint is also carried in the DELETE's WHERE clause
+(`prod_ready IS NOT 1`, DB-level not caller-trusted). LOCAL cleanup only — it fetches prod's case list purely
+to refuse on-prod cases, never writes to prod. `python3 purge_test_case.py TX-99-00001` (`--dry-run` to preview
+the decision). Testable pure core (`is_throwaway`/`purge` with an injected prod set); **`test_purge_test_case.py`
+23/23** (no network: only the contentless local-only held stub deletes; on-prod / approved / has-content /
+absent all refused; isolation — a real case's row+events survive; `--dry-run` writes nothing).
+
 **'Add Case Manually' (quick-add) REMOVED — governed Scrape trigger makes it redundant + it FABRICATED data.**
 Same ungoverned-localStorage anti-pattern as Analyze-with-AI (never POSTs; bypasses the pipeline/prod_ready
 gate; `Date.now()` ids), AND worse: it stamped hardcoded plausible-looking IDENTITY defaults onto every
