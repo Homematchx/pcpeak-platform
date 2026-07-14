@@ -386,8 +386,15 @@ class Discoverer:
                              # the WRONG document; --force re-downloads + re-extracts)
         self.count_only = count_only  # PRE-FLIGHT: search + paginate + count only; process NOTHING
                                       # (no docket fetch / Claude / enrichment). Cheap scale preview.
-        self.stats = {"found": 0, "processed": 0, "skipped": 0, "closed_skipped": 0,
-                      "would_process": 0, "errors": 0, "invalid_account": 0, "no_account": 0}
+        # Distinct skip buckets so the summary means what it says (no more lumping "already
+        # captured today" in with "business excluded" under one "skipped" label):
+        #   business      — business entity excluded (--individuals-only)
+        #   reused        — already complete today; existing capture reused, nothing re-scraped
+        #   skip_existing — skipped because already in the DB (--skip-existing)
+        # Reconcile: found = processed + business + reused + skip_existing + closed_skipped + errors.
+        self.stats = {"found": 0, "processed": 0, "business": 0, "reused": 0, "skip_existing": 0,
+                      "closed_skipped": 0, "would_process": 0, "errors": 0,
+                      "invalid_account": 0, "no_account": 0}
 
     def log(self, msg):
         print("[" + datetime.now().strftime("%H:%M:%S") + "] " + str(msg))
@@ -739,8 +746,8 @@ class Discoverer:
                     has_addr = bool(row[1] and str(row[1]).strip())
                     has_debt = bool(row[2] and float(row[2] or 0) > 0)
                     if has_addr and has_debt:
-                        self.log("  Already complete today: " + cn)
-                        self.stats["skipped"] += 1
+                        self.log("  Already captured today (reused): " + cn)
+                        self.stats["reused"] += 1
                         return False
                     else:
                         self.log("  Re-processing (incomplete): " + cn)
@@ -748,7 +755,7 @@ class Discoverer:
         # Skip businesses if flag set
         if self.skip_biz and owner["type"] == "business":
             self.log("  Skip business: " + cn)
-            self.stats["skipped"] += 1
+            self.stats["business"] += 1
             return False
 
         self.log("  -> Clicking into " + cn + " | " + owner["type"].upper() +
@@ -1149,6 +1156,7 @@ class Discoverer:
                     rows = await self.get_case_list_from_current_page()
                     match = next((r for r in rows if r["caseNumber"] == cn), None)
                     if match:
+                        self.stats["found"] += 1          # a case WAS looked up + matched
                         await self.process_one_case(match)
                     else:
                         self.log("Case not found: " + cn)
@@ -1216,7 +1224,7 @@ class Discoverer:
                         self.log("  (" + str(part["closed"]) +
                                  " CLOSED cases excluded (--open-only mode))")
                     if part["business"]:
-                        self.stats["skipped"] += part["business"]
+                        self.stats["business"] += part["business"]
                         self.log("  (" + str(part["business"]) +
                                  " business entities excluded by --individuals-only)")
 
@@ -1255,7 +1263,7 @@ class Discoverer:
                                 hit_limit = True
                                 break
                             if args.skip_existing and self._case_exists(cn):
-                                self.stats["skipped"] += 1
+                                self.stats["skip_existing"] += 1
                                 self.log("  skip (already in DB): " + cn)
                                 continue
                             o = classify(case["partyName"])
@@ -1318,45 +1326,52 @@ class Discoverer:
             self.log("=" * 55)
             found = self.stats["found"]
             closed = self.stats["closed_skipped"]
+            business = self.stats["business"]
+            reused = self.stats["reused"]
+            skip_existing = self.stats["skip_existing"]
             if self.count_only:
                 # PRE-FLIGHT summary — scale preview, nothing scraped.
                 would = self.stats["would_process"]
-                biz = self.stats["skipped"]
                 self.log("COUNT-ONLY (pre-flight — nothing scraped)")
                 self.log("  Found:         " + str(found) + " cases in the result grid")
                 self.log("  Would process: " + str(would) + " with the current flags")
                 if closed:
                     self.log("  Closed excluded (--open-only): " + str(closed))
-                if biz:
-                    self.log("  Business excluded (--individuals-only): " + str(biz))
+                if business:
+                    self.log("  Business excluded (--individuals-only): " + str(business))
                 self.log("  → a real run would fetch+extract+enrich ~" + str(would) +
-                         " case(s) (minus any already scraped today).")
+                         " case(s) (minus any already captured today).")
                 print("SCRAPE_SUMMARY " + json.dumps({
                     "count_only": True, "found": found, "would_process": would,
-                    "closed": closed, "business": biz}))
+                    "closed": closed, "business": business}))
             else:
                 proc = self.stats["processed"]
-                skip = self.stats["skipped"]
                 errs = self.stats["errors"]
                 self.log("COMPLETE")
                 self.log("  Found:     " + str(found))
-                self.log("  Processed: " + str(proc) +
+                self.log("  New:       " + str(proc) + " scraped + saved" +
                          (" (of which BPP skip-records: " + str(self.stats["bpp_skipped"]) + ")"
                           if self.stats.get("bpp_skipped") else ""))
-                self.log("  Skipped:   " + str(skip) + " (business / already-complete)")
-                self.log("  Closed:    " + str(closed) + " (excluded — --open-only mode)")
+                self.log("  Reused:    " + str(reused) + " already captured today (not re-scraped)")
+                if skip_existing:
+                    self.log("  In DB:     " + str(skip_existing) + " skipped (--skip-existing)")
+                self.log("  Business:  " + str(business) + " excluded (--individuals-only)")
+                self.log("  Closed:    " + str(closed) + " excluded (--open-only mode)")
                 self.log("  Errors:    " + str(errs))
-                # Stats must add up (project standard): Found = Processed + Skipped + Closed + Errors.
-                # Only meaningful for list searches (pattern/name) where `found` is the grid total.
-                accounted = proc + skip + closed + errs
+                # Stats must add up (project standard):
+                #   Found = New + Reused + In-DB + Business + Closed + Errors.
+                # Only meaningful for list searches (pattern/name/case) where `found` is set.
+                accounted = proc + reused + skip_existing + business + closed + errs
                 if found:
                     ok = "OK" if accounted == found else "MISMATCH — investigate"
-                    self.log("  reconcile: " + str(proc) + "+" + str(skip) + "+" + str(closed) +
-                             "+" + str(errs) + " = " + str(accounted) + " vs Found " + str(found) +
+                    self.log("  reconcile: " + str(proc) + "+" + str(reused) + "+" +
+                             str(skip_existing) + "+" + str(business) + "+" + str(closed) + "+" +
+                             str(errs) + " = " + str(accounted) + " vs Found " + str(found) +
                              "  " + ok)
                 # Machine-readable line the worker/UI parse (decoupled from the human log format).
                 print("SCRAPE_SUMMARY " + json.dumps({
-                    "found": found, "processed": proc, "skipped": skip,
+                    "found": found, "processed": proc, "reused": reused,
+                    "skip_existing": skip_existing, "business": business,
                     "closed": closed, "errors": errs,
                     "bpp": self.stats.get("bpp_skipped", 0)}))
             if self.stats.get("resolved_account"):

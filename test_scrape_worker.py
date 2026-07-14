@@ -63,7 +63,7 @@ conn.execute("INSERT OR REPLACE INTO cases (case_number, property_type, account_
              "property_intel) VALUES (?,?,?,?,?)", [cn, "real", "resolved", 0, '{"market_value": 100}'])
 conn.commit(); conn.close()
 print("stub scraped", cn)
-print("SCRAPE_SUMMARY " + json.dumps({"found":1,"processed":1,"skipped":0,"closed":0,"errors":0,"bpp":0}))
+print("SCRAPE_SUMMARY " + json.dumps({"found":1,"processed":1,"reused":0,"business":0,"skip_existing":0,"closed":0,"errors":0,"bpp":0}))
 sys.exit(0)
 '''
 
@@ -92,10 +92,14 @@ def run():
 
     # ── parse_summary: pulls the SCRAPE_SUMMARY line; ignores everything else ──
     out = ("Page 1: 110 cases | 2 to process\n"
-           "  (108 CLOSED cases excluded by default — pass --include-closed to keep)\n"
-           'SCRAPE_SUMMARY {"found":110,"processed":0,"skipped":2,"closed":108,"errors":0,"bpp":0}\n')
+           "  (108 CLOSED cases excluded (--open-only mode))\n"
+           'SCRAPE_SUMMARY {"found":110,"processed":0,"reused":0,"business":2,"closed":108,"errors":0,"bpp":0}\n')
     s = W.parse_summary(out)
     check("parse_summary finds the breakdown", s and s["found"] == 110 and s["closed"] == 108)
+    # the --case reused case: found=1, reused=1, business=0 (must NOT be lumped as business)
+    s2 = W.parse_summary('SCRAPE_SUMMARY {"found":1,"processed":0,"reused":1,"business":0,"closed":0,"errors":0}')
+    check("parse_summary carries distinct reused vs business buckets",
+          s2["found"] == 1 and s2["reused"] == 1 and s2["business"] == 0)
     check("parse_summary None when absent", W.parse_summary("no summary here\n") is None)
     check("parse_summary ignores malformed line", W.parse_summary("SCRAPE_SUMMARY {bad json\n") is None)
 
@@ -136,6 +140,15 @@ def run():
     check("exception path → still returns True (handled, not crashed)", handled is True)
     check("exception path → reported as failed with 'worker error'",
           api.statuses()[-1] == "failed" and "worker error" in api.patches[-1][1]["error"])
+
+    # ── post-terminal error must NOT flip a done job to failed (the renamed-field crash class) ──
+    api = FakeApi({"id": 11, "label": "TX-26-00011", "request": {"case_number": "TX-26-00011"}})
+    def raising_log(*a):
+        raise RuntimeError("log boom (post-terminal)")
+    W.process_one(api.claim, api.patch, run_fn=lambda req: (0, "ok", ""),
+                  snapshot_fn=lambda req: {"found": 1, "cases": []}, log=raising_log)
+    check("post-terminal log error keeps DONE (not flipped to failed)",
+          api.statuses() == ["running", "done"])
 
     # ── real subprocess round-trip through the STUB discover command ──
     env_db = os.environ.get("STUB_DB")

@@ -122,6 +122,7 @@ def process_one(claim_fn, patch_fn, run_fn, snapshot_fn, log=print):
         return False
     job_id = job["id"]
     label = job.get("label") or ""
+    terminal_sent = False   # once done/failed is reported, a later exception must NOT flip it
     try:
         patch_fn(job_id, status="running", progress=f"scraping {label}…")
         request = job["request"]
@@ -133,15 +134,30 @@ def process_one(claim_fn, patch_fn, run_fn, snapshot_fn, log=print):
             if summary:
                 result["summary"] = summary
             patch_fn(job_id, status="done", progress="done", result=result)
-            log(f"  ✓ done  job {job_id} ({label}) — {result.get('found', '?')} saved, held"
-                + (f" (found {summary['found']}, {summary['closed']} closed, "
-                   f"{summary['skipped']} business/skip)" if summary else ""))
+            terminal_sent = True
+            # Defensive .get() throughout — a log-formatting detail (e.g. a renamed summary field)
+            # must NEVER raise here: the done patch is already sent, so an exception would be caught
+            # below and wrongly re-report the job as failed.
+            g = (summary or {}).get
+            log(f"  ✓ done  job {job_id} ({label}) — {g('processed', 0)} new, held"
+                + (f" (found {g('found', '?')}, {g('closed', 0)} closed, "
+                   f"{g('business', 0)} business, {g('reused', 0)} reused)" if summary else ""))
         else:
             detail = ((err or "") + "\n" + (out or "")).strip()[-RESULT_TRUNC:]
             patch_fn(job_id, status="failed", error=f"discover exited {rc}\n{detail}")
+            terminal_sent = True
             log(f"  ✗ failed  job {job_id} ({label}) — discover exited {rc}")
         return True
     except Exception as e:  # noqa: BLE001 — worker must never die silently; report + continue
+        if terminal_sent:
+            # The job already reached a terminal state (e.g. done); a post-terminal error is only
+            # a logging/formatting issue — surface it if we can, but DON'T overwrite the real
+            # outcome, and never let the log call itself escape.
+            try:
+                log(f"  !! post-terminal error on job {job_id} ({label}) — outcome kept: {e}")
+            except Exception:  # noqa: BLE001
+                pass
+            return True
         try:
             patch_fn(job_id, status="failed", error=f"worker error: {e}")
         except Exception as e2:  # noqa: BLE001

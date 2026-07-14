@@ -668,23 +668,36 @@ function pollScrapeJob(jobId, label, btn, status, resultEl, token) {
 
 function renderScrapeResult(el, result) {
   var esc = function(s){ return (s||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); };
-  // Filter breakdown from discover's summary — so "3 saved" isn't a bare number with no
-  // account of the other 107 (e.g. "110 found → 108 closed · 2 business/skip · 0 saved").
+  // Honest breakdown from discover's summary — every skip reason is distinct, so a REUSED case
+  // (already captured today) is never mislabeled "business/skip", and "N new" never contradicts a
+  // held card below (a shown-but-not-new case reads as "already captured", not "saved this run").
   var s = result && result.summary;
+  var n = function(v){ return v || 0; };
+  var newN = s ? n(s.processed) : 0;
   var breakdown = "";
   if (s) {
+    var segs = [];
+    if (n(s.closed))        segs.push("<b>" + s.closed + "</b> closed");
+    if (n(s.business))      segs.push("<b>" + s.business + "</b> business");
+    if (n(s.reused))        segs.push("<b>" + s.reused + "</b> already captured");
+    if (n(s.skip_existing)) segs.push("<b>" + s.skip_existing + "</b> already on file");
+    if (n(s.errors))        segs.push("<b style='color:var(--red)'>" + s.errors + "</b> errors");
+    segs.push("<b style='color:var(--green)'>" + newN + "</b> new (held)");
     breakdown = "<div style='font-size:11px;color:var(--text2);margin-bottom:6px;line-height:1.5'>"
-      + "<b>" + s.found + "</b> found → <b>" + s.closed + "</b> closed · <b>" + s.skipped + "</b> business/skip"
-      + (s.errors ? " · <b style='color:var(--red)'>" + s.errors + "</b> errors" : "")
-      + " · <b style='color:var(--green)'>" + s.processed + "</b> saved (held)</div>";
+      + "<b>" + n(s.found) + "</b> found → " + segs.join(" · ") + "</div>";
   }
   var cases = (result && result.cases) || [];
   if (!cases.length) {
     el.innerHTML = breakdown + "<div style='font-size:11px;color:var(--text3)'>"
-      + (s ? "0 new cases saved — every result was filtered out (closed / business) or already on file."
+      + (s ? "0 cases captured — every result was filtered out (closed / business) or already on file."
            : "No case rows captured — check the worker log.") + "</div>";
     return;
   }
+  // Nothing new this run, but case(s) shown → they were already captured (reused). Say so, so the
+  // held card doesn't read as "just saved" against a "0 new" breakdown.
+  var reusedNote = (s && newN === 0 && (n(s.reused) + n(s.skip_existing)) > 0)
+    ? "<div style='font-size:10px;color:var(--text3);margin-bottom:5px'>No new cases this run — the case(s) below were already captured and reused:</div>"
+    : "";
   var rows = cases.map(function(c){
     var typ = c.property_type === "personal"
       ? "<span style='color:var(--red)'>BPP · excluded</span>"
@@ -695,7 +708,7 @@ function renderScrapeResult(el, result) {
       + "<span style='font-family:var(--FM);color:var(--accent)'>" + esc(c.case_number) + "</span> · " + typ
       + " · <span style='color:var(--text3)'>held</span></div>";
   }).join("");
-  el.innerHTML = breakdown + rows + "<div style='font-size:10px;color:var(--text3);margin-top:2px'>Review, then approve to publish (<span style='font-family:var(--FM)'>sync_to_prod.py --approve</span>).</div>";
+  el.innerHTML = breakdown + reusedNote + rows + "<div style='font-size:10px;color:var(--text3);margin-top:2px'>Review, then approve to publish (<span style='font-family:var(--FM)'>sync_to_prod.py --approve</span>).</div>";
 }
 
 async function loadAgentStatus() {

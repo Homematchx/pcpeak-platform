@@ -42,6 +42,24 @@ AGAINST the mission, now made structurally correct instead of patched. **INVERTE
   suites green. discover.py/scrape_worker.py are LOCAL (pull); the trigger checkboxes are a FRONTEND
   change (next deploy). ⚠ Do NOT let this regress to open-only-by-default — it re-blinds the moat.
 
+**Scrape SUMMARY skip-buckets split (honest labels) + worker double-terminal bug fixed.** A `--case
+TX-25-00249` run showed "0 found → 1 business/skip · 0 saved (held)" over a card showing the case as
+held — a contradiction. Root cause (same class as partition_page): the `--case` path never set
+`stats["found"]`, and the ALREADY-COMPLETE-TODAY skip was lumped into the same generic `stats["skipped"]`
+bucket as business exclusions, so a REUSED case read as "business/skip". Fixed at the root: split
+`skipped` into distinct buckets — `business` (excluded), `reused` (already captured today, not
+re-scraped), `skip_existing` (--skip-existing) — everywhere (process_one_case + pattern partition +
+--case now sets found); reconcile is now `found = processed + reused + skip_existing + business + closed
++ errors`; SCRAPE_SUMMARY carries the distinct fields; the trigger UI shows "1 found → 1 already captured
+· 0 new (held)" + a "already captured and reused" note so a held card never contradicts a "0 new" line.
+**Bonus bug found + fixed:** renaming the summary field crashed `scrape_worker.process_one`'s done-log on
+`summary['skipped']` KeyError AFTER the done patch was sent → the except caught it and wrongly re-reported
+the job `failed` (done→failed flip). Fixed with defensive `.get()` on all summary reads + a `terminal_sent`
+guard so a post-terminal exception can never overwrite the real outcome (a logging detail must never flip a
+succeeded job). **Tests: `test_scrape_worker.py` 27/27** (+parse_summary distinct buckets, +post-terminal
+error keeps DONE), browser check (reused renders honestly, no contradiction, zero pageerror), all 9 green.
+discover.py/scrape_worker.py LOCAL (pull); the renderScrapeResult relabel is a FRONTEND change (next deploy).
+
 **Scrape-filter STATS now RECONCILE + the breakdown is surfaced (silent-number-gap fixed).** A
 `--pattern TX-23-004 --individuals-only` trigger run reported `Found: 110, Processed: 0, Skipped: 2`
 — 108 CLOSED cases were dropped by the default open-only filter WITHOUT being counted (the business
