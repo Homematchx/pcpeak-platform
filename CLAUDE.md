@@ -5,10 +5,37 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-07-15 (later still)
+
+**Phase 0 DEPLOYED (fingerprint-verified) + two READER tools built to actually query the live ledger
+data — the "prove it's useful before more architecture" step.** Deploy: feature→main (FF)→production
+(merge `3e1d317`); prod `backend/main.py` sha `2fe7f3c7…`, `index.html` unchanged `2cc38058…`,
+`origin/main == origin/production`. INERT except the one intended effect: init_db's one-time baseline
+backfill seeds ~127 `source='baseline'` case_snapshots rows on first boot (append-only, additive; no
+case data or display changes). Diff-on-write only fires on future syncs (still gated by approval + the
+offline worker). Live click-through is the USER's check (sandbox egress 403-blocks Railway).
+- **`evidence_gaps.py` (LOCAL, reads the token-gated export; no deploy).** The derivation-bug detector
+  case_snapshots was built to enable: surfaces every status change with a NULL evidence link. Counts
+  ONLY `source='update'` rows on EVIDENCE-eligible fields (oos_date/oos_issued/judgment_*/sale_*) with
+  no docket line — baseline/initial genesis (NULL by nature) and non-evidence fields (total_due, etc.)
+  are excluded, so it's signal not noise. Imports `EVIDENCE_KEYWORDS` from backend (single source, no
+  drift). `--file <dump.json>` for offline use against a backup_ledger dump.
+- **`ledger_scorecard.py` (LOCAL, reads the export; no deploy).** REAL predicted-vs-actual from the
+  prod prediction_ledger AS LOGGED+RESOLVED (not scorecard.py's local-DB recompute): resolved/open,
+  outcome mix, OOS-issued accuracy (mean/median abs err, within 30/60/90, signed bias) overall + per
+  basis + per model_version, with honest n= and the frozen-until-≥40 caveat. `--file` too. NOTE:
+  scorecard.py (local recompute of the CURRENT model) is KEPT — different, complementary purpose.
+- Both accept `--file` so they're testable offline (sandbox can't reach prod). **`test_ledger_tools.py`
+  21/21** (gap classification: genesis/non-evidence excluded, only NULL-evidence status-updates flagged;
+  accuracy math pinned on a fixture). All 12 suites green. Tools are LOCAL (pull to Mac); need
+  `LEDGER_EXPORT_TOKEN` set to hit live prod. **Sequencing:** user drives — after using these for real,
+  they'll raise Phase 1 (per-case Refresh) as its own decision; Phase 2 (scheduled sweep) stays parked
+  until Phase 1 is proven under manual use. Deploy vs architecture = separate, explicitly-labeled asks.
+
 ## SESSION HANDOFF — 2026-07-15 (later)
 
-**CASE-FIELD HISTORY — Phase 0 (`case_snapshots`) BUILT + tested, on the feature branch, NOT DEPLOYED
-(held pending review, per the deploy discipline reset this session).** Confirmed the telemetry gap
+**CASE-FIELD HISTORY — Phase 0 (`case_snapshots`) BUILT + tested, on the feature branch, DEPLOYED
+2026-07-15 (`3e1d317`, fingerprint-verified).** Confirmed the telemetry gap
 first by tracing code: a re-scrape/re-sync overwrites a case's fields IN PLACE with no history —
 `discover.save_to_db` (SELECT id → blind `UPDATE cases SET <all fields>`), the enrichment UPDATEs
 (incl. `property_intel` wholesale, which nests the DCAD year-tables), and `create_case` (merge →
