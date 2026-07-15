@@ -9,8 +9,22 @@ originates here; nothing connects into the Mac.
 
 Because it invokes the actual `discover.py` CLI (never a reimplementation), every scrape inherits
 every guardrail automatically — document selector, corroboration guard, BPP detection, account
-status, and prod_ready DEFAULT-HELD. The worker does NOT publish: scraped cases land prod_ready=0
-in the local DB and stay held until a deliberate approve+sync. The result it reports is a preview.
+status, and prod_ready DEFAULT-HELD. The worker does NOT publish on a scrape: scraped cases land
+prod_ready=0 in the local DB and stay held until a deliberate approve+sync. The result it reports
+is a preview.
+
+Two job kinds flow through the SAME queue (dispatched by request shape in process_one):
+  * SCRAPE  — request has case_number/pattern → runs `discover.py` (adds a held case).
+  * APPROVE — request has {"approve": CN}    → runs the real `sync_to_prod.py --approve CN --only CN`
+              (flips prod_ready=1 and publishes ONE already-held case). It NEVER creates data and
+              only touches the named case — the same guardrails as running that CLI by hand.
+
+The worker also keeps the browser's held-review view honest without any inbound path:
+  * HEARTBEAT — every poll it POSTs /api/worker/heartbeat so the UI can show online/offline (the
+                whole feature depends on the worker running).
+  * HELD-SYNC — on startup and after every handled job it POSTs the current LOCAL held set
+                (prod_ready=0, real-property) to /api/held/sync (full replace). That mirror is
+                what the browser lists; a just-approved case drops off, new scrapes appear.
 
 Run it on the Mac (one job at a time; scraping is serial — one browser):
 
@@ -19,9 +33,9 @@ Run it on the Mac (one job at a time; scraping is serial — one browser):
     python3 scrape_worker.py              # poll forever
     python3 scrape_worker.py --once       # drain at most one job, then exit (handy for testing)
 
-Test seam: the HTTP calls and the discover command are injected into process_one(), and the
-discover command is overridable via SCRAPE_DISCOVER_CMD, so the whole claim->run->report flow is
-exercised in tests with a stub command — no network, no portal, no credits. See test_scrape_worker.py.
+Test seam: the HTTP calls, the discover command, and the approve command are injected/overridable
+(SCRAPE_DISCOVER_CMD / SCRAPE_SYNC_CMD), so the whole claim->run->report flow — scrape AND approve —
+is exercised in tests with stub commands: no network, no portal, no credits. See test_scrape_worker.py.
 """
 import argparse
 import json
@@ -44,7 +58,23 @@ DB_PATH = Path(os.environ.get("SYNC_DB", BASE_DIR / "data" / "db" / "pcpeak.db")
 CTX = ssl.create_default_context(cafile=certifi.where())
 # Overridable so tests can inject a stub scraper instead of the real (credit-spending) CLI.
 DISCOVER_CMD = shlex.split(os.environ.get("SCRAPE_DISCOVER_CMD", "python3 discover.py"))
+# The real approve+publish CLI. An approve job shells out to this exactly as a human would:
+# `sync_to_prod.py --approve CN --only CN` (flip prod_ready=1, then push ONLY that case).
+SYNC_CMD = shlex.split(os.environ.get("SCRAPE_SYNC_CMD", "python3 sync_to_prod.py"))
 RESULT_TRUNC = 1500
+
+# Held-review preview fields: output key -> source column in the local `cases` table. The WHERE
+# predicate below mirrors sync_to_prod.pending_cases EXACTLY, so the browser's held list is precisely
+# the set `--approve` would consider (prod_ready=0, real-property, undetermined/BPP excluded).
+HELD_PREVIEW_COLS = {
+    "case_number": "case_number",
+    "property_address": "property_address",
+    "defendant": "defendant",
+    "total_due": "total_due_filing",
+    "property_type": "property_type",
+    "case_track": "case_track",
+    "account_status": "account_status",
+}
 
 
 # ── discover.py invocation (the actual pipeline — no logic duplicated here) ──
@@ -84,6 +114,54 @@ def run_discover(request, discover_cmd=None, cwd=None, timeout=1200):
     return proc.returncode, proc.stdout, proc.stderr
 
 
+def run_approve(case_number, sync_cmd=None, cwd=None, timeout=300):
+    """Publish ONE already-held case via the real approval CLI: `sync_to_prod.py --approve CN --only CN`.
+    This flips prod_ready=1 for that case and pushes only it — no other case is touched, and no case
+    data is created (sync is additive/idempotent). Returns (returncode, stdout, stderr)."""
+    cmd = (sync_cmd or SYNC_CMD) + ["--approve", case_number, "--only", case_number]
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          cwd=str(cwd or BASE_DIR), timeout=timeout)
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def local_held_cases(db_path=None):
+    """The current LOCAL held set — real-property cases not yet approved for prod (prod_ready=0),
+    with a few preview fields. Predicate mirrors sync_to_prod.pending_cases EXACTLY, so this list is
+    precisely what `--approve` would consider. Column-tolerant: missing columns default to NULL and
+    absent predicate columns drop their term, so a pre-migration/partial DB never raises."""
+    path = Path(db_path or DB_PATH)
+    if not path.exists():
+        return []
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(cases)").fetchall()}
+        if "case_number" not in cols:
+            return []
+        select = ", ".join(
+            (f"{src} AS {out}" if src in cols else f"NULL AS {out}")
+            for out, src in HELD_PREVIEW_COLS.items())
+        where = ["case_number IS NOT NULL"]
+        if "prod_ready" in cols:
+            where.append("(prod_ready IS NULL OR prod_ready=0)")
+        if "property_type" in cols:
+            where.append("property_type IS NOT 'personal' AND property_type IS NOT 'unknown'")
+        if "case_track" in cols:
+            where.append("case_track IS NOT 'personal_property'")
+        sql = f"SELECT {select} FROM cases WHERE {' AND '.join(where)} ORDER BY case_number"
+        return [dict(r) for r in conn.execute(sql).fetchall()]
+    finally:
+        conn.close()
+
+
+def sync_held(post_fn, db_path=None):
+    """Full-replace the cloud held-review mirror with the local held set. `post_fn(body)` POSTs to
+    /api/held/sync. Returns the server's reported held count (or None). Best-effort by the caller —
+    a failed mirror refresh never blocks job processing (the mirror self-heals on the next poll)."""
+    resp = post_fn({"held": local_held_cases(db_path)})
+    return (resp or {}).get("held") if isinstance(resp, dict) else None
+
+
 def snapshot(request, db_path=None):
     """Read the just-scraped case(s) from the LOCAL DB for a preview of what the pipeline produced
     and how each guardrail landed. prod_ready is included so the UI can show the case is HELD."""
@@ -112,20 +190,58 @@ def snapshot(request, db_path=None):
     return out
 
 
+def _refresh_held(on_held_change, label, log):
+    """Best-effort held-mirror refresh after a terminal success. NEVER raises — the job already
+    reached its real outcome; a failed mirror refresh must not touch that (it self-heals next poll)."""
+    if not on_held_change:
+        return
+    try:
+        on_held_change()
+    except Exception as e:  # noqa: BLE001
+        try:
+            log(f"  … held-mirror refresh after {label} failed (self-heals next poll): {e}")
+        except Exception:  # noqa: BLE001
+            pass
+
+
 # ── the testable core: claim one job, run it, report the outcome ──
-def process_one(claim_fn, patch_fn, run_fn, snapshot_fn, log=print):
+def process_one(claim_fn, patch_fn, run_fn, snapshot_fn, log=print,
+                approve_fn=None, on_held_change=None):
     """Claim the next job and drive it to a terminal state. Returns True if a job was handled,
-    False if the queue was empty. Any exception is reported as a failed job, never swallowed
-    silently (the original Run-button bug was a background thread dying with no trace)."""
+    False if the queue was empty. Dispatches by request shape: an {"approve": CN} request PUBLISHES
+    that one held case via approve_fn; anything else SCRAPES via run_fn. After any successful job the
+    held set changed (a new held case, or one just published), so on_held_change() refreshes the
+    cloud mirror. Any exception is reported as a failed job, never swallowed silently (the original
+    Run-button bug was a background thread dying with no trace)."""
     job = claim_fn()
     if not job:
         return False
     job_id = job["id"]
     label = job.get("label") or ""
+    request = job["request"]
     terminal_sent = False   # once done/failed is reported, a later exception must NOT flip it
     try:
+        # ── APPROVE job: publish ONE held case via the real sync_to_prod.py --approve (never scrapes) ──
+        if isinstance(request, dict) and request.get("approve"):
+            cn = request["approve"]
+            patch_fn(job_id, status="running", progress=f"approving {cn}…")
+            rc, out, err = (approve_fn or run_approve)(cn)
+            if rc == 0:
+                result = {"approved": cn, "stdout_tail": (out or "")[-RESULT_TRUNC:],
+                          "note": f"{cn} approved (prod_ready=1) and synced to prod"}
+                patch_fn(job_id, status="done", progress="published", result=result)
+                terminal_sent = True
+                log(f"  ✓ published  job {job_id} ({label}) — {cn} live on prod")
+                _refresh_held(on_held_change, label, log)   # it dropped off the held set
+            else:
+                detail = ((err or "") + "\n" + (out or "")).strip()[-RESULT_TRUNC:]
+                patch_fn(job_id, status="failed", error=f"sync_to_prod exited {rc}\n{detail}")
+                terminal_sent = True
+                log(f"  ✗ failed  job {job_id} ({label}) — approve exited {rc}")
+            return True
+
+        # ── SCRAPE job: run the real discover.py; the case lands held ──
         patch_fn(job_id, status="running", progress=f"scraping {label}…")
-        request = job["request"]
         rc, out, err = run_fn(request)
         if rc == 0:
             result = snapshot_fn(request)
@@ -142,6 +258,7 @@ def process_one(claim_fn, patch_fn, run_fn, snapshot_fn, log=print):
             log(f"  ✓ done  job {job_id} ({label}) — {g('processed', 0)} new, held"
                 + (f" (found {g('found', '?')}, {g('closed', 0)} closed, "
                    f"{g('business', 0)} business, {g('reused', 0)} reused)" if summary else ""))
+            _refresh_held(on_held_change, label, log)   # a new held case may have appeared
         else:
             detail = ((err or "") + "\n" + (out or "")).strip()[-RESULT_TRUNC:]
             patch_fn(job_id, status="failed", error=f"discover exited {rc}\n{detail}")
@@ -189,6 +306,18 @@ def _http_patch(token):
     return patch
 
 
+def _http_heartbeat(token, worker_id):
+    def beat():
+        return _api("POST", "/api/worker/heartbeat", {"worker_id": worker_id}, token)
+    return beat
+
+
+def _http_sync_held(token, db_path):
+    def refresh():
+        return sync_held(lambda body: _api("POST", "/api/held/sync", body, token), db_path)
+    return refresh
+
+
 def main():
     ap = argparse.ArgumentParser(description="Local scrape worker for the front-end trigger queue.")
     ap.add_argument("--once", action="store_true", help="Drain at most one job, then exit.")
@@ -205,13 +334,34 @@ def main():
 
     claim = _http_claim(token, args.worker_id)
     patch = _http_patch(token)
+    beat = _http_heartbeat(token, args.worker_id)
+    refresh_held = _http_sync_held(token, DB_PATH)
     print(f"scrape_worker → {PROD}  (worker_id={args.worker_id}, db={DB_PATH})")
     print(f"discover cmd: {' '.join(DISCOVER_CMD)}")
+    print(f"sync cmd:     {' '.join(SYNC_CMD)}")
+
+    def _safe(fn, what):
+        """Run a best-effort side call (heartbeat / held-sync); a network hiccup must not stop polling."""
+        try:
+            return fn()
+        except urllib.error.URLError as e:
+            print(f"  … {what} couldn't reach {PROD}: {e}")
+        except Exception as e:  # noqa: BLE001
+            print(f"  … {what} failed: {e}")
+
+    # Announce liveness + publish the current held set before the first poll, so the browser's
+    # held-review view is populated and shows the worker online even with an empty queue.
+    _safe(beat, "startup heartbeat")
+    n_held = _safe(refresh_held, "startup held-sync")
+    if n_held is not None:
+        print(f"held-review mirror synced: {n_held} case(s) awaiting approval")
 
     try:
         while True:
+            _safe(beat, "heartbeat")   # each poll, so the UI's online indicator stays fresh
             try:
-                handled = process_one(claim, patch, run_discover, snapshot)
+                handled = process_one(claim, patch, run_discover, snapshot,
+                                      approve_fn=run_approve, on_held_change=refresh_held)
             except urllib.error.URLError as e:
                 print(f"  … can't reach {PROD}: {e} (retrying)"); handled = False
             if args.once:

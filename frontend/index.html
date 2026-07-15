@@ -265,6 +265,17 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
       </div>
     </div>
 
+    <!-- HELD FOR REVIEW -->
+    <div class="sbs">
+      <div class="sbl" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Held for Review <span id="held-count" style="font-size:11px;color:var(--text3);font-weight:400;letter-spacing:0;text-transform:none">0</span></span>
+        <button id="held-refresh" onclick="loadHeld(true)" title="Refresh held list"
+          style="font-family:var(--FB);font-size:10px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">&#8635;</button>
+      </div>
+      <div id="held-worker" style="font-size:10px;color:var(--text3);margin:1px 0 7px;line-height:1.5"></div>
+      <div id="held-list" style="display:flex;flex-direction:column;gap:5px"></div>
+    </div>
+
     <!-- PLATFORM SYNC -->
     <div class="sbs">
       <div class="sbl" style="display:flex;justify-content:space-between;align-items:center">
@@ -655,7 +666,7 @@ function pollScrapeJob(jobId, label, btn, status, resultEl, token) {
         _scrapeReset(btn);
         status.style.color = "var(--green)"; status.textContent = "✓ Scraped — held for review.";
         renderScrapeResult(resultEl, job.result);
-        setTimeout(function(){ syncFromPlatform(); }, 800);   // refresh the list (real fn, not the old typo)
+        setTimeout(function(){ syncFromPlatform(); loadHeld(); }, 800);   // refresh the list + held view (real fn, not the old typo)
       } else if (job.status === "failed") {
         clearInterval(_scrapePoll); _scrapePoll = null;
         _scrapeReset(btn);
@@ -708,7 +719,121 @@ function renderScrapeResult(el, result) {
       + "<span style='font-family:var(--FM);color:var(--accent)'>" + esc(c.case_number) + "</span> · " + typ
       + " · <span style='color:var(--text3)'>held</span></div>";
   }).join("");
-  el.innerHTML = breakdown + reusedNote + rows + "<div style='font-size:10px;color:var(--text3);margin-top:2px'>Review, then approve to publish (<span style='font-family:var(--FM)'>sync_to_prod.py --approve</span>).</div>";
+  el.innerHTML = breakdown + reusedNote + rows + "<div style='font-size:10px;color:var(--text3);margin-top:2px'>Review, then approve below to publish.</div>";
+}
+
+// ══════════════════════════════════════════════════════════════
+// HELD FOR REVIEW — list cases awaiting approval; Approve enqueues an approve-job the Mac worker
+// runs as the real `sync_to_prod.py --approve CN --only CN` (flip prod_ready=1 + publish ONLY that
+// case). The browser never touches prod data directly — it only asks the worker to publish an
+// already-held case. Requires the same trigger token as the scrape button.
+// ══════════════════════════════════════════════════════════════
+var _heldEsc = function(s){ return (s||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); };
+
+async function loadHeld(promptForToken) {
+  var listEl = document.getElementById("held-list");
+  var wkEl = document.getElementById("held-worker");
+  if (!listEl) return;
+  // Never prompt on the silent auto-load/interval — only when the rep explicitly asks (refresh btn).
+  var token = promptForToken ? scrapeToken() : sessionStorage.getItem("scrape_token");
+  if (!token) {
+    listEl.innerHTML = "<div style='font-size:11px;color:var(--text3)'>Enter the trigger token (&#8635;) or trigger a scrape to view held cases.</div>";
+    if (wkEl) wkEl.textContent = "";
+    return;
+  }
+  try {
+    var r = await fetch(PLATFORM_API + "/held", {headers: {"X-Scrape-Token": token}});
+    if (r.status === 401) { sessionStorage.removeItem("scrape_token"); throw new Error("Bad token — re-enter (&#8635;)."); }
+    if (r.status === 503) throw new Error("Held-review not configured on the server.");
+    if (!r.ok) throw new Error("Server error (" + r.status + ").");
+    renderHeld(await r.json());
+  } catch (e) {
+    if (wkEl) { wkEl.innerHTML = "<span style='color:var(--red)'>" + e.message + "</span>"; }
+  }
+}
+
+function renderHeld(data) {
+  var held = (data && data.held) || [];
+  var worker = (data && data.worker) || {};
+  var cntEl = document.getElementById("held-count");
+  var wkEl = document.getElementById("held-worker");
+  var listEl = document.getElementById("held-list");
+  if (cntEl) cntEl.textContent = held.length;
+  if (wkEl) {
+    if (worker.online) {
+      wkEl.innerHTML = "<span style='color:var(--green)'>&#9679; Worker online</span> — approvals process now.";
+    } else {
+      var ago = (worker.age_secs != null) ? " (last seen " + worker.age_secs + "s ago)" : " (never seen)";
+      wkEl.innerHTML = "<span style='color:var(--red)'>&#9679; Worker offline</span>" + ago
+        + " — start <span style='font-family:var(--FM)'>scrape_worker.py</span> on the Mac; approvals queue until it runs.";
+    }
+  }
+  if (!held.length) {
+    listEl.innerHTML = "<div style='font-size:11px;color:var(--text3)'>Nothing held — scraped cases awaiting approval appear here.</div>";
+    return;
+  }
+  listEl.innerHTML = held.map(function(c){
+    var cn = c.case_number;
+    var due = (c.total_due != null) ? "$" + Number(c.total_due).toLocaleString(undefined, {maximumFractionDigits:2}) : "&mdash;";
+    var badge = (c.account_status && c.account_status !== "resolved")
+      ? " · <span style='color:var(--amber)'>&#9888; " + _heldEsc(c.account_status) + "</span>" : "";
+    var addr = _heldEsc(c.property_address || "").trim();
+    var def  = _heldEsc(c.defendant || "").trim();
+    var btn = c.approving
+      ? "<button disabled style='width:100%;margin-top:6px;padding:5px;font-size:11px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text3);cursor:default'>approving&hellip;</button>"
+      : "<button onclick=\"approveHeld('" + _heldEsc(cn) + "')\""
+        + (worker.online ? "" : " title='Worker offline — this will queue until the worker runs.'")
+        + " style='width:100%;margin-top:6px;padding:5px;font-size:11px;border-radius:6px;border:1px solid var(--green);background:transparent;color:var(--green);cursor:pointer;font-weight:600'>Approve &rarr; publish</button>";
+    return "<div style='padding:7px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:6px'>"
+      + "<div style='font-family:var(--FM);font-size:11px;color:var(--accent)'>" + _heldEsc(cn) + badge + "</div>"
+      + (addr ? "<div style='font-size:11px;color:var(--text2);margin-top:2px'>" + addr + "</div>" : "")
+      + "<div style='font-size:10px;color:var(--text3);margin-top:2px'>" + (def ? def + " · " : "") + due + "</div>"
+      + btn + "</div>";
+  }).join("");
+}
+
+var _approvePoll = null;
+async function approveHeld(cn) {
+  var token = scrapeToken();
+  if (!token) return;
+  try {
+    var r = await fetch(PLATFORM_API + "/held/" + encodeURIComponent(cn) + "/approve",
+                        {method: "POST", headers: {"X-Scrape-Token": token}});
+    if (r.status === 401) { sessionStorage.removeItem("scrape_token"); throw new Error("Bad token — re-enter (&#8635;) and retry."); }
+    if (r.status === 404) throw new Error(cn + " is no longer in the held list.");
+    if (r.status === 409) { loadHeld(); return; }   // already being approved — just refresh state
+    if (r.status === 429) throw new Error("Queue is full — wait for the worker to drain it.");
+    if (r.status === 503) throw new Error("Held-review not configured on the server.");
+    if (!r.ok) throw new Error("Server error (" + r.status + ").");
+    var data = await r.json();
+    loadHeld();                              // reflect the inflight (approving…) state immediately
+    pollApproveJob(data.job_id, cn, token);  // then watch it to done/failed
+  } catch (e) {
+    var wkEl = document.getElementById("held-worker");
+    if (wkEl) wkEl.innerHTML = "<span style='color:var(--red)'>" + e.message + "</span>";
+  }
+}
+
+function pollApproveJob(jobId, cn, token) {
+  if (_approvePoll) clearInterval(_approvePoll);
+  _approvePoll = setInterval(async function() {
+    try {
+      var r = await fetch(PLATFORM_API + "/scrape-jobs/" + jobId, {headers: {"X-Scrape-Token": token}});
+      if (!r.ok) return;
+      var job = await r.json();
+      if (job.status === "done") {
+        clearInterval(_approvePoll); _approvePoll = null;
+        loadHeld();                                            // it drops off (worker held-sync ran)
+        setTimeout(function(){ syncFromPlatform(); }, 800);    // it's now live on prod — refresh the list
+      } else if (job.status === "failed") {
+        clearInterval(_approvePoll); _approvePoll = null;
+        loadHeld();
+        var wkEl = document.getElementById("held-worker");
+        if (wkEl) wkEl.innerHTML = "<span style='color:var(--red)'>Approve failed for " + _heldEsc(cn) + ": "
+          + _heldEsc(((job.error || "").split("\n")[0]) || "see the worker log") + "</span>";
+      }
+    } catch (e) {}
+  }, 3000);
 }
 
 async function loadAgentStatus() {
@@ -735,6 +860,9 @@ function init() {
   syncFromPlatform();
   setInterval(syncFromPlatform, 30000);
   setInterval(loadAgentStatus, 10000);
+  // Held-review view (silent — only loads if a token is already present; never prompts on load).
+  loadHeld();
+  setInterval(function(){ loadHeld(); }, 15000);   // keeps the worker online/offline dot fresh
 }
 
 // ═══════════════════════════════════════════

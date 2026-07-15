@@ -251,6 +251,30 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_scrape_jobs_status ON scrape_jobs(status, id);
 
+        -- HELD-FOR-REVIEW mirror. Held cases (prod_ready=0) live on the MAC, never on prod — so
+        -- this is a PREVIEW-only mirror the Mac worker pushes up (POST /api/held/sync, full replace)
+        -- so the browser can list what's awaiting approval. Approving enqueues an approve-job that
+        -- the worker runs as the real sync_to_prod.py --approve locally; the case then publishes into
+        -- `cases` and drops off this list on the next held-sync. No full case data or events here.
+        CREATE TABLE IF NOT EXISTS held_cases (
+            case_number      TEXT PRIMARY KEY,
+            property_address TEXT,
+            defendant        TEXT,
+            total_due        REAL,
+            property_type    TEXT,
+            case_track       TEXT,
+            account_status   TEXT,
+            synced_at        TEXT DEFAULT (datetime('now'))
+        );
+
+        -- Worker liveness. The Mac worker heartbeats here each poll; the browser shows online/offline
+        -- so a rep knows whether triggering / approving will actually be picked up (the whole feature
+        -- depends on the worker running). One row per worker_id.
+        CREATE TABLE IF NOT EXISTS worker_state (
+            worker_id  TEXT PRIMARY KEY,
+            last_seen  TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS benchmarks (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             case_number     TEXT UNIQUE NOT NULL,
@@ -1162,6 +1186,121 @@ async def patch_scrape_job(job_id: int, patch: ScrapeJobPatch, x_worker_token: s
         db.execute(f"UPDATE scrape_jobs SET {', '.join(sets)} WHERE id=?", vals + [job_id])
         row = db.execute("SELECT * FROM scrape_jobs WHERE id=?", [job_id]).fetchone()
     return _job_out(row)
+
+
+# ─── HELD-FOR-REVIEW (close the loop: browser approves a held case → worker publishes it) ─────
+# Held cases live on the MAC (prod_ready=0), never on prod. The worker mirrors a PREVIEW up here so
+# the browser can list them; approving enqueues an approve-job the worker runs as the real
+# sync_to_prod.py --approve. Same two fail-closed tokens as the scrape trigger.
+WORKER_ONLINE_SECS = 30
+
+
+class HeldPreview(BaseModel):
+    case_number: str
+    property_address: str = ""
+    defendant: str = ""
+    total_due: Optional[float] = None
+    property_type: str = ""
+    case_track: str = ""
+    account_status: str = ""
+
+
+class HeldSyncIn(BaseModel):
+    held: List[HeldPreview] = []
+
+
+class HeartbeatIn(BaseModel):
+    worker_id: str = "worker"
+
+
+def _worker_liveness(db):
+    row = db.execute(
+        "SELECT last_seen, (strftime('%s','now') - strftime('%s', last_seen)) AS age "
+        "FROM worker_state ORDER BY last_seen DESC LIMIT 1").fetchone()
+    if not row:
+        return {"online": False, "last_seen": None, "age_secs": None}
+    age = row["age"]
+    return {"online": age is not None and age < WORKER_ONLINE_SECS,
+            "last_seen": row["last_seen"], "age_secs": age}
+
+
+@app.post("/api/worker/heartbeat")
+async def worker_heartbeat(hb: HeartbeatIn, x_worker_token: str = Header(default="")):
+    _require_token("SCRAPE_WORKER_TOKEN", x_worker_token)
+    with get_db() as db:
+        db.execute("INSERT INTO worker_state (worker_id, last_seen) VALUES (?, datetime('now')) "
+                   "ON CONFLICT(worker_id) DO UPDATE SET last_seen=datetime('now')", [hb.worker_id])
+    return {"ok": True}
+
+
+@app.post("/api/held/sync")
+async def held_sync(payload: HeldSyncIn, x_worker_token: str = Header(default="")):
+    """Worker-only. FULL REPLACE of the held-review mirror with the Mac's current held set — so a
+    just-approved case (no longer held locally) drops off, and new held cases appear."""
+    _require_token("SCRAPE_WORKER_TOKEN", x_worker_token)
+    with get_db() as db:
+        db.execute("DELETE FROM held_cases")
+        for h in payload.held:
+            cn = (h.case_number or "").strip().upper()
+            if not cn:
+                continue
+            db.execute(
+                "INSERT OR REPLACE INTO held_cases (case_number, property_address, defendant, "
+                "total_due, property_type, case_track, account_status, synced_at) "
+                "VALUES (?,?,?,?,?,?,?, datetime('now'))",
+                [cn, h.property_address, h.defendant, h.total_due, h.property_type,
+                 h.case_track, h.account_status])
+        n = db.execute("SELECT COUNT(*) FROM held_cases").fetchone()[0]
+    return {"held": n}
+
+
+@app.get("/api/held")
+async def list_held(x_scrape_token: str = Header(default="")):
+    """Browser view of cases awaiting approval + whether the Mac worker is online (approvals only
+    process when it is)."""
+    _require_token("SCRAPE_TRIGGER_TOKEN", x_scrape_token)
+    with get_db() as db:
+        rows = db.execute("SELECT * FROM held_cases ORDER BY case_number").fetchall()
+        worker = _worker_liveness(db)
+        inflight = set()
+        for r in db.execute("SELECT request FROM scrape_jobs WHERE status IN "
+                            "('queued','claimed','running') AND request LIKE '%approve%'"):
+            try:
+                a = json.loads(r["request"]).get("approve")
+                if a:
+                    inflight.add(a)
+            except (ValueError, TypeError):
+                pass
+    held = []
+    for r in rows:
+        d = dict(r)
+        d["approving"] = d["case_number"] in inflight
+        held.append(d)
+    return {"held": held, "worker": worker}
+
+
+@app.post("/api/held/{case_number}/approve")
+async def approve_held(case_number: str, x_scrape_token: str = Header(default="")):
+    """Enqueue an approve-job — the worker runs the real sync_to_prod.py --approve locally. Only a
+    case currently in the held mirror can be approved (never creates data; only publishes an existing
+    held case). Deduped against an in-flight approve for the same case; capped like scrape enqueue."""
+    _require_token("SCRAPE_TRIGGER_TOKEN", x_scrape_token)
+    cn = (case_number or "").strip().upper()
+    request_json = json.dumps({"approve": cn}, sort_keys=True)
+    with get_db() as db:
+        if not db.execute("SELECT 1 FROM held_cases WHERE case_number=?", [cn]).fetchone():
+            raise HTTPException(404, f"{cn} is not in the held-review list")
+        dup = db.execute("SELECT id FROM scrape_jobs WHERE request=? AND status IN "
+                         "('queued','claimed','running')", [request_json]).fetchone()
+        if dup:
+            raise HTTPException(409, f"{cn} is already being approved (job {dup[0]})")
+        queued = db.execute("SELECT COUNT(*) FROM scrape_jobs WHERE status='queued'").fetchone()[0]
+        if queued >= MAX_QUEUED_SCRAPES:
+            raise HTTPException(429, "queue full — wait for the worker to drain it")
+        cur = db.execute("INSERT INTO scrape_jobs (request, label, status, requested_by) "
+                         "VALUES (?,?,'queued','operator')", [request_json, "approve " + cn])
+        job_id = cur.lastrowid
+    return {"job_id": job_id, "status": "queued", "approve": cn}
 
 @app.get("/api/petition/{case_number}")
 async def get_petition_pdf(case_number: str):

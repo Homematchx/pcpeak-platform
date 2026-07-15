@@ -5,6 +5,55 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-07-15
+
+**HELD-FOR-REVIEW browser view BUILT (Option A) — approve + publish a scraped case from the site,
+without ever putting held/unpublished data on prod.** The scrape trigger fills a held queue
+(prod_ready=0) but there was no in-browser way to approve. Built the missing piece with the SAME
+architecture as the trigger — the browser NEVER touches prod case data; it only asks the Mac worker
+to publish an already-held case via the real `sync_to_prod.py --approve`. **Why Option A (route
+through the worker), not "list cloud prod_ready=0":** held cases live ONLY on the Mac — a held case
+is never synced up, and prod's `prod_ready` is LOCAL-only (in SKIP_CASE_FIELDS, never sent), so it's
+uniformly 0/meaningless on cloud. The literal "show prod_ready=0 on cloud" spec structurally can't
+work; Option B's "remember to filter prod_ready=0 everywhere" is the exact fragile pattern the
+prod_ready gate was built to kill. So the worker MIRRORS its held set up for display only.
+- **Backend (`backend/main.py`, served):** two preview/liveness tables — `held_cases` (a display-only
+  mirror the worker full-replaces; PK case_number + a few preview fields, NO full case data/events)
+  and `worker_state` (heartbeat liveness). Endpoints: `POST /api/worker/heartbeat` (worker token) +
+  `POST /api/held/sync` (worker token, FULL REPLACE so a just-approved case drops off) + `GET /api/held`
+  (trigger token → held rows + worker online/offline + per-case `approving` inflight flag) +
+  `POST /api/held/{cn}/approve` (trigger token). **Approve ONLY ever flips prod_ready + publishes,
+  never creates data:** it 404s if the case isn't in the held mirror, then just enqueues an
+  `{"approve": CN}` job (deduped in-flight, capped by the shared MAX_QUEUED). Both roles fail-closed
+  (503 unset / 401 wrong role), same two tokens as the trigger.
+- **Worker (`scrape_worker.py`, LOCAL):** ONE queue, dispatched by request shape — `{"approve": CN}`
+  runs `run_approve` = the real `sync_to_prod.py --approve CN --only CN` (flip prod_ready=1 + push ONLY
+  that case; no data created); everything else scrapes via discover.py. Every poll POSTs a heartbeat;
+  on startup + after every successful job it POSTs the current LOCAL held set (`local_held_cases`, a
+  predicate that mirrors `sync_to_prod.pending_cases` EXACTLY) to `/api/held/sync`, so the browser list
+  IS precisely what `--approve` would consider. Held-mirror refresh is best-effort (never flips a job's
+  real outcome — same `terminal_sent` discipline). Overridable via `SCRAPE_SYNC_CMD` for tests.
+- **Frontend (`frontend/index.html`, served):** a "Held for Review" sidebar section — lists held cases
+  with address/defendant/due, a worker ●online/●offline indicator (offline tells the rep to start the
+  worker + that approvals queue), and an "Approve → publish" button per case. Approve POSTs, reflects
+  `approving…`, polls the job to done, then refreshes both the held view (case drops off) and the case
+  list (now live). Silent auto-load every 15s (never prompts for the token on page load; only explicit
+  actions prompt). Reuses the trigger's sessionStorage token.
+- **Worker-liveness concern factored in (as asked):** the whole feature depends on the worker running,
+  so the UI surfaces it — heartbeat drives an online/offline dot, and an approve while offline still
+  queues (processed when the worker returns), it doesn't silently fail.
+- **Tests (all isolated, no network): `backend/test_held_review.py` 25/25** (fail-closed auth + both
+  roles, full-replace sync, liveness online/offline, approve-404-when-not-held / enqueue / dedup / cap /
+  claim+done), **`test_scrape_worker.py` 39/39** (+approve dispatch to approve_fn not discover, run_approve
+  cmd shape, held-mirror refresh on success only, local_held_cases predicate excludes approved/BPP/unknown,
+  sync_held payload), **`test_held_browser.py` 9/9** (Chromium: renders held + online dot, Approve →
+  POST + poll + drop-off + syncFromPlatform, ZERO pageerror). All 10 suites green (219 checks).
+- backend/main.py is a SERVED artifact (deploys on the next `production` merge — inert until the 2
+  Railway tokens are set, already-set from the trigger). scrape_worker.py/sync_to_prod.py are LOCAL
+  (pull); the "Held for Review" UI is a FRONTEND change (next deploy). ⚠ **Live end-to-end is the
+  USER's check** (browser→approve→Mac worker→sync_to_prod→case live): needs the deploy + `scrape_worker.py`
+  running on the Mac. Sandbox egress 403-blocks Railway, so no live click-through from here.
+
 ## SESSION HANDOFF — 2026-07-14
 
 **DESIGN PRINCIPLE (stated, alongside fingerprint-proof + prod_ready) — DISCOVERY CAPTURES THE FULL

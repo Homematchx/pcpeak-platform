@@ -150,6 +150,88 @@ def run():
     check("post-terminal log error keeps DONE (not flipped to failed)",
           api.statuses() == ["running", "done"])
 
+    # ── a successful SCRAPE refreshes the held mirror (a new held case may have appeared) ──
+    refreshed = {"n": 0}
+    api = FakeApi({"id": 20, "label": "TX-26-00020", "request": {"case_number": "TX-26-00020"}})
+    W.process_one(api.claim, api.patch, run_fn=lambda req: (0, "ok", ""),
+                  snapshot_fn=lambda req: {"found": 1, "cases": []}, log=lambda *_: None,
+                  on_held_change=lambda: refreshed.__setitem__("n", refreshed["n"] + 1))
+    check("successful scrape triggers a held-mirror refresh", refreshed["n"] == 1)
+    # a FAILED scrape must NOT refresh (nothing changed)
+    refreshed["n"] = 0
+    api = FakeApi({"id": 21, "label": "TX-26-00021", "request": {"case_number": "TX-26-00021"}})
+    W.process_one(api.claim, api.patch, run_fn=lambda req: (2, "", "boom"),
+                  snapshot_fn=lambda req: {}, log=lambda *_: None,
+                  on_held_change=lambda: refreshed.__setitem__("n", refreshed["n"] + 1))
+    check("failed scrape does NOT refresh the held mirror", refreshed["n"] == 0)
+
+    # ══ APPROVE-JOB DISPATCH ══
+    # build the command exactly as a human would: sync_to_prod.py --approve CN --only CN
+    rc, out, err = W.run_approve("TX-26-00010", sync_cmd=["python3", "-c",
+        "import sys;print('ARGS',sys.argv[1:]);print('approved TX-26-00010')"], cwd=d)
+    check("run_approve builds --approve CN --only CN and exits 0",
+          rc == 0 and "ARGS ['--approve', 'TX-26-00010', '--only', 'TX-26-00010']" in out)
+
+    # process_one dispatches an {"approve": CN} request to approve_fn (NOT run_fn) and publishes it
+    published = {"n": 0}
+    api = FakeApi({"id": 30, "label": "approve TX-26-00010", "request": {"approve": "TX-26-00010"}})
+    def _run_should_not_be_called(req):
+        raise AssertionError("run_fn (discover) must NOT be called for an approve job")
+    W.process_one(api.claim, api.patch, run_fn=_run_should_not_be_called,
+                  snapshot_fn=lambda req: {}, log=lambda *_: None,
+                  approve_fn=lambda cn: (0, f"published {cn}", ""),
+                  on_held_change=lambda: published.__setitem__("n", published["n"] + 1))
+    check("approve job → status running→done (dispatched to approve_fn, not scrape)",
+          api.statuses() == ["running", "done"])
+    check("approve job → done result carries the approved case number",
+          api.patches[-1][1]["result"].get("approved") == "TX-26-00010")
+    check("successful approve refreshes the held mirror (case dropped off)", published["n"] == 1)
+
+    # a FAILED approve → failed job, no mirror refresh
+    published["n"] = 0
+    api = FakeApi({"id": 31, "label": "approve TX-26-00011", "request": {"approve": "TX-26-00011"}})
+    W.process_one(api.claim, api.patch, run_fn=None, snapshot_fn=lambda req: {}, log=lambda *_: None,
+                  approve_fn=lambda cn: (5, "", "gate refused: held"),
+                  on_held_change=lambda: published.__setitem__("n", published["n"] + 1))
+    check("failed approve → status running→failed with the CLI's exit code",
+          api.statuses() == ["running", "failed"] and "exited 5" in api.patches[-1][1]["error"])
+    check("failed approve does NOT refresh the held mirror", published["n"] == 0)
+
+    # ══ local_held_cases + sync_held against a temp DB ══
+    held_db = d / "held.db"
+    conn = sqlite3.connect(held_db)
+    conn.execute("CREATE TABLE cases (case_number TEXT UNIQUE, property_address TEXT, defendant TEXT, "
+                 "total_due_filing REAL, property_type TEXT, case_track TEXT, account_status TEXT, "
+                 "prod_ready INTEGER DEFAULT 0)")
+    conn.executemany("INSERT INTO cases (case_number, property_address, defendant, total_due_filing, "
+                     "property_type, case_track, account_status, prod_ready) VALUES (?,?,?,?,?,?,?,?)", [
+        ("TX-26-00009", "100 Main St", "DOE, JOHN", 12818.78, "real", "oos_timing", "resolved", 0),   # held
+        ("TX-26-00010", "200 Oak Ave", "ROE, JANE", 4200.0, "real", "oos_timing", "needs_lookup", 0), # held
+        ("TX-26-00011", "300 Elm",     "PUB, LIVE", 999.0,   "real", "oos_timing", "resolved", 1),    # approved → excluded
+        ("TX-26-00012", "400 BPP",     "BIZ LLC",   50.0,    "personal", "personal_property", "resolved", 0),  # BPP → excluded
+        ("TX-26-00013", "500 Unk",     "NEW",       0.0,     "unknown", "oos_timing", "resolved", 0),  # undetermined → excluded
+    ])
+    conn.commit(); conn.close()
+    held = W.local_held_cases(db_path=held_db)
+    nums = [h["case_number"] for h in held]
+    check("local_held_cases returns ONLY prod_ready=0 real-property (excludes approved/BPP/unknown)",
+          nums == ["TX-26-00009", "TX-26-00010"])
+    check("local_held_cases carries preview fields (total_due aliased from total_due_filing)",
+          held[0]["property_address"] == "100 Main St" and abs(held[0]["total_due"] - 12818.78) < 1e-6)
+
+    # sync_held posts {"held": [...]} to the injected poster and returns the server count
+    posted = {}
+    def fake_post(body):
+        posted["body"] = body
+        return {"held": len(body["held"])}
+    n = W.sync_held(fake_post, db_path=held_db)
+    check("sync_held posts the local held set and returns the server count",
+          n == 2 and [h["case_number"] for h in posted["body"]["held"]] == ["TX-26-00009", "TX-26-00010"])
+
+    # missing DB → empty held set (no crash)
+    check("local_held_cases on a missing DB → [] (no crash)",
+          W.local_held_cases(db_path=d / "nope.db") == [])
+
     # ── real subprocess round-trip through the STUB discover command ──
     env_db = os.environ.get("STUB_DB")
     os.environ["STUB_DB"] = str(stub_db)
