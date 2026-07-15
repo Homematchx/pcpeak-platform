@@ -5,6 +5,49 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-07-15 (later)
+
+**CASE-FIELD HISTORY — Phase 0 (`case_snapshots`) BUILT + tested, on the feature branch, NOT DEPLOYED
+(held pending review, per the deploy discipline reset this session).** Confirmed the telemetry gap
+first by tracing code: a re-scrape/re-sync overwrites a case's fields IN PLACE with no history —
+`discover.save_to_db` (SELECT id → blind `UPDATE cases SET <all fields>`), the enrichment UPDATEs
+(incl. `property_intel` wholesale, which nests the DCAD year-tables), and `create_case` (merge →
+UPDATE). Sweep for the pattern: the ONLY other wholesale-replace is `held_cases` (intentional display
+mirror, benign); `docket_events` is append (INSERT OR IGNORE); `prediction_ledger`/`rep_actions` are
+the append-only template. So the gap is real and isolated to the case-row update.
+- **`case_snapshots` in `ledger.db`** (append-only, added to `PROD_OWNED_TABLES` so the get_db
+  authorizer denies DELETE/DROP — same restore-guard as prediction_ledger; a raw pcpeak.db restore
+  can't touch it). NARROW shape: one row per changed field, `old_value→new_value`, grouped by a
+  per-write `batch_id`, timestamped, `source` = baseline|initial|update, `model_version` stamped.
+- **Diff-on-write in `create_case` only** (the WRITE path, like log_prediction) — allowlist of material
+  fields (excludes churn/display: updated_at, confidence_pct, projected_oos). `property_intel` is NOT
+  snapshotted raw: captured as sub-values `pi_market_value` + `pi_tax_balance` (the live balance) + a
+  content `property_intel_hash` (excludes enriched_at/errors so a re-enrich with no real change is a
+  no-op). Wrapped defensively — snapshot logging can never break a case write.
+- **Three requirements folded in (as asked):**
+  1. **Genesis baseline for the existing book** — `init_db` one-time seeds a `source='baseline'` genesis
+     for every already-live case (idempotent: only cases with 0 snapshots), so history doesn't start
+     blank for the 127 live cases.
+  2. **Capture boundary stated precisely** — history is at **create_case (sync) granularity**, NOT every
+     local re-scrape. A status change made and reverted locally between syncs, or an intermediate value
+     never synced, is never seen (A→C, never A→B→C). This is inherent to capturing at the prod write
+     path (the approved design); local pre-sync churn was never "said" to anyone.
+  3. **Evidence link to raw docket line** — a status-field change (oos_date/oos_issued/judgment_*/sale_*)
+     resolves to the `docket_events` row that caused it (by date + keyword), storing `evidence_event_id`
+     + a durable `evidence_desc` copy. To make this resolvable at WRITE time, **sync_to_prod now pushes
+     events BEFORE the case** (FK enforcement is off; additive/idempotent — safe). KEY: a **NULL evidence
+     link on a status change is itself the signal** that the value moved on unchanged raw data — a
+     derivation bug, distinct from a real new event — exactly the two failure modes we've hit before.
+- **Also:** `GET /api/cases/{cn}/snapshots` (open read — case facts, not rep PII; returns rows + a
+  grouped `latest_batch` = "what changed", ready for Phase 1's Refresh diff); `/api/ledger/export` +
+  `backup_ledger.py` extended to carry case_snapshots under the same fingerprint standard.
+- **Tests: `backend/test_case_snapshots.py` 22/22** (genesis/initial + baseline backfill + idempotent,
+  narrow shape + batch grouping, no-op write, REAL-vs-int normalization, property_intel sub-values+hash
+  with enriched_at no-op, evidence present vs NULL, the A→C boundary, append-only DELETE denied, export).
+  `test_restore_guard` auto-rose 19→23 (it iterates PROD_OWNED_TABLES → now guards case_snapshots too).
+  All 11 suites green. **NOT DEPLOYED** — Phase 0 is on `claude/remove-analyze-with-ai-0vu5i9` for review;
+  deploy + Phase 1 (per-case Refresh) / Phase 2 (scheduled sweep) are separate, explicitly-gated steps.
+
 ## SESSION HANDOFF — 2026-07-15
 
 **HELD-FOR-REVIEW browser view BUILT (Option A) — approve + publish a scraped case from the site,

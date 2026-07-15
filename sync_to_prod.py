@@ -300,9 +300,14 @@ def main():
     # 1) New cases
     for cn in sorted(new_nums):
         try:
+            # Events BEFORE the case: create_case appends case_snapshots (the field-history diff) and
+            # resolves a status change back to the docket line that caused it by matching docket_events
+            # ALREADY PRESENT. Pushing events first makes that evidence link resolvable at write time
+            # (durable), not a later recompute. FK enforcement is off, and pushes are additive/
+            # idempotent, so events-before-case is safe even for a case prod hasn't seen yet.
+            ev = push_events(cn, local_events(db, cn), dry)
             if not dry:
                 api("POST", "/api/cases", case_payload(local[cn]))
-            ev = push_events(cn, local_events(db, cn), dry)
             events_pushed += ev
             created += 1
             print(f"  + NEW  {cn}  (+{ev} events)")
@@ -316,9 +321,11 @@ def main():
             skipped += 1
             continue
         try:
+            # Events before the case (see the NEW-case loop): lets create_case's snapshot diff link a
+            # status change to its docket line at write time. This is the path a case Refresh takes.
+            ev = push_events(cn, local_events(db, cn), dry)
             if not dry:
                 api("POST", "/api/cases", case_payload(local[cn]))
-            ev = push_events(cn, local_events(db, cn), dry)
             events_pushed += ev
             updated += 1
             tag = "would refresh" if dry else "refreshed"

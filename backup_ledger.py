@@ -39,12 +39,14 @@ def fetch_export():
 
 
 def fingerprint(export):
-    """Deterministic fingerprint of both prod-owned tables: row counts + sha256 over
+    """Deterministic fingerprint of ALL prod-owned tables: row counts + sha256 over
     canonically-ordered rows (the endpoint returns them ORDER BY id, so it's stable)."""
     pl = export.get("prediction_ledger", [])
     ra = export.get("rep_actions", [])
-    blob = json.dumps({"prediction_ledger": pl, "rep_actions": ra}, sort_keys=True, default=str)
-    return {"prediction_ledger": len(pl), "rep_actions": len(ra),
+    cs = export.get("case_snapshots", [])
+    blob = json.dumps({"prediction_ledger": pl, "rep_actions": ra, "case_snapshots": cs},
+                      sort_keys=True, default=str)
+    return {"prediction_ledger": len(pl), "rep_actions": len(ra), "case_snapshots": len(cs),
             "sha256": hashlib.sha256(blob.encode()).hexdigest()}
 
 
@@ -59,6 +61,7 @@ def main():
     print("BASELINE (source, before backup):")
     print(f"  prediction_ledger rows : {fp0['prediction_ledger']}")
     print(f"  rep_actions rows       : {fp0['rep_actions']}")
+    print(f"  case_snapshots rows    : {fp0['case_snapshots']}")
     print(f"  sha256                 : {fp0['sha256']}")
 
     # ── WRITE the dump (timestamped, append-only — never overwrite a prior backup) ──
@@ -83,10 +86,12 @@ def main():
     print(f"\nDUMP written: {dump_path}")
     print(f"  dump prediction_ledger : {fp_dump['prediction_ledger']}")
     print(f"  dump rep_actions       : {fp_dump['rep_actions']}")
+    print(f"  dump case_snapshots    : {fp_dump['case_snapshots']}")
     print(f"  dump sha256            : {fp_dump['sha256']}")
     print("\nAFTER (source, re-read — contention check):")
     print(f"  prediction_ledger rows : {fp1['prediction_ledger']}")
     print(f"  rep_actions rows       : {fp1['rep_actions']}")
+    print(f"  case_snapshots rows    : {fp1['case_snapshots']}")
     print(f"  sha256                 : {fp1['sha256']}")
     print("\nVERIFICATION:")
     print(f"  dump faithful (dump fingerprint == before snapshot)  : {'PASS' if dump_faithful else 'FAIL'}  <- integrity gate")
@@ -95,8 +100,9 @@ def main():
     else:
         print(f"  window uncontested (source identical before/after)   : NO — concurrent write during backup")
         print(f"    ↳ pred_ledger {fp0['prediction_ledger']}→{fp1['prediction_ledger']}, "
-              f"rep_actions {fp0['rep_actions']}→{fp1['rep_actions']}. The dump is a consistent "
-              f"snapshot as of the BEFORE read; the delta lands in the next backup. Not a failure.")
+              f"rep_actions {fp0['rep_actions']}→{fp1['rep_actions']}, "
+              f"case_snapshots {fp0['case_snapshots']}→{fp1['case_snapshots']}. The dump is a "
+              f"consistent snapshot as of the BEFORE read; the delta lands in the next backup. Not a failure.")
 
     print("\n" + ("BACKUP VERIFIED CLEAN (faithful point-in-time snapshot)" if dump_faithful
                   else "BACKUP VERIFICATION FAILED — dump does not match the source snapshot; do not trust it"))

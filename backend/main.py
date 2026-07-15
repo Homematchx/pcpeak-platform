@@ -11,6 +11,7 @@ import os
 import re
 import hashlib
 import hmac
+import uuid
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional, List
@@ -94,15 +95,17 @@ def account_status_of(acct):
     return "invalid"                               # something was extracted, but it's malformed
 
 # ─── PROD-OWNED DATA GUARD (see docs/prediction-ledger-design.md §11-12) ────────
-# prediction_ledger + rep_actions are generated and OWNED by prod (ledger via create_case,
-# rep_actions via the rep UI). They cannot be regenerated from local scraping, so the
-# local→prod restore/push path must NEVER delete, drop, or wholesale-overwrite them.
-# Both are append-only (+ a one-time reconcile column-fill), so a DELETE or DROP against
-# them is ALWAYS wrong — restore, bug, or otherwise. Enforced at the SQLite engine level by
-# an authorizer that denies DELETE/DROP on these tables while allowing the legitimate INSERT
-# (logging) and UPDATE (reconcile). Installed on EVERY connection, so the tables are
-# protected the instant they exist — before they ever hold real data.
-PROD_OWNED_TABLES = ("prediction_ledger", "rep_actions")
+# prediction_ledger + rep_actions + case_snapshots are generated and OWNED by prod (ledger via
+# create_case, rep_actions via the rep UI, case_snapshots via create_case's diff-on-write). They
+# cannot be regenerated from local scraping — case_snapshots specifically IS the history of what a
+# case used to say, which a re-scrape overwrites and can never reconstruct — so the local→prod
+# restore/push path must NEVER delete, drop, or wholesale-overwrite them. All three are append-only
+# (case_snapshots is strictly insert-only; prediction_ledger also has a one-time reconcile column-
+# fill), so a DELETE or DROP against them is ALWAYS wrong — restore, bug, or otherwise. Enforced at
+# the SQLite engine level by an authorizer that denies DELETE/DROP on these tables while allowing the
+# legitimate INSERT (logging) and UPDATE (reconcile). Installed on EVERY connection, so the tables
+# are protected the instant they exist — before they ever hold real data.
+PROD_OWNED_TABLES = ("prediction_ledger", "rep_actions", "case_snapshots")
 
 def _restore_guard_authorizer(action, arg1, arg2, db_name, trigger_name):
     if action in (sqlite3.SQLITE_DELETE, sqlite3.SQLITE_DROP_TABLE) and arg1 in PROD_OWNED_TABLES:
@@ -355,6 +358,32 @@ def init_db():
             created_at   TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS ledger.idx_ra_case ON rep_actions(case_number, action_at);
+
+        -- CASE-FIELD HISTORY (design: the case_snapshots foundation). A re-scrape/re-sync overwrites
+        -- a case's fields in place (create_case does merge→UPDATE); this append-only table captures
+        -- the DIFF — old→new, ONE ROW PER CHANGED FIELD, timestamped and grouped by batch_id (one
+        -- batch per create_case write) — so we never lose the history of what a case used to say.
+        -- Lives in ledger.db (restore-guarded, authorizer denies DELETE/DROP) exactly like
+        -- prediction_ledger. evidence_event_id/evidence_desc link a status-field change back to the
+        -- specific docket_events line that produced it (best-effort, by date+keyword); a NULL evidence
+        -- link on a status change is itself a signal — the value changed with no new docket evidence,
+        -- i.e. a derivation change on unchanged raw data rather than a real new event.
+        CREATE TABLE IF NOT EXISTS ledger.case_snapshots (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_number       TEXT NOT NULL,
+            batch_id          TEXT NOT NULL,          -- groups all field-changes from one write
+            changed_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            source            TEXT NOT NULL,          -- baseline | initial | update
+            model_version     TEXT NOT NULL,
+            field             TEXT NOT NULL,
+            old_value         TEXT,                   -- NULL on baseline/initial (genesis)
+            new_value         TEXT,
+            evidence_event_id INTEGER,                -- docket_events.id (best-effort; NULL if none)
+            evidence_desc     TEXT                    -- durable copy of that docket line (survives event re-sync)
+        );
+        CREATE INDEX IF NOT EXISTS ledger.idx_cs_case  ON case_snapshots(case_number, changed_at);
+        CREATE INDEX IF NOT EXISTS ledger.idx_cs_field ON case_snapshots(case_number, field);
+        CREATE INDEX IF NOT EXISTS ledger.idx_cs_batch ON case_snapshots(batch_id);
         """)
     
     # Seed known benchmarks
@@ -431,6 +460,21 @@ def init_db():
                 except Exception: bal = None
             db.execute("UPDATE cases SET case_track=? WHERE case_number=?",
                        [case_track_of(pt, od, jt, jd, bal), cn])
+        # One-time case_snapshots BASELINE: every case already live at migration time gets a genesis
+        # snapshot of its current field values (source='baseline', old=NULL), so history doesn't start
+        # blank for the existing book — new changes then diff against a real baseline instead of a void.
+        # Idempotent: only cases with ZERO snapshots are seeded, so re-running init_db never duplicates.
+        seeded = {r[0] for r in db.execute(
+            "SELECT DISTINCT case_number FROM ledger.case_snapshots").fetchall()}
+        n_baseline = 0
+        for row in db.execute("SELECT * FROM cases").fetchall():
+            cn = row["case_number"]
+            if not cn or cn in seeded:
+                continue
+            if snapshot_case(db, cn, None, dict(row), source="baseline"):
+                n_baseline += 1
+        if n_baseline:
+            print(f"case_snapshots: seeded baseline history for {n_baseline} existing case(s)")
         db.commit()
     _seed_benchmarks()
     print(f"Database initialized: {DB_PATH}")
@@ -715,6 +759,138 @@ def sweep_expired(db) -> int:
             pass
     return n
 
+# ─── CASE-FIELD HISTORY (case_snapshots) — diff-on-write, append-only, on the WRITE path only ──
+#
+# Material case FACTS to snapshot (allowlist). Deliberately EXCLUDES churn/display fields
+# (updated_at, last_agent_run, confidence_pct, projected_oos) that are recomputed on every write and
+# would drown the signal — same "log DRIVERS, not derived-display noise" discipline as the
+# prediction ledger's input_hash. property_intel (a big JSON blob) is NOT snapshotted raw: its two
+# material sub-values (market_value, current_tax_balance = the live balance) are tracked as their own
+# fields, plus a content hash so "enrichment changed" is recorded without storing the whole blob.
+SNAPSHOT_DIRECT_FIELDS = [
+    "total_due_filing", "property_address", "account_number", "account_status",
+    "case_track", "stage", "oos_issued", "oos_date", "judgment_date", "judgment_type",
+    "sale_scheduled_date", "sale_pulled_date", "def_count", "complexity",
+]
+SNAPSHOT_PI_FIELDS = ["pi_market_value", "pi_tax_balance", "property_intel_hash"]
+SNAPSHOT_FIELDS = SNAPSHOT_DIRECT_FIELDS + SNAPSHOT_PI_FIELDS
+
+# Fields whose change is expected to be caused by a specific docket line. A change here WITHOUT a
+# matching docket event (evidence NULL) means the derived value moved on unchanged raw data — the
+# derivation-bug signal, distinct from a real new event (evidence present).
+EVIDENCE_KEYWORDS = {
+    "oos_date":            ["ORDER OF SALE"],
+    "oos_issued":         ["ORDER OF SALE"],
+    "judgment_date":       ["JUDGMENT"],
+    "judgment_type":       ["JUDGMENT"],
+    "sale_scheduled_date": ["SALE"],
+    "sale_pulled_date":    ["WITHDRAW", "PULL", "CANCEL", "PASSED", "RESET", "VACAT"],
+}
+
+
+def _pi_subvalues(pi_raw):
+    """From a property_intel JSON string, extract (market_value, tax_balance, content_hash).
+    The hash excludes volatile timestamp/error fields so it only changes on real content change."""
+    if not pi_raw:
+        return None, None, None
+    try:
+        pi = json.loads(pi_raw)
+    except (ValueError, TypeError):
+        return None, None, None
+    if not isinstance(pi, dict):
+        return None, None, None
+    mv = pi.get("market_value")
+    bal = pi.get("current_tax_balance")
+    stable = {k: v for k, v in pi.items() if k not in ("enriched_at", "errors", "street_view_url")}
+    h = hashlib.sha256(json.dumps(stable, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    return mv, bal, h
+
+
+def _snapshot_view(row):
+    """The tracked-field view of a case row (dict). Direct columns + the three property_intel-derived
+    fields. Returns {field: value} over SNAPSHOT_FIELDS; missing columns default to None."""
+    row = dict(row) if row else {}
+    view = {f: row.get(f) for f in SNAPSHOT_DIRECT_FIELDS}
+    mv, bal, h = _pi_subvalues(row.get("property_intel"))
+    view["pi_market_value"] = mv
+    view["pi_tax_balance"] = bal
+    view["property_intel_hash"] = h
+    return view
+
+
+def _norm_date(v):
+    """Normalize a date-ish value to 'YYYY-MM-DD' for comparison, or None."""
+    if not v:
+        return None
+    s = str(v).strip()
+    return s[:10] if len(s) >= 10 and s[4] == "-" and s[7] == "-" else None
+
+
+def _snap_str(v):
+    """Canonical string form for a tracked value. Normalizes numerics so a change-detection compare
+    doesn't fire on REAL-vs-int noise (5000.0 == 5000 == "5000") when a value round-trips through the
+    SQLite REAL column and back — an integral float and its int must read as unchanged."""
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return str(int(v))
+    if isinstance(v, (int, float)):
+        f = float(v)
+        return str(int(f)) if f.is_integer() else repr(f)
+    s = str(v)
+    try:
+        f = float(s)
+        return str(int(f)) if f.is_integer() else s
+    except (ValueError, TypeError):
+        return s
+
+
+def _resolve_evidence(db, case_number, field, new_value):
+    """Best-effort link from a status-field change to the docket_events line that produced it.
+    Returns (event_id, description) or (None, None). Prefers an exact date match among events whose
+    description matches the field's keywords; falls back to the most-recent keyword match. Requires
+    the causing event to already be present (sync pushes events BEFORE the case for exactly this)."""
+    kws = EVIDENCE_KEYWORDS.get(field)
+    if not kws or new_value in (None, "", 0, "0"):
+        return None, None
+    rows = db.execute("SELECT id, event_date, description FROM docket_events WHERE case_number=?",
+                      [case_number]).fetchall()
+    cand = [r for r in rows if any(k in (r["description"] or "").upper() for k in kws)]
+    if not cand:
+        return None, None
+    nd = _norm_date(new_value)
+    if nd:
+        exact = [r for r in cand if _norm_date(r["event_date"]) == nd]
+        if exact:
+            return exact[0]["id"], exact[0]["description"]
+    cand.sort(key=lambda r: (_norm_date(r["event_date"]) or ""), reverse=True)
+    return cand[0]["id"], cand[0]["description"]
+
+
+def snapshot_case(db, case_number, old_row, new_row, source):
+    """Append case_snapshots rows for each tracked field that changed old→new. old_row None = genesis
+    (only non-empty new values are recorded, to avoid an all-NULL baseline). Returns the batch dict
+    {batch_id, changed:[fields]} or None if nothing changed. Insert-only; never updates a prior row."""
+    old_view = _snapshot_view(old_row) if old_row is not None else {}
+    new_view = _snapshot_view(new_row)
+    batch = uuid.uuid4().hex
+    changed = []
+    for f in SNAPSHOT_FIELDS:
+        ov = old_view.get(f) if old_row is not None else None
+        nv = new_view.get(f)
+        if _snap_str(ov) == _snap_str(nv):
+            continue
+        if old_row is None and (nv is None or nv == ""):
+            continue   # don't seed a genesis row for a field that has no value yet
+        eid, edesc = _resolve_evidence(db, case_number, f, nv)
+        db.execute(
+            "INSERT INTO ledger.case_snapshots (case_number, batch_id, source, model_version, "
+            "field, old_value, new_value, evidence_event_id, evidence_desc) VALUES (?,?,?,?,?,?,?,?,?)",
+            [case_number, batch, source, MODEL_VERSION, f, _snap_str(ov), _snap_str(nv), eid, edesc])
+        changed.append(f)
+    return {"batch_id": batch, "changed": changed} if changed else None
+
+
 # ─── API ROUTES ───────────────────────────────────────────────
 
 @app.get("/")
@@ -835,6 +1011,17 @@ async def create_case(data: dict):
         except Exception:
             pass
 
+        # Case-field history (case_snapshots): diff the pre-write row against the just-written state
+        # and append one row per changed material field. 'initial' = a case's first-ever write
+        # (genesis, old=NULL); 'update' = a change to an existing case. Evidence resolves against
+        # docket_events, which sync pushes BEFORE the case so the causing line is already present.
+        # Wrapped so snapshot logging can never break a case write (same discipline as log_prediction).
+        try:
+            snapshot_case(db, cn, dict(existing) if existing else None, merged,
+                          source="update" if existing else "initial")
+        except Exception:
+            pass
+
     return {"status":"ok","case_number":cn}
 
 @app.patch("/api/cases/{case_number}")
@@ -887,8 +1074,10 @@ async def ledger_export(x_ledger_token: str = Header(default="")):
     with get_db() as db:
         pl = [dict(r) for r in db.execute("SELECT * FROM ledger.prediction_ledger ORDER BY id")]
         ra = [dict(r) for r in db.execute("SELECT * FROM ledger.rep_actions ORDER BY id")]
-    return {"prediction_ledger": pl, "rep_actions": ra,
-            "counts": {"prediction_ledger": len(pl), "rep_actions": len(ra)}}
+        cs = [dict(r) for r in db.execute("SELECT * FROM ledger.case_snapshots ORDER BY id")]
+    return {"prediction_ledger": pl, "rep_actions": ra, "case_snapshots": cs,
+            "counts": {"prediction_ledger": len(pl), "rep_actions": len(ra),
+                       "case_snapshots": len(cs)}}
 
 # ─── REP ROSTER ───────────────────────────────────────────────
 # The reps table is the source of truth for the assignable-rep list. Cases
@@ -991,6 +1180,30 @@ async def add_events(case_number: str, events: List[dict]):
                 [case_number, ev.get("date"), ev.get("type"), ev.get("description"), ev.get("detail",""), ev.get("is_new",0)]
             )
     return {"status":"ok","added":len(events)}
+
+@app.get("/api/cases/{case_number}/snapshots")
+async def get_case_snapshots(case_number: str):
+    """Case-field history: every recorded old→new change for this case, newest first, plus the most
+    recent change-batch grouped for convenience (what a 'Refresh' would show as 'what changed'). Open
+    read like the rest of the case API — case_snapshots holds case facts, not rep PII."""
+    with get_db() as db:
+        rows = [dict(r) for r in db.execute(
+            "SELECT * FROM ledger.case_snapshots WHERE case_number=? ORDER BY id DESC",
+            [case_number]).fetchall()]
+    latest = None
+    if rows:
+        top = rows[0]["batch_id"]
+        changes = [r for r in rows if r["batch_id"] == top]
+        latest = {
+            "batch_id": top,
+            "changed_at": changes[0]["changed_at"],
+            "source": changes[0]["source"],
+            "fields": [{"field": r["field"], "old": r["old_value"], "new": r["new_value"],
+                        "evidence_event_id": r["evidence_event_id"],
+                        "evidence_desc": r["evidence_desc"]} for r in changes],
+        }
+    return {"case_number": case_number, "count": len(rows),
+            "latest_batch": latest, "snapshots": rows}
 
 @app.get("/api/watchlist")
 async def get_watchlist():
