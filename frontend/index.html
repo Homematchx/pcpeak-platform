@@ -1338,9 +1338,12 @@ function renderDetail(c) {
     <div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden">
       <div style="background:var(--accent);padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
         <div style="font-size:13px;font-weight:600;color:#fff">Original Petition</div>
-        <div style="display:flex;gap:6px">
-          <a id="petition-download" href="#" download style="font-size:11px;font-weight:500;padding:5px 12px;border-radius:var(--rs);background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;text-decoration:none">&#8681; Download</a>
-          <a id="petition-fullscreen" href="#" target="_blank" style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:var(--rs);background:#fff;border:1px solid #fff;color:var(--accent);text-decoration:none">&#8599; Full Screen</a>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span id="petition-none" style="display:none;font-size:11px;color:rgba(255,255,255,.85)">No court petition link captured for this case</span>
+          <!-- Opens the authoritative court document viewer in a new tab (no download attribute: the
+               URL is a cross-origin court viewer, not a direct PDF; a download attr would silently save
+               the viewer/app HTML, not the filed instrument). The rep downloads the real petition there. -->
+          <a id="petition-view" href="#" target="_blank" rel="noopener" style="display:none;font-size:11px;font-weight:600;padding:5px 12px;border-radius:var(--rs);background:#fff;border:1px solid #fff;color:var(--accent);text-decoration:none">&#8599; View in court portal</a>
         </div>
       </div>
       <div id="petition-brief" style="padding:16px"></div>
@@ -1631,22 +1634,21 @@ function openPetitionPDF(c) {
   var ex = c.extracted || {};
   var intel = c.property_intel ? (typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel) : {};
   var cn = c.id.replace("_platform","");
-  var pdfUrl = "";
-  // Fetch petition URL from backend
+  // Fetch the court petition URL from the backend. We ONLY ever point the link at a real http(s)
+  // court-viewer URL, opened in a new tab (target=_blank, NO download attr). If there's no captured
+  // link (404 / empty), we HIDE the link and show a "not captured" note — never leave href="#", which
+  // is what caused the browser to save the app page itself instead of a petition (Mode B).
+  var setPetitionLink = function(url){
+    var view = document.getElementById("petition-view");
+    var none = document.getElementById("petition-none");
+    var real = url && /^https?:\/\//i.test(url);
+    if(view){ if(real){ view.href=url; view.style.display="inline-block"; } else { view.removeAttribute("href"); view.style.display="none"; } }
+    if(none){ none.style.display = real ? "none" : "inline-block"; }
+  };
   fetch("https://pcpeak-platform-production.up.railway.app/api/petition/" + cn)
-    .then(function(r){return r.json();})
-    .then(function(data){
-      pdfUrl = data.url || "";
-      var dl = document.getElementById("petition-download");
-      var fs = document.getElementById("petition-fullscreen");
-      if(dl && pdfUrl){ dl.href=pdfUrl; dl.setAttribute("download", cn+"_petition.pdf"); dl.style.display="inline-block"; }
-      if(fs && pdfUrl){ fs.href=pdfUrl; fs.style.display="inline-block"; }
-    }).catch(function(){
-      var dl = document.getElementById("petition-download");
-      var fs = document.getElementById("petition-fullscreen");
-      if(dl) dl.style.display="none";
-      if(fs) fs.style.display="none";
-    });
+    .then(function(r){ return r.ok ? r.json() : null; })   // 404 → null, don't parse {detail} as data
+    .then(function(data){ setPetitionLink(data && data.url); })
+    .catch(function(){ setPetitionLink(""); });
   var acct = ex.accountNumber || "";
   var fmt = function(n){return (n==null)?"—":"$"+Math.round(Number(n)).toLocaleString();};  // 0 -> "$0", null -> "—" (distinct)
 
