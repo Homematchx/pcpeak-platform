@@ -611,17 +611,21 @@ async function syncFromPlatform() {
     }
     const deduped = beforeLen - cases.length;   // duplicate + server-deleted entries collapsed away
 
-    // Re-point the open case to its surviving (deduped) object so the detail matches the list.
-    if (selectedCn) {
-      const sc = cases.find(x => x.extracted && x.extracted.caseNumber === selectedCn);
-      if (sc) activeId = sc.id;
-    }
+    // Refresh the OPEN case's detail from the authoritative (deduped) object — but NEVER switch which
+    // case is shown. The event-fetch loop above can take several seconds; the user may have navigated
+    // to a DIFFERENT case in that window. So target the case open RIGHT NOW (current activeId), NOT the
+    // one captured at sync start (selectedCn). selectedCn is only a FALLBACK for when the current
+    // activeId no longer resolves (its id was collapsed by dedup). This fixes a bug where a sync that
+    // started while the user was on case A would snap them back to A after they'd moved on to case B —
+    // silently changing the case under them mid-review.
+    let openCase = activeId ? cases.find(x => x.id === activeId) : null;
+    if (!openCase && selectedCn) openCase = cases.find(x => x.extracted && x.extracted.caseNumber === selectedCn);
+    if (openCase) activeId = openCase.id;
 
     save();
     renderList();
     updateHdr();
-    // Re-render the open detail from the authoritative object (kills a lingering stale rep in the panel).
-    if (selectedCn) { const sc = cases.find(x => x.extracted && x.extracted.caseNumber === selectedCn); if (sc) selectCase(sc.id); }
+    if (openCase) selectCase(openCase.id);   // refresh the SAME open case (never a different one)
     if (status) status.textContent = platformCases.length + " cases · last sync " + new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}) + (deduped ? " · deduped " + deduped : "");
     if (btn) { btn.textContent = "✓ Synced"; setTimeout(()=>{btn.textContent="↺ Sync";btn.disabled=false;}, 2000); }
 
