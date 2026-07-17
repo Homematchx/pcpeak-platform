@@ -406,6 +406,15 @@ function safeArr(val) {
   if (Array.isArray(val)) return val;
   try { return JSON.parse(val); } catch(e) { return []; }
 }
+// Safe property_intel parse — NEVER throws. caseTrack()/card helpers run for every card in
+// renderList(); an unguarded JSON.parse of a malformed/truncated property_intel string would throw,
+// abort the whole render, and freeze the sidebar (assignments would then stop appearing in the list).
+// A bad record degrades to {} instead of breaking the list.
+function parseIntel(val) {
+  if (!val) return {};
+  if (typeof val !== "string") return val || {};
+  try { return JSON.parse(val) || {}; } catch(e) { return {}; }
+}
 
 function platformToV3(pc, events) {
   return {
@@ -1329,7 +1338,7 @@ function renderDetail(c) {
         ${(function(){
           // Business personal-property suit — no house, no real equity. Don't show real-estate math.
           if(caseTrack(c)==="personal_property") return `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);padding:14px 18px;margin-bottom:16px;color:var(--text3);font-size:12px">&#9878; Business Personal Property suit &mdash; no real-estate equity/timing (different legal instrument; excluded from OOS projections).</div>`;
-          var pi = (c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel)||{};
+          var pi = parseIntel(c.property_intel);
           var mv = pi.market_value||0;
           if(!mv) return "";
           // A real $0 balance (taxes paid) is a VALUE — only fall back to the filing
@@ -1520,7 +1529,7 @@ function renderDetail(c) {
 function renderPropertyIntel(ex) {
   var el = document.getElementById("prop-intel-panel");
   if (!el) return;
-  var intel = ex.property_intel ? (typeof ex.property_intel === "string" ? JSON.parse(ex.property_intel) : ex.property_intel) : null;
+  var intel = (ex.property_intel ? parseIntel(ex.property_intel) : null);
   var acct = (intel && intel.account_number) || ex.accountNumber || ex.account_number || "";
   var ls2 = "padding:8px 16px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;text-decoration:none;font-size:12px;color:var(--text2)";
   if (!intel || (intel.market_value==null && intel.current_tax_balance==null && intel.year_built==null)) {
@@ -1671,7 +1680,7 @@ function renderDefendants(ex) {
 
 function openPetitionPDF(c) {
   var ex = c.extracted || {};
-  var intel = c.property_intel ? (typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel) : {};
+  var intel = parseIntel(c.property_intel);
   var cn = c.id.replace("_platform","");
   // Fetch the court petition URL from the backend. We ONLY ever point the link at a real http(s)
   // court-viewer URL, opened in a new tab (target=_blank, NO download attr). If there's no captured
@@ -2010,7 +2019,7 @@ function caseAccountStatus(c){
 function caseTrack(c){
   if(c.case_track) return c.case_track;
   var ex=c.extracted||{};
-  var pi=(c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel)||{};
+  var pi=parseIntel(c.property_intel);
   if(c.property_type==="personal") return "personal_property";   // FIRST — BPP never in timing
   var oos=ex.orderOfSaleDate||c.oos_date;
   if(oos && (""+oos).trim()) return "oos_timing";
@@ -2034,7 +2043,7 @@ function dismissedBadge(c){
   if(t!=="dismissed_owing" && t!=="dismissed_paid") return "";
   if(t==="dismissed_paid")
     return `<span class="bdg" style="background:var(--surface3);color:var(--text3);border:1px solid var(--border2)">Dismissed &middot; paid</span>`;
-  var pi=(c.property_intel&&typeof c.property_intel==="string"?JSON.parse(c.property_intel):c.property_intel)||{};
+  var pi=parseIntel(c.property_intel);
   var bal=pi.current_tax_balance;
   var amt=(bal!=null) ? "OWES "+fmtC(bal) : "still owes (balance unknown)";
   return `<span class="bdg bdg-amber" title="Case dismissed/non-suited but taxes remain owed — a live lead, not a resolved case (dismissal ≠ resolved)">&#9888; DISMISSED &middot; ${amt}</span>`;
