@@ -1838,9 +1838,9 @@ function assignRep(caseId, repName) {
   // that's set locally but never reached prod (a silently-failed earlier save) would otherwise be
   // un-repushable, since re-picking the same option is a no-op. onchange only fires on a real change.
   if (!cn) c.rep_assigned = repName;
-  save();
-  // Persist to the platform (shared). Surface a failure instead of swallowing it — a silently-failed
-  // POST would let the local value survive until the next sync REVERTS it from prod, losing the edit.
+  // Persist to the platform (shared) FIRST — the durable server write must never be gated on the local
+  // cache write, which can throw at localStorage quota (238+ cases). A throwing save() used to abort
+  // assignRep here and silently skip this POST. Surface a POST failure instead of swallowing it.
   if (cn) {
     fetch(PLATFORM_API + "/cases", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -1848,6 +1848,7 @@ function assignRep(caseId, repName) {
     }).then(function(r){ if(!r || !r.ok) console.warn("rep assignment POST failed for " + cn + " (HTTP " + (r&&r.status) + ") — it will revert on the next sync"); })
       .catch(function(e){ console.warn("rep assignment POST error for " + cn + ":", e); });
   }
+  save();   // local cache (never throws — see save())
   // Reflect immediately in the detail avatar (list re-renders below).
   var av = document.getElementById('rep-av-' + caseId);
   if (av) {
@@ -2333,7 +2334,32 @@ function clearAll() {
   save(); renderList();
 }
 
-function save() { localStorage.setItem("tfi_v5", JSON.stringify(cases)); }
+function save() {
+  // localStorage is a convenience cache — prod is the source of truth and every sync re-fetches full
+  // data. At scale (~238+ cases each carrying a property_intel blob up to ~50KB) the full mirror blows
+  // past the ~5MB quota, and a THROWING setItem was aborting callers mid-flight: assignRep persists the
+  // rep to the SERVER after save(), so a quota throw silently skipped that POST (a second, independent
+  // cause of "assignment didn't save"). save() must NEVER throw. Try full; on quota cache a SLIM copy
+  // (drop the heavy per-case blobs — property_intel + memo — which are re-fetched on every sync); if
+  // even that fails, disable the cache. Data is never lost — it lives on the server.
+  try {
+    localStorage.setItem("tfi_v5", JSON.stringify(cases));
+    return;
+  } catch (e) { /* quota exceeded — fall through to a slim cache */ }
+  try {
+    var slim = cases.map(function(c){
+      var s = Object.assign({}, c);
+      delete s.property_intel; delete s.memo;
+      return s;
+    });
+    localStorage.setItem("tfi_v5", JSON.stringify(slim));
+    if (!window.__slimWarned) { window.__slimWarned = true;
+      console.warn("localStorage quota reached — caching a slim case list (property_intel/memo dropped; re-fetched on each sync)."); }
+  } catch (e2) {
+    try { localStorage.removeItem("tfi_v5"); } catch (_e) {}
+    console.warn("localStorage full even for a slim cache — local cache disabled this session (data is safe on the server).");
+  }
+}
 function updateHdr() { document.getElementById("hct").textContent = `${cases.length} case${cases.length!==1?"s":""}`; }
 
 function expData() {
