@@ -541,40 +541,54 @@ async function syncFromPlatform() {
       set("last-run-txt", "Last run: " + d.toLocaleDateString("en-US",{month:"short",day:"numeric"}) + " " + d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}));
     }
 
-    // Pull events and convert to V3 format
-    let added = 0, updated = 0;
+    // Remember which case is open so we can re-point the selection after the rebuild (a duplicate's
+    // id can be collapsed away).
+    let selectedCn = null;
+    if (activeId) { const ac = cases.find(x => x.id === activeId); selectedCn = ac && ac.extracted && ac.extracted.caseNumber; }
+
+    // Build exactly ONE v3 object per platform case (authoritative — carries the platform's rep_assigned).
+    const platformV3 = [];
     for (const pc of platformCases) {
       const evResp = await fetch(PLATFORM_API + "/events/" + pc.case_number).catch(()=>({ok:false}));
       const events = evResp.ok ? await evResp.json() : [];
-      const v3case = platformToV3(pc, events);
-      const existing = cases.findIndex(c => c.extracted?.caseNumber === pc.case_number);
-      if (existing >= 0) { cases[existing] = v3case; updated++; }
-      else { cases.push(v3case); added++; }
+      platformV3.push(platformToV3(pc, events));
     }
 
-    // PRUNE platform-derived cases that no longer exist on the platform (server-deleted, e.g. a
-    // purged BPP case) — regardless of id scheme. A case is treated as a LOCAL DRAFT (kept) only if
-    // it carries a draft marker (uploadedAt). NOTE: both ungoverned draft-creators (Analyze-with-AI,
-    // quick-add) have been removed, so no NEW local drafts are created — every case now comes from
-    // platformToV3; the `inputMethod` half of this check is therefore vestigial (kept only so any
-    // legacy localStorage draft still survives a sync). Worth a dedicated simplification later.
-    // (The earlier "_platform"-id-only prune missed legacy-synced cases whose ids predate that
-    // suffix — which is how purged BPP kept the count at the pre-purge 148.) Guarded: never prune
-    // against an empty platform list — a failed/suspicious fetch must not wipe the local mirror.
+    // AUTHORITATIVE REBUILD — dedupe by case_number. The old merge used findIndex(caseNumber) and only
+    // ever refreshed the FIRST entry per case, and the prune KEPT every case-number match — so duplicate
+    // localStorage entries for one case (legacy Date.now() ids alongside _platform ids) accumulated and
+    // DRIFTED: only one copy received the platform's rep_assigned on each sync, the other went stale.
+    // That is the root cause of BOTH the inflated case count (e.g. 220 vs ~130) and the card-vs-detail
+    // rep mismatch (the list renders one duplicate, the detail resolves to another, so a case reads as
+    // two different reps). Rebuilding as one-entry-per-platform-case structurally makes duplicates
+    // impossible. Guarded: never rebuild against an empty/failed platform list (must not wipe the mirror).
     const platformNums = new Set(platformCases.map(pc => pc.case_number));
     const beforeLen = cases.length;
     if (platformNums.size > 0) {
-      cases = cases.filter(c => {
+      // Keep genuine LOCAL-ONLY drafts (not on the platform), themselves deduped by case number.
+      const seenDraft = new Set();
+      const drafts = cases.filter(c => {
+        const cn = c.extracted && c.extracted.caseNumber;
         const isDraft = !!(c.inputMethod || c.uploadedAt);
-        return isDraft || platformNums.has(c.extracted && c.extracted.caseNumber);
+        if (!(isDraft && cn && !platformNums.has(cn))) return false;
+        if (seenDraft.has(cn)) return false; seenDraft.add(cn); return true;
       });
+      cases = platformV3.concat(drafts);
     }
-    const pruned = beforeLen - cases.length;
+    const deduped = beforeLen - cases.length;   // duplicate + server-deleted entries collapsed away
+
+    // Re-point the open case to its surviving (deduped) object so the detail matches the list.
+    if (selectedCn) {
+      const sc = cases.find(x => x.extracted && x.extracted.caseNumber === selectedCn);
+      if (sc) activeId = sc.id;
+    }
 
     save();
     renderList();
     updateHdr();
-    if (status) status.textContent = platformCases.length + " cases · last sync " + new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}) + (pruned ? " · pruned " + pruned : "");
+    // Re-render the open detail from the authoritative object (kills a lingering stale rep in the panel).
+    if (selectedCn) { const sc = cases.find(x => x.extracted && x.extracted.caseNumber === selectedCn); if (sc) selectCase(sc.id); }
+    if (status) status.textContent = platformCases.length + " cases · last sync " + new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}) + (deduped ? " · deduped " + deduped : "");
     if (btn) { btn.textContent = "✓ Synced"; setTimeout(()=>{btn.textContent="↺ Sync";btn.disabled=false;}, 2000); }
 
     // Auto-select first case on load
