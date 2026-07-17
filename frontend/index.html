@@ -554,6 +554,31 @@ async function syncFromPlatform() {
       platformV3.push(platformToV3(pc, events));
     }
 
+    // HEAL local→prod reps. If a case has a rep locally but prod returns NONE, an earlier assignment
+    // POST never persisted (the silent-save gap) — re-push it now and reflect it immediately, so a
+    // stuck local-only rep self-corrects instead of being reverted to null by the rebuild below. Only
+    // fills an EMPTY prod rep (never overrides a different non-empty prod value → prod still wins on a
+    // real conflict). This also repairs every OTHER case left in the same state, not just the open one.
+    const localRepByCn = {};
+    for (const lc of cases) {
+      const lcn = lc.extracted && lc.extracted.caseNumber;
+      const lrep = (lc.rep_assigned || "").trim();
+      if (lcn && lrep && !localRepByCn[lcn]) localRepByCn[lcn] = lrep;
+    }
+    let healed = 0;
+    for (const v of platformV3) {
+      const lrep = localRepByCn[v.extracted.caseNumber];
+      if (lrep && !(v.rep_assigned || "").trim()) {
+        v.rep_assigned = lrep;   // reflect immediately in the rebuild
+        healed++;
+        fetch(PLATFORM_API + "/cases", { method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({case_number: v.extracted.caseNumber, rep_assigned: lrep}) })
+          .then(function(r){ if(!r || !r.ok) console.warn("rep heal POST failed for " + v.extracted.caseNumber); })
+          .catch(function(e){ console.warn("rep heal POST error:", e); });
+      }
+    }
+    if (healed) console.info("re-persisted " + healed + " local rep assignment(s) prod was missing");
+
     // AUTHORITATIVE REBUILD — dedupe by case_number. The old merge used findIndex(caseNumber) and only
     // ever refreshed the FIRST entry per case, and the prune KEPT every case-number match — so duplicate
     // localStorage entries for one case (legacy Date.now() ids alongside _platform ids) accumulated and
@@ -1808,8 +1833,10 @@ function assignRep(caseId, repName) {
   // defensive: a lingering duplicate that still shows a stale rep is exactly what made the sidebar
   // card and the detail panel disagree). No-op only if ALL copies already carry this rep.
   var copies = cn ? cases.filter(function(x){return x.extracted && x.extracted.caseNumber===cn;}) : [c];
-  if (copies.every(function(x){return (x.rep_assigned||"")===repName;})) return;
   copies.forEach(function(x){ x.rep_assigned = repName; });   // update ALL copies → card & detail agree
+  // NOTE: always persist below — do NOT skip the POST when the local value already matches. A value
+  // that's set locally but never reached prod (a silently-failed earlier save) would otherwise be
+  // un-repushable, since re-picking the same option is a no-op. onchange only fires on a real change.
   if (!cn) c.rep_assigned = repName;
   save();
   // Persist to the platform (shared). Surface a failure instead of swallowing it — a silently-failed
