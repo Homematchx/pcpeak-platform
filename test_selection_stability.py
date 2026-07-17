@@ -68,11 +68,20 @@ with sync_playwright() as p:
     check("after the sync completes, the view is STILL on B (not snapped back to A)",
           open_cn(pg) == "TX-26-00782")
 
-    # And a sync while genuinely idle-on-B still refreshes B (detail present), no switch.
+    # And a sync while idle-on-B keeps B — AND must NOT reset the active tab (the reported symptom:
+    # switching from Timeline back to Overview on its own).
     pg.evaluate("() => { window.__eventDelay = 0; }")
+    pg.evaluate("""() => {
+        const tl = Array.from(document.querySelectorAll('.tb')).find(b => (b.getAttribute('onclick')||'').indexOf("'tl'")>=0);
+        swTab({target: tl}, 'tl');   // user opens the Timeline tab
+    }""")
+    tab_before = pg.evaluate("() => { const p = document.querySelector('.tp.on'); return p ? p.id : '(none)'; }")
+    check("Timeline tab is active before sync", tab_before == "tp-tl")
     pg.evaluate("() => syncFromPlatform()")
     pg.wait_for_timeout(400)
-    check("sync while on B keeps B (detail refresh, no switch)", open_cn(pg) == "TX-26-00782")
+    check("sync while on B keeps B (no case switch)", open_cn(pg) == "TX-26-00782")
+    tab_after = pg.evaluate("() => { const p = document.querySelector('.tp.on'); return p ? p.id : '(none)'; }")
+    check("sync does NOT reset the active tab (still Timeline, not Overview)", tab_after == "tp-tl")
 
     check("ZERO uncaught pageerror", len(errors) == 0)
     if errors:

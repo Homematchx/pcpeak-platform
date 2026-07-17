@@ -618,6 +618,13 @@ async function syncFromPlatform() {
     // activeId no longer resolves (its id was collapsed by dedup). This fixes a bug where a sync that
     // started while the user was on case A would snap them back to A after they'd moved on to case B —
     // silently changing the case under them mid-review.
+    // Keep activeId pointing at a valid (deduped) object so the sidebar highlight stays correct, but
+    // do NOT re-render the open detail. renderDetail rebuilds the whole panel — which resets the active
+    // TAB back to Overview and scrolls to top under an active reviewer (every 30s). The sidebar card
+    // already refreshes via renderList(); the detail is a point-in-time view that refreshes on the next
+    // click. (An earlier version re-selected the open case here to refresh a stale rep, but rep
+    // consistency is now handled by the dedup + heal + persist fixes, so that disruptive re-render — the
+    // cause of both the silent case-switch AND the tab/scroll reset — is removed entirely.)
     let openCase = activeId ? cases.find(x => x.id === activeId) : null;
     if (!openCase && selectedCn) openCase = cases.find(x => x.extracted && x.extracted.caseNumber === selectedCn);
     if (openCase) activeId = openCase.id;
@@ -625,7 +632,6 @@ async function syncFromPlatform() {
     save();
     renderList();
     updateHdr();
-    if (openCase) selectCase(openCase.id);   // refresh the SAME open case (never a different one)
     if (status) status.textContent = platformCases.length + " cases · last sync " + new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}) + (deduped ? " · deduped " + deduped : "");
     if (btn) { btn.textContent = "✓ Synced"; setTimeout(()=>{btn.textContent="↺ Sync";btn.disabled=false;}, 2000); }
 
