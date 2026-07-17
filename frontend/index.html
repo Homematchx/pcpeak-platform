@@ -1803,16 +1803,23 @@ function assignRep(caseId, repName) {
   var c = cases.find(function(x){return x.id===caseId;});
   if (!c) return;
   repName = (repName || "").trim();
-  if (repName === (c.rep_assigned||"")) return;          // no-op
-  c.rep_assigned = repName;
-  save();
-  // Persist to the platform (shared).
   var cn = (c.extracted && c.extracted.caseNumber) || "";
+  // Every local copy of this case (there should be exactly one after the sync dedup, but be
+  // defensive: a lingering duplicate that still shows a stale rep is exactly what made the sidebar
+  // card and the detail panel disagree). No-op only if ALL copies already carry this rep.
+  var copies = cn ? cases.filter(function(x){return x.extracted && x.extracted.caseNumber===cn;}) : [c];
+  if (copies.every(function(x){return (x.rep_assigned||"")===repName;})) return;
+  copies.forEach(function(x){ x.rep_assigned = repName; });   // update ALL copies → card & detail agree
+  if (!cn) c.rep_assigned = repName;
+  save();
+  // Persist to the platform (shared). Surface a failure instead of swallowing it — a silently-failed
+  // POST would let the local value survive until the next sync REVERTS it from prod, losing the edit.
   if (cn) {
     fetch(PLATFORM_API + "/cases", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({case_number: cn, rep_assigned: repName})
-    }).catch(function(){});
+    }).then(function(r){ if(!r || !r.ok) console.warn("rep assignment POST failed for " + cn + " (HTTP " + (r&&r.status) + ") — it will revert on the next sync"); })
+      .catch(function(e){ console.warn("rep assignment POST error for " + cn + ":", e); });
   }
   // Reflect immediately in the detail avatar (list re-renders below).
   var av = document.getElementById('rep-av-' + caseId);
