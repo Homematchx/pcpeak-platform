@@ -5,6 +5,77 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-07-18
+
+**REP-ASSIGNMENT correctness + SELECTION-STABILITY: a chain of frontend root causes traced (not
+guessed), each fixed with a regression test, all DEPLOYED fingerprint-verified.** Latest prod
+`frontend/index.html` sha `dccd482b23a06ddf`; `backend/main.py` UNCHANGED at `2fe7f3c7…` (all fixes were
+frontend-only); `origin/main == origin/production == origin/claude/remove-analyze-with-ai-0vu5i9` at
+commit `fe00fda`. Backend `create_case` already persists `rep_assigned` correctly (proven via TestClient
++ live curl) — every bug this session was on the BROWSER side of the write/rebuild loop. Traced one at a
+time under the user's "trace it, don't guess" standard:
+- **Card/detail rep DRIFT + inflated count — dedup rebuild.** `syncFromPlatform` was concatenating
+  platform + local copies so a case appeared twice with divergent reps (e.g. sidebar "Jay Lewis" vs
+  detail "Jocelyn Cart"). Rebuild is now authoritative: `cases = platformV3.concat(drafts)` — ONE object
+  per platform case_number + only genuine local drafts, deduped. Fixes the count and the drift.
+- **assignRep silently not persisting — three real causes, all fixed.** (1) a no-op guard skipped the
+  POST when local==target; removed. (2) POST now fires BEFORE `save()` and updates ALL copies by
+  case_number, not just find-by-id. (3) a swallowed `.catch(){}` hid POST failures; now surfaced via
+  `console.warn`. `test_rep_assign.py` 5/5.
+- **QuotaExceededError from save() aborting the POST (a SECOND silent-persistence cause).** The full
+  238-case mirror (each with a property_intel blob) exceeds the ~5MB localStorage quota; `save()` threw
+  BEFORE assignRep's POST ran. `save()` rewritten crash-proof: full → slim copy (drop property_intel +
+  memo) → disable cache; NEVER throws. `test_quota_save.py` 5/5.
+- **Rep HEAL on sync.** For the stuck TX-26-01192 state (rep set locally, NULL on prod), sync now
+  re-POSTs the local rep to fill an EMPTY prod rep (idempotent — only fills empty, doesn't re-heal once
+  prod has it). `test_rep_heal.py` 6/6.
+- **Sidebar chip didn't appear until you opened the detail — renderList after assign.** assignRep now
+  re-renders the card list so the rep chip shows immediately at a glance. `test_rep_sidebar.py` 9/9.
+- **Malformed property_intel could FREEZE renderList.** `caseTrack` + 4 siblings did unguarded
+  `JSON.parse(property_intel)`; one truncated record threw and killed the whole render. New `parseIntel()`
+  helper returns `{}` on bad JSON, never throws; all 5 sites routed through it.
+- **Sync silently SWITCHING the viewed case out from under the user.** During the slow ~238-request
+  event-fetch window the user would navigate case A→B, then the completing sync re-selected the STALE
+  captured case. Fix: after rebuild, re-point `activeId` at the still-valid deduped object for the case
+  the user is CURRENTLY on (prefer current `activeId`, fall back to `selectedCn`) — never snap back.
+- **Sync RESETTING the active tab/scroll (Timeline→Overview every ~30s).** The case-switch fix still
+  called `selectCase()` on sync, and `renderDetail` rebuilds the panel with Overview as default. Fix:
+  REMOVED the sync-time detail re-render entirely — the sidebar refreshes via `renderList`, the open
+  detail is left untouched by syncs. `test_selection_stability.py` 7/7 (asserts B stays open across a
+  mid-sync navigation AND the Timeline tab survives a sync).
+- **Underlying load cause noted, NOT yet built:** `syncFromPlatform` does 1 `/api/cases` GET + ~238
+  sequential `/api/events/{cn}` GETs — that burst is what produces the 502 spikes and the multi-second
+  navigation window the selection bugs exploited. **Recommended future optimization: batch events into
+  `/api/cases`** (one payload) to kill the burst. Deferred, not urgent.
+- All frontend suites green: rep_dedup 9/9, rep_assign 5/5, rep_heal 6/6, quota_save 5/5, rep_sidebar
+  9/9, selection_stability 7/7, plus the earlier petition_link 17/17 / petition_backfill 10/10 and the
+  Phase-0 backend/held/worker/ledger suites. Every fix `node --check`-clean, zero pageerror.
+
+**NEXT INITIATIVE — ACQUISITION INTELLIGENCE layer (DESIGN-DOC-FIRST; full brief arrives in a FRESH
+session; NO code until the design is approved).** A major new downstream subsystem — same process
+discipline as the prediction-ledger and scrape-trigger builds (design doc → explicit approval → build).
+Scope, as briefed: a downstream ANALYSIS layer that READS the enrichment property_intel.py already
+captures and produces acquisition decisions — Mission Score, MAO, exit-scenario modeling, deal-killer
+gates — surfaced as a NEW case-detail tab. **It is NOT a patch to discover.py and involves NO new
+scraping.** Transaction model: buy pre-foreclosure directly from owners/heirs BEFORE any sheriff's sale,
+so no §34.21 redemption applies to us; countdown is the existing `oos_date`/`sale_scheduled_date`; we
+inherit the seller's FULL lien stack (no tax-sale lien wipe); heirs/estates are core pipeline. Two
+calculators kept STRICTLY separate: MAO = (ARV × Rule%) − Repairs (taxes/liens NOT deducted); Seller Net
+Sheet = Agreed Price − tax payoff − lien payoffs − seller closing costs; fatal gate: Total Payoffs >
+Agreed Price → cannot close. Comp engine on MLS/NTREIS (key already in `Anthropic_API_KEY.env`, zero
+marginal cost, first-class/always-available) with appraiser-grade qualification; ALL adjustment figures
+as named TUNABLE config with Dallas defaults (never hardcoded); MLS photos render inline with every comp
+(mandatory); flow is propose-confirm; Mission-Score valuation confidence provisional vs confirmed;
+condition-evidence + verified/estimated/inferred labels everywhere. VALIDATION is non-negotiable: run the
+full analysis against known cases (TX-23-00423 Tryon — $71,938 owed / $217,800 MV; Ruby Faye Brown's
+case; TX-25-00249) and confirm outputs match human analysis. Design-doc deliverable must cover
+architecture, the NTREIS integration approach (CONFIRM what the API actually returns before designing
+around it), comp storage/confirmation-state schema, the UI surface, and the validation plan — with every
+open decision flagged explicitly.
+- **EXPLICITLY OUT OF SCOPE — tracked as a SEPARATE future initiative, NOT part of Acquisition
+  Intelligence:** non-suit back-tax lead discovery (DCAD-only discovery, no court case number). Do not
+  fold it into the Acquisition Intelligence design.
+
 ## SESSION HANDOFF — 2026-07-15 (later still)
 
 **Phase 0 DEPLOYED (fingerprint-verified) + two READER tools built to actually query the live ledger
