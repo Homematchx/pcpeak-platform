@@ -1051,38 +1051,45 @@ function project(cobj) {
 // ═══════════════════════════════════════════
 // PAYOFF CALCULATOR
 // ═══════════════════════════════════════════
+// CORRECTED MODEL (matches acquisition.py / the Acquisition tab — the two must agree):
+//   Tax payoff = the ACT LIVE balance (current_tax_balance), used AS-IS. It already reflects
+//   taxes + penalties + interest to date, so it is NEVER accrued upon or fee-loaded. Labeled
+//   verified. Only when NO live balance exists do we fall back to a §33.48 estimate from the
+//   filing amount grown by penalty/interest (labeled estimated).
+//   Tax-suit attorney fees (§33.48) are a SEPARATE, ESTIMATED line — never folded into the payoff.
 function calcPayoff(ex, dallasactBalance) {
-  const filedAmt  = ex.totalDueAtFiling || 0;
-  const filedDate = ex.filedDate ? new Date(ex.filedDate) : null;
-  const now       = new Date();
-  const baseAmt   = dallasactBalance && dallasactBalance > filedAmt ? dallasactBalance : filedAmt;
-  let accruedInterest = 0;
-  if (filedDate && filedAmt > 0) {
-    const months = Math.max(0,
-      (now.getFullYear() - filedDate.getFullYear()) * 12 +
-      (now.getMonth() - filedDate.getMonth()));
-    accruedInterest = filedAmt * (0.015 * months);
+  const filedAmt    = ex.totalDueAtFiling || 0;
+  const hasLive     = dallasactBalance != null && dallasactBalance > 0;
+  const hasJudgment = !!ex.judgmentDate;
+  let taxPayoff, payoffLabel, fallbackAccrued = 0;
+  if (hasLive) {
+    taxPayoff   = Math.round(dallasactBalance);   // ACT current amount due — used as-is
+    payoffLabel = "verified";
+  } else {
+    let months = 0;
+    if (ex.filedDate && filedAmt > 0) {
+      const f = new Date(ex.filedDate), n = new Date();
+      months = Math.max(0, (n.getFullYear()-f.getFullYear())*12 + (n.getMonth()-f.getMonth()));
+    }
+    fallbackAccrued = Math.round(filedAmt * (0.015 * months));
+    taxPayoff   = filedAmt + fallbackAccrued;     // no live balance — estimated from filing + P&I
+    payoffLabel = "estimated";
   }
-  const hasJudgment  = !!ex.judgmentDate;
   const attyFeeRate  = hasJudgment ? 0.20 : 0.15;
-  const attyFees     = (baseAmt + accruedInterest) * attyFeeRate;
-  const courtCosts   = 450;
-  const abstractFee  = ex.abstractorFee || 350;
-  const postJudgment = hasJudgment ? 500 : 0;
-  const totalPayoff  = baseAmt + accruedInterest + attyFees + courtCosts + abstractFee + postJudgment;
+  const attyFees     = Math.round(taxPayoff * attyFeeRate);   // SEPARATE estimated line, until LGBS letter
+  const totalToClear = taxPayoff + attyFees;
   return {
-    filedAmount:     filedAmt,
-    currentBalance:  dallasactBalance || filedAmt,
-    accruedInterest: Math.round(accruedInterest),
-    attyFees:        Math.round(attyFees),
-    attyFeeRate:     attyFeeRate,
-    courtCosts:      courtCosts,
-    abstractFee:     abstractFee,
-    postJudgment:    postJudgment,
-    totalPayoff:     Math.round(totalPayoff),
-    hasJudgment:     hasJudgment,
-    minOffer:        Math.round(totalPayoff * 1.05),
-    suggestedOffer:  Math.round(totalPayoff * 1.15),
+    filedAmount:    filedAmt,
+    hasLive:        hasLive,
+    payoffLabel:    payoffLabel,
+    fallbackAccrued:fallbackAccrued,
+    taxPayoff:      taxPayoff,
+    attyFees:       attyFees,
+    attyFeeRate:    attyFeeRate,
+    totalToClear:   totalToClear,
+    hasJudgment:    hasJudgment,
+    minOffer:       Math.round(totalToClear * 1.05),
+    suggestedOffer: Math.round(totalToClear * 1.15),
   };
 }
 
@@ -1466,43 +1473,32 @@ function renderDetail(c) {
 
         <!-- PAYOFF CALCULATOR CARD -->
         ${(() => {
-          const po = calcPayoff(ex, null);
+          var _pi = parseIntel(c.property_intel);
+          var _liveBal = (_pi && _pi.current_tax_balance != null) ? _pi.current_tax_balance : null;
+          const po = calcPayoff(ex, _liveBal);
+          const chip = (l) => l === "verified"
+            ? `<span style="font-size:9px;text-transform:uppercase;letter-spacing:.4px;background:rgba(34,197,94,.18);color:#3d9970;padding:1px 5px;border-radius:4px;margin-left:4px">verified</span>`
+            : `<span style="font-size:9px;text-transform:uppercase;letter-spacing:.4px;background:rgba(245,158,11,.18);color:#a5730f;padding:1px 5px;border-radius:4px;margin-left:4px">estimated</span>`;
           return `<div class="card">
             <div class="chd">
               <div class="ct">&#128181; Estimated Payoff Calculator</div>
-              <div class="cs">Texas Tax Code §33.48 · LGBS attorney fees · as of today</div>
+              <div class="cs">Tax payoff = ACT live balance (as-is) · §33.48 attorney fees estimated separately</div>
             </div>
             <table style="width:100%;border-collapse:collapse;font-size:13px">
               <tbody>
                 <tr style="border-bottom:1px solid var(--border)">
-                  <td style="padding:8px 0;color:var(--text2)">Balance at filing</td>
-                  <td style="text-align:right;font-family:var(--FM)">${fmtC(po.filedAmount)}</td>
+                  <td style="padding:8px 0;color:var(--text2)">Tax payoff — ${po.hasLive ? "ACT live balance (as-is)" : "est. from filing + P&I (no live balance)"}${chip(po.payoffLabel)}</td>
+                  <td style="text-align:right;font-family:var(--FM);font-weight:700">${fmtC(po.taxPayoff)}</td>
                 </tr>
                 <tr style="border-bottom:1px solid var(--border)">
-                  <td style="padding:8px 0;color:var(--text2)">Accrued P&I since filing (~1.5%/mo)</td>
-                  <td style="text-align:right;font-family:var(--FM);color:var(--red)">+ ${fmtC(po.accruedInterest)}</td>
-                </tr>
-                <tr style="border-bottom:1px solid var(--border)">
-                  <td style="padding:8px 0;color:var(--text2)">LGBS attorney fees (${Math.round(po.attyFeeRate*100)}% — §33.48)</td>
+                  <td style="padding:8px 0;color:var(--text2)">+ Tax-suit attorney fees (${Math.round(po.attyFeeRate*100)}% · §33.48, until LGBS letter)${chip("estimated")}</td>
                   <td style="text-align:right;font-family:var(--FM);color:var(--red)">+ ${fmtC(po.attyFees)}</td>
                 </tr>
-                <tr style="border-bottom:1px solid var(--border)">
-                  <td style="padding:8px 0;color:var(--text2)">Court costs & filing fees</td>
-                  <td style="text-align:right;font-family:var(--FM);color:var(--red)">+ ${fmtC(po.courtCosts)}</td>
-                </tr>
-                <tr style="border-bottom:1px solid var(--border)">
-                  <td style="padding:8px 0;color:var(--text2)">Abstract & title search</td>
-                  <td style="text-align:right;font-family:var(--FM);color:var(--red)">+ ${fmtC(po.abstractFee)}</td>
-                </tr>
-                ${po.hasJudgment ? `<tr style="border-bottom:1px solid var(--border)">
-                  <td style="padding:8px 0;color:var(--text2)">Post-judgment collection costs</td>
-                  <td style="text-align:right;font-family:var(--FM);color:var(--red)">+ ${fmtC(po.postJudgment)}</td>
-                </tr>` : ''}
               </tbody>
               <tfoot>
                 <tr style="background:var(--red-bg)">
-                  <td style="padding:10px 8px;font-weight:700;color:var(--red)">ESTIMATED PAYOFF TODAY</td>
-                  <td style="text-align:right;font-family:var(--FM);font-weight:700;font-size:16px;color:var(--red);padding:10px 8px">${fmtC(po.totalPayoff)}</td>
+                  <td style="padding:10px 8px;font-weight:700;color:var(--red)">ESTIMATED TOTAL TO CLEAR TAXES</td>
+                  <td style="text-align:right;font-family:var(--FM);font-weight:700;font-size:16px;color:var(--red);padding:10px 8px">${fmtC(po.totalToClear)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -1510,18 +1506,19 @@ function renderDetail(c) {
               <div style="background:var(--blue-bg);border:1px solid var(--blue-bd);border-radius:var(--rs);padding:12px">
                 <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Min Offer to Owner</div>
                 <div style="font-size:18px;font-weight:700;font-family:var(--FD);color:var(--blue)">${fmtC(po.minOffer)}</div>
-                <div style="font-size:11px;color:var(--text3);margin-top:3px">Covers payoff + 5% cushion</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:3px">Covers taxes + fees + 5% cushion</div>
               </div>
               <div style="background:var(--green-bg);border:1px solid var(--green-bd);border-radius:var(--rs);padding:12px">
                 <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Suggested Offer to Owner</div>
                 <div style="font-size:18px;font-weight:700;font-family:var(--FD);color:var(--green)">${fmtC(po.suggestedOffer)}</div>
-                <div style="font-size:11px;color:var(--text3);margin-top:3px">Payoff + 15% owner incentive</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:3px">Taxes + fees + 15% owner incentive</div>
               </div>
             </div>
             <div style="margin-top:10px;font-size:11px;color:var(--text3);line-height:1.6">
-              &#9432; Estimates based on Texas Tax Code §33.48. Actual payoff requires written statement from LGBS. 
-              Interest accrues at ~1.5% per month. Attorney fees are statutory. Always request an official 
-              payoff letter before making an offer.
+              &#9432; The tax payoff is the Dallas ACT current amount due, used <b>as-is</b> — it already includes
+              penalties + interest to date, so it is not accrued upon again. Tax-suit attorney fees are a separate
+              §33.48 estimate until an official LGBS payoff letter confirms them. See the Acquisition tab for the
+              full Seller Net Sheet. Always request the official payoff letter before making an offer.
             </div>
           </div>`;
         })()}
