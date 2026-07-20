@@ -35,6 +35,13 @@ LEDGER_DB_PATH = BASE_DIR / "data" / "db" / "ledger.db"
 PDF_DIR  = BASE_DIR / "data" / "pdfs"
 PDF_DIR.mkdir(parents=True, exist_ok=True)
 
+# Acquisition Intelligence engine (pure calculators) + comp engine live at the repo root.
+import sys as _sys
+if str(BASE_DIR) not in _sys.path:
+    _sys.path.insert(0, str(BASE_DIR))
+import acquisition          # noqa: E402  — Stage-1 calculators/gates (pure, no I/O)
+import comps                # noqa: E402  — Stage-2 NTREIS comp engine
+
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
@@ -105,7 +112,8 @@ def account_status_of(acct):
 # the SQLite engine level by an authorizer that denies DELETE/DROP on these tables while allowing the
 # legitimate INSERT (logging) and UPDATE (reconcile). Installed on EVERY connection, so the tables
 # are protected the instant they exist — before they ever hold real data.
-PROD_OWNED_TABLES = ("prediction_ledger", "rep_actions", "case_snapshots")
+PROD_OWNED_TABLES = ("prediction_ledger", "rep_actions", "case_snapshots",
+                     "comps", "comp_confirmations", "acquisition_analysis")
 
 def _restore_guard_authorizer(action, arg1, arg2, db_name, trigger_name):
     if action in (sqlite3.SQLITE_DELETE, sqlite3.SQLITE_DROP_TABLE) and arg1 in PROD_OWNED_TABLES:
@@ -384,6 +392,72 @@ def init_db():
         CREATE INDEX IF NOT EXISTS ledger.idx_cs_case  ON case_snapshots(case_number, changed_at);
         CREATE INDEX IF NOT EXISTS ledger.idx_cs_field ON case_snapshots(case_number, field);
         CREATE INDEX IF NOT EXISTS ledger.idx_cs_batch ON case_snapshots(batch_id);
+
+        -- ── ACQUISITION INTELLIGENCE (Stage 2) — prod-owned human decisions in ledger.db ──
+        -- comps: proposed NTREIS/Bridge candidates for a subject (refreshable snapshot of a fetch).
+        -- listing_status 'closed' drives ARV; 'pending' is DIRECTIONAL-ONLY (never in ARV math).
+        CREATE TABLE IF NOT EXISTS ledger.comps (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_number    TEXT NOT NULL,
+            mls_id         TEXT,
+            fetch_batch    TEXT NOT NULL,           -- one uuid per propose; latest batch = current set
+            fetched_at     TEXT NOT NULL DEFAULT (datetime('now')),
+            listing_status TEXT,                    -- 'closed' | 'pending'
+            address        TEXT,
+            subdivision    TEXT,
+            same_subdivision INTEGER DEFAULT 0,
+            close_date     TEXT,
+            close_price    INTEGER,                 -- reconstructed (ratio × acres); NULL for pending
+            list_price     INTEGER,
+            gla            INTEGER,
+            beds           INTEGER,
+            baths          REAL,
+            year_built     INTEGER,
+            distance_mi    REAL,
+            match_score    INTEGER,
+            adjusted_value INTEGER,
+            photos_count   INTEGER,
+            media_urls     TEXT,                    -- JSON array of hotlink URLs (Q2 — never stored blobs)
+            arms_length_flags TEXT,                 -- JSON array
+            comp_json      TEXT                     -- JSON of the full normalized+scored comp (audit)
+        );
+        CREATE INDEX IF NOT EXISTS ledger.idx_comps_case ON comps(case_number, fetched_at);
+
+        -- comp_confirmations: append-only human decisions. A confirmation FREEZES the comp's data +
+        -- adjusted value at decision time (frozen_comp) — a re-query can never silently move a
+        -- confirmed ARV (Q1, same principle as case_snapshots). Latest decision per mls_id wins.
+        CREATE TABLE IF NOT EXISTS ledger.comp_confirmations (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_number    TEXT NOT NULL,
+            mls_id         TEXT NOT NULL,
+            decided_at     TEXT NOT NULL DEFAULT (datetime('now')),
+            decided_by     TEXT,
+            decision       TEXT NOT NULL,           -- 'confirmed' | 'rejected'
+            adjusted_value INTEGER,                 -- FROZEN at confirmation
+            frozen_comp    TEXT NOT NULL,           -- JSON snapshot of the comp at decision time
+            note           TEXT
+        );
+        CREATE INDEX IF NOT EXISTS ledger.idx_cc_case ON comp_confirmations(case_number, decided_at);
+
+        -- acquisition_analysis: append-only versions of the human inputs (repairs override, agreed
+        -- price, lien stack) + the computed analysis snapshot. Latest version per case is current.
+        CREATE TABLE IF NOT EXISTS ledger.acquisition_analysis (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_number     TEXT NOT NULL,
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_by      TEXT,
+            model_version   TEXT,
+            repair_estimate INTEGER,
+            agreed_price    INTEGER,
+            lien_stack      TEXT,                   -- JSON [{type,amount|null,holder,...}]
+            lien_status     TEXT,                   -- unavailable | partial | verified
+            rule_pct_override REAL,
+            confirmed_arv   INTEGER,
+            valuation_state TEXT,                   -- provisional | confirmed
+            decision        TEXT,
+            analysis_json   TEXT                    -- full analyze() output at this version
+        );
+        CREATE INDEX IF NOT EXISTS ledger.idx_aa_case ON acquisition_analysis(case_number, updated_at);
         """)
     
     # Seed known benchmarks
@@ -1204,6 +1278,262 @@ async def get_case_snapshots(case_number: str):
         }
     return {"case_number": case_number, "count": len(rows),
             "latest_batch": latest, "snapshots": rows}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════
+# ACQUISITION INTELLIGENCE (Stage 2) — comp propose/confirm workbench + confirmed-ARV analysis.
+# Token-gated (ACQUISITION_TOKEN, fail-closed) — the analysis carries rep negotiation inputs (agreed
+# price) and the propose step spends an external NTREIS call. §5.4 enforced end-to-end: a confirmed
+# ARV (verified) comes ONLY from human-confirmed comps; anything else stays provisional.
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+# Test seam: when set, propose() draws candidates from this instead of the live NTREIS feed. It takes
+# the subject dict and returns {"closed":[...], "pending":[...]} of normalized comps.
+_COMP_SOURCE = None
+
+
+class CompDecision(BaseModel):
+    decided_by: str = ""
+    note: str = ""
+
+class AcqInputs(BaseModel):
+    updated_by: str = ""
+    repair_estimate: Optional[int] = None
+    agreed_price: Optional[int] = None
+    lien_stack: list = []
+    lien_status: str = "unavailable"
+    rule_pct_override: Optional[float] = None
+
+class ProposeIn(BaseModel):
+    include_pending: bool = True
+
+
+def _parse_pi(case: dict) -> dict:
+    pi = case.get("property_intel")
+    if isinstance(pi, str):
+        try: pi = json.loads(pi)
+        except Exception: pi = {}
+    return pi or {}
+
+
+def _case_input(case: dict, pi: dict):
+    """Build an acquisition.CaseInput from a case row + parsed property_intel (design §3.4).
+    'owed' is the live current_tax_balance, NOT total_due_filing."""
+    distress = pi.get("distress") or {}
+    owners = pi.get("owners") or []
+    return acquisition.CaseInput(
+        case_number=case.get("case_number"),
+        market_value=pi.get("market_value"),
+        owed=pi.get("current_tax_balance"),
+        total_due_filing=case.get("total_due_filing"),
+        filed_date=case.get("filed_date"),
+        judgment_date=case.get("judgment_date"),
+        living_area_sqft=pi.get("living_area_sqft"),
+        depreciation_pct=pi.get("depreciation_pct"),
+        actual_age=pi.get("actual_age"),
+        year_built=pi.get("year_built") or pi.get("effective_year_built"),
+        distress_level=distress.get("level"),
+        distress_signals=[s.get("type") for s in distress.get("signals", [])],
+        estate=bool(case.get("estate_heir") or case.get("owner_type") == "estate" or pi.get("estate_flag")),
+        is_absentee=bool(pi.get("is_absentee")),
+        no_homestead=bool(pi.get("no_homestead")),
+        property_type=case.get("property_type") or "real",
+        case_track=case.get("case_track"),
+        oos_date=case.get("oos_date"),
+        sale_scheduled_date=case.get("sale_scheduled_date"),
+        owner_of_record=(owners[0].get("name") if owners else None),
+    )
+
+
+def _median(vals):
+    vals = sorted(v for v in vals if v is not None)
+    if not vals:
+        return None
+    n = len(vals)
+    return vals[n // 2] if n % 2 else round((vals[n // 2 - 1] + vals[n // 2]) / 2)
+
+
+def _latest_confirmations(db, cn):
+    """Latest decision per mls_id (append-only log; last write wins)."""
+    latest = {}
+    for r in db.execute("SELECT * FROM ledger.comp_confirmations WHERE case_number=? ORDER BY id", [cn]).fetchall():
+        latest[r["mls_id"]] = dict(r)
+    return latest
+
+
+def _build_acquisition(case_number: str) -> dict:
+    """Assemble the full analysis: confirmed comps (frozen) → confirmed ARV (verified) → analyze().
+    Falls back to a provisional ARV from the latest proposed closed comps when nothing is confirmed."""
+    with get_db() as db:
+        row = db.execute("SELECT * FROM cases WHERE case_number=?", [case_number]).fetchone()
+        if not row:
+            raise HTTPException(404, f"Case {case_number} not found")
+        case = dict(row)
+        aa = db.execute("SELECT * FROM ledger.acquisition_analysis WHERE case_number=? ORDER BY id DESC LIMIT 1",
+                        [case_number]).fetchone()
+        confirmations = _latest_confirmations(db, case_number)
+        batch = db.execute("SELECT fetch_batch FROM ledger.comps WHERE case_number=? ORDER BY id DESC LIMIT 1",
+                           [case_number]).fetchone()
+        proposed = []
+        if batch:
+            proposed = [dict(r) for r in db.execute(
+                "SELECT * FROM ledger.comps WHERE case_number=? AND fetch_batch=? ORDER BY match_score DESC",
+                [case_number, batch["fetch_batch"]]).fetchall()]
+
+    pi = _parse_pi(case)
+    ci = _case_input(case, pi)
+
+    confirmed = [c for c in confirmations.values() if c["decision"] == "confirmed"]
+    rejected_ids = {m for m, c in confirmations.items() if c["decision"] == "rejected"}
+
+    # CONFIRMED ARV — from human-confirmed comps' FROZEN adjusted values only (§5.4).
+    conf_arv = _median([c["adjusted_value"] for c in confirmed])
+    if conf_arv is not None:
+        arv, arv_label = conf_arv, acquisition.VERIFIED
+    else:
+        # provisional: median adjusted of the top proposed CLOSED comps (never trusted for an offer)
+        prop_closed = [c for c in proposed if c["listing_status"] == "closed" and c.get("adjusted_value")]
+        arv, arv_label = _median([c["adjusted_value"] for c in prop_closed[:5]]), acquisition.ESTIMATED
+
+    if aa:
+        acq = acquisition.AcquisitionInputs(
+            arv=arv, arv_label=arv_label, repair_estimate=aa["repair_estimate"],
+            agreed_price=aa["agreed_price"],
+            lien_stack=json.loads(aa["lien_stack"]) if aa["lien_stack"] else [],
+            lien_status=aa["lien_status"] or "unavailable", rule_pct_override=aa["rule_pct_override"])
+    else:
+        acq = acquisition.AcquisitionInputs(arv=arv, arv_label=arv_label)
+
+    analysis = acquisition.analyze(ci, acq)
+    for c in proposed:
+        c["confirmation"] = confirmations.get(c["mls_id"], {}).get("decision")
+    return {
+        "case_number": case_number,
+        "analysis": analysis,
+        "valuation_state": analysis["valuation_state"],
+        "decision": analysis["decision"],
+        "confirmed_arv": conf_arv,
+        "n_confirmed_comps": len(confirmed),
+        "proposed_comps": proposed,
+        "confirmed_comps": [json.loads(c["frozen_comp"]) for c in confirmed],
+        "arv_sanity_band": acquisition.arv_sanity_band(arv, pi.get("market_value")),
+    }
+
+
+@app.post("/api/cases/{case_number}/comps/propose")
+async def propose_comps(case_number: str, body: ProposeIn = ProposeIn(),
+                        x_acquisition_token: str = Header(default="")):
+    """Fetch + rank NTREIS comps for the subject, store them as the current proposal batch, and return
+    them (with photos) for human confirmation. Closed drive ARV; pendings are directional-only."""
+    _require_token("ACQUISITION_TOKEN", x_acquisition_token)
+    with get_db() as db:
+        row = db.execute("SELECT * FROM cases WHERE case_number=?", [case_number]).fetchone()
+        if not row:
+            raise HTTPException(404, f"Case {case_number} not found")
+        case = dict(row)
+    subject = comps.subject_from_case({**case, "property_intel": case.get("property_intel")})
+    if not subject.get("postal_code") or not subject.get("gla"):
+        raise HTTPException(422, "subject lacks postal code / living area — cannot propose comps")
+
+    if _COMP_SOURCE is not None:
+        cand = _COMP_SOURCE(subject)
+    else:
+        if not comps.BridgeClient().configured():
+            raise HTTPException(503, "comp engine not configured (NTREIS_BASE_URL / NTREIS_SERVER_TOKEN unset)")
+        since = (date.today().replace(year=date.today().year - 1)).isoformat()
+        cand = comps.fetch_candidates(subject, since=since, include_pending=body.include_pending)
+
+    ranked = comps.provisional_arv(subject, cand.get("closed", []))
+    batch = uuid.uuid4().hex
+    rows_out = []
+    with get_db() as db:
+        for c in ranked.get("comps_ranked", []):
+            q, adj = c["qualification"], c["adjustment"]
+            db.execute(
+                "INSERT INTO ledger.comps (case_number, mls_id, fetch_batch, listing_status, address, "
+                "subdivision, same_subdivision, close_date, close_price, list_price, gla, beds, baths, "
+                "year_built, distance_mi, match_score, adjusted_value, photos_count, media_urls, "
+                "arms_length_flags, comp_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [case_number, c["mls_id"], batch, "closed", c.get("address"), c.get("subdivision"),
+                 1 if q["same_subdivision"] else 0, c.get("close_date"), c.get("close_price"),
+                 c.get("list_price"), c.get("gla"), c.get("beds"), c.get("baths"), c.get("year_built"),
+                 q.get("distance_mi"), c["match_score"], adj["adjusted_value"], c.get("photos_count"),
+                 json.dumps(c.get("media_urls", [])), json.dumps(q.get("arms_length_flags", [])),
+                 json.dumps({k: v for k, v in c.items() if k != "qualification"})])
+        for p in cand.get("pending", []):
+            db.execute(
+                "INSERT INTO ledger.comps (case_number, mls_id, fetch_batch, listing_status, address, "
+                "subdivision, close_date, close_price, list_price, gla, beds, baths, year_built, "
+                "photos_count, media_urls, comp_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [case_number, p.get("mls_id"), batch, "pending", p.get("address"), p.get("subdivision"),
+                 p.get("close_date"), None, p.get("list_price_directional"), p.get("gla"), p.get("beds"),
+                 p.get("baths"), p.get("year_built"), p.get("photos_count"),
+                 json.dumps(p.get("media_urls", [])), json.dumps(p)])
+        rows_out = [dict(r) for r in db.execute(
+            "SELECT * FROM ledger.comps WHERE case_number=? AND fetch_batch=? ORDER BY match_score DESC",
+            [case_number, batch]).fetchall()]
+    return {"case_number": case_number, "fetch_batch": batch,
+            "provisional_arv": ranked.get("provisional_arv"),
+            "n_closed": len(cand.get("closed", [])), "n_pending": len(cand.get("pending", [])),
+            "comps": rows_out}
+
+
+@app.post("/api/cases/{case_number}/comps/{mls_id}/confirm")
+async def confirm_comp(case_number: str, mls_id: str, body: CompDecision = CompDecision(),
+                       x_acquisition_token: str = Header(default="")):
+    """Confirm a proposed CLOSED comp — FREEZES its data + adjusted value at this moment (Q1)."""
+    _require_token("ACQUISITION_TOKEN", x_acquisition_token)
+    with get_db() as db:
+        c = db.execute("SELECT * FROM ledger.comps WHERE case_number=? AND mls_id=? ORDER BY id DESC LIMIT 1",
+                       [case_number, mls_id]).fetchone()
+        if not c:
+            raise HTTPException(404, f"comp {mls_id} not proposed for {case_number}")
+        c = dict(c)
+        if c["listing_status"] != "closed":
+            raise HTTPException(400, "pending listings are directional-only and cannot be confirmed into the ARV")
+        db.execute("INSERT INTO ledger.comp_confirmations (case_number, mls_id, decided_by, decision, "
+                   "adjusted_value, frozen_comp, note) VALUES (?,?,?,?,?,?,?)",
+                   [case_number, mls_id, body.decided_by, "confirmed", c["adjusted_value"],
+                    json.dumps(c), body.note])
+    return _build_acquisition(case_number)
+
+
+@app.post("/api/cases/{case_number}/comps/{mls_id}/reject")
+async def reject_comp(case_number: str, mls_id: str, body: CompDecision = CompDecision(),
+                      x_acquisition_token: str = Header(default="")):
+    _require_token("ACQUISITION_TOKEN", x_acquisition_token)
+    with get_db() as db:
+        c = db.execute("SELECT * FROM ledger.comps WHERE case_number=? AND mls_id=? ORDER BY id DESC LIMIT 1",
+                       [case_number, mls_id]).fetchone()
+        if not c:
+            raise HTTPException(404, f"comp {mls_id} not proposed for {case_number}")
+        db.execute("INSERT INTO ledger.comp_confirmations (case_number, mls_id, decided_by, decision, "
+                   "adjusted_value, frozen_comp, note) VALUES (?,?,?,?,?,?,?)",
+                   [case_number, mls_id, body.decided_by, "rejected", None, json.dumps(dict(c)), body.note])
+    return _build_acquisition(case_number)
+
+
+@app.post("/api/cases/{case_number}/acquisition")
+async def upsert_acquisition(case_number: str, body: AcqInputs,
+                             x_acquisition_token: str = Header(default="")):
+    """Save human acquisition inputs (repairs, agreed price, lien stack) + recompute; append a version."""
+    _require_token("ACQUISITION_TOKEN", x_acquisition_token)
+    built = _build_acquisition(case_number)   # 404s if the case is missing
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO ledger.acquisition_analysis (case_number, updated_by, model_version, "
+            "repair_estimate, agreed_price, lien_stack, lien_status, rule_pct_override, confirmed_arv, "
+            "valuation_state, decision, analysis_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            [case_number, body.updated_by, MODEL_VERSION, body.repair_estimate, body.agreed_price,
+             json.dumps(body.lien_stack), body.lien_status, body.rule_pct_override,
+             built["confirmed_arv"], built["valuation_state"], built["decision"], json.dumps(built["analysis"])])
+    return _build_acquisition(case_number)
+
+
+@app.get("/api/cases/{case_number}/acquisition")
+async def get_acquisition(case_number: str, x_acquisition_token: str = Header(default="")):
+    _require_token("ACQUISITION_TOKEN", x_acquisition_token)
+    return _build_acquisition(case_number)
 
 @app.get("/api/watchlist")
 async def get_watchlist():

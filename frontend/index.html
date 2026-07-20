@@ -163,6 +163,43 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
   0%,100% { opacity:1; }
   50%      { opacity:.3; }
 }
+/* ── Acquisition workbench ── */
+.acq-note{font-size:11px;color:var(--text3);}
+.acq-banner{border-radius:var(--rs);padding:14px 16px;margin-bottom:12px;border:1px solid var(--border);}
+.acq-banner.acq-go{background:rgba(34,197,94,.10);border-color:rgba(34,197,94,.4);}
+.acq-banner.acq-cond{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.4);}
+.acq-banner.acq-hold{background:var(--surface2);}
+.acq-banner.acq-nogo{background:rgba(239,68,68,.10);border-color:rgba(239,68,68,.4);}
+.acq-dec{font-family:var(--FD);font-size:20px;font-weight:700;letter-spacing:.5px;}
+.acq-sub{font-size:12px;color:var(--text2);margin-top:2px;}
+.acq-gates{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;}
+.acq-gate{font-size:10px;padding:2px 7px;border-radius:20px;background:var(--surface2);color:var(--text2);}
+.acq-g-fatal{background:rgba(239,68,68,.18);color:#fca5a5;}
+.acq-g-blocking{background:rgba(245,158,11,.18);color:#fcd34d;}
+.acq-g-condition{background:rgba(99,102,241,.16);color:#a5b4fc;}
+.acq-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:12px;}
+.acq-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:12px;}
+.acq-h{font-family:var(--FD);font-size:12px;font-weight:600;margin-bottom:8px;color:var(--text2);}
+.acq-row{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);}
+.acq-row span:first-child{color:var(--text3);}
+.acq-net{font-weight:700;border-bottom:none;margin-top:2px;}
+.acq-lbl{font-size:9px;text-transform:uppercase;padding:1px 5px;border-radius:4px;letter-spacing:.4px;vertical-align:middle;}
+.acq-verified{background:rgba(34,197,94,.18);color:#86efac;}
+.acq-est{background:rgba(245,158,11,.16);color:#fcd34d;}
+.acq-inf{background:rgba(99,102,241,.16);color:#a5b4fc;}
+.acq-unavail{background:rgba(148,163,184,.18);color:#cbd5e1;}
+.acq-btn{font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;}
+.acq-btn:hover{background:var(--surface2);}
+.acq-ok{border-color:rgba(34,197,94,.5);} .acq-no{border-color:rgba(239,68,68,.5);}
+.acq-comp{display:flex;gap:10px;align-items:center;padding:8px;border:1px solid var(--border);border-radius:var(--rs);margin-top:8px;}
+.acq-comp-on{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.06);}
+.acq-comp-off{opacity:.45;}
+.acq-comp-pend{background:var(--surface2);}
+.acq-comp-ph{width:88px;height:66px;flex:0 0 88px;border-radius:6px;overflow:hidden;background:var(--surface);}
+.acq-comp-ph img{width:100%;height:100%;object-fit:cover;}
+.acq-ph0{font-size:10px;color:var(--text3);display:flex;align-items:center;justify-content:center;height:100%;}
+.acq-comp-b{flex:1;min-width:0;font-size:12px;}
+.acq-comp-a{display:flex;flex-direction:column;gap:4px;}
 </style>
 </head>
 <body>
@@ -1333,6 +1370,7 @@ function renderDetail(c) {
       <div class="tbar">
         <button class="tb on" onclick="swTab(event,'ov')">Overview</button>
         <button class="tb" onclick="swTab(event,'pi')">Property Intel</button>
+        <button class="tb" onclick="swTab(event,'acq')">Acquisition</button>
         <button class="tb" onclick="swTab(event,'tl')">Timeline</button>
         <button class="tb" onclick="swTab(event,'fin')">Financials</button>
         <button class="tb" onclick="swTab(event,'risk')">Risk Flags</button>
@@ -1523,6 +1561,7 @@ function renderDetail(c) {
       <div class="tp" id="tp-def">
   <div id="def-panel"></div>
 </div>
+<div class="tp" id="tp-acq"><div id="acq-panel"></div></div>
 <div class="tp" id="tp-ai">
         <div class="aisec"><div class="aihd"><div class="aidot"></div><span class="ailbl">AI Intelligence Memo</span></div>
           <div class="aitxt">${c.memo||"No memo generated."}</div>
@@ -1973,7 +2012,130 @@ function swTab(e, id) {
   document.getElementById("tp-"+id).classList.add("on");
   if (id === "def") { renderDefendants(window._currentCase || {}); }
   if (id === "pi") { renderPropertyIntel(window._currentCase || {}); }
+  if (id === "acq") { renderAcquisition(window._currentRawCase || {}); }
   if (id === "petition") { if(window._currentRawCase) openPetitionPDF(window._currentRawCase); }
+}
+
+// ═══════════════════════════════════════════
+// ACQUISITION INTELLIGENCE — propose→confirm workbench (Stage 2)
+// ═══════════════════════════════════════════
+function acqToken() {
+  var t = sessionStorage.getItem("acq_token");
+  if (!t) {
+    t = (prompt("Enter the acquisition token (ACQUISITION_TOKEN):") || "").trim();
+    if (t) sessionStorage.setItem("acq_token", t);   // sessionStorage: cleared on tab close
+  }
+  return t;
+}
+function _acqCaseNo(raw) {
+  return (raw && raw.extracted && raw.extracted.caseNumber) || String((raw && raw.id) || "").replace("_platform","");
+}
+function _lbl(x) {
+  if (!x || x.value === null || x.value === undefined) return '<span class="acq-lbl acq-unavail">unavailable</span>';
+  var cls = {verified:"acq-verified", estimated:"acq-est", inferred:"acq-inf", unavailable:"acq-unavail"}[x.label] || "acq-est";
+  var v = (typeof x.value === "number") ? ("$"+x.value.toLocaleString()) : x.value;
+  return v + ' <span class="acq-lbl '+cls+'">'+(x.label||"")+'</span>';
+}
+async function _acqFetch(cn, path, opts) {
+  var token = acqToken(); if (!token) throw new Error("token required");
+  opts = opts || {}; opts.headers = Object.assign({"X-Acquisition-Token": token}, opts.headers||{});
+  var r = await fetch(PLATFORM_API + "/cases/" + encodeURIComponent(cn) + path, opts);
+  if (r.status === 401) { sessionStorage.removeItem("acq_token"); throw new Error("Bad token — re-enter and retry."); }
+  if (r.status === 503) throw new Error("Acquisition engine not configured on the server (ACQUISITION_TOKEN unset).");
+  if (!r.ok) throw new Error("HTTP " + r.status + " " + (await r.text()).slice(0,140));
+  return r.json();
+}
+async function renderAcquisition(raw) {
+  var el = document.getElementById("acq-panel");
+  var cn = _acqCaseNo(raw);
+  if (!cn) { el.innerHTML = '<div class="acq-note">No case selected.</div>'; return; }
+  el.innerHTML = '<div class="acq-note">Loading acquisition analysis…</div>';
+  var data;
+  try { data = await _acqFetch(cn, "/acquisition", {}); }
+  catch (e) { el.innerHTML = '<div class="acq-note" style="color:var(--red)">'+e.message+'</div>'
+      + '<button class="acq-btn" onclick="renderAcquisition(window._currentRawCase||{})">Retry</button>'; return; }
+  el.innerHTML = _acqHtml(cn, data);
+}
+function _decCls(d){ return {"GO":"acq-go","GO-WITH-CONDITIONS":"acq-cond","HOLD":"acq-hold","NO-GO":"acq-nogo"}[d]||"acq-hold"; }
+function _acqHtml(cn, data) {
+  var a = data.analysis, s = a.seller_net_sheet, cond = a.condition, pay = a.tax_payoff;
+  var mao = a.mao_ladder;
+  // Mission banner
+  var h = '<div class="acq-banner '+_decCls(a.decision)+'">'
+    + '<div class="acq-dec">'+a.decision+'</div>'
+    + '<div class="acq-sub">Valuation: <b>'+data.valuation_state+'</b> &middot; Mission '+a.mission_score.score
+    + (a.mission_score.provisional?" (provisional)":"") + ' &middot; Rule '+a.recommended_rule_pct.pct+' ('+a.recommended_rule_pct.tier+')</div>'
+    + (a.gates && a.gates.length ? '<div class="acq-gates">'+a.gates.map(function(g){return '<span class="acq-gate acq-g-'+g.severity+'">'+g.gate+'</span>';}).join(" ")+'</div>' : '')
+    + '</div>';
+  // Valuation + calculators
+  h += '<div class="acq-grid">';
+  h += '<div class="acq-card"><div class="acq-h">Valuation</div>'
+    + '<div class="acq-row"><span>ARV</span><span>'+_lbl(a.arv)+'</span></div>'
+    + '<div class="acq-row"><span>DCAD market (sanity only)</span><span>'+_lbl(a.market_value)+'</span></div>'
+    + '<div class="acq-row"><span>Condition</span><span>'+_lbl(cond.condition_class)+'</span></div>'
+    + '<div class="acq-row"><span>Rehab (exterior est.)</span><span>'+_lbl(cond.rehab_low)+' – '+_lbl(cond.rehab_high)+'</span></div>'
+    + '</div>';
+  h += '<div class="acq-card"><div class="acq-h">MAO ladder (ceiling — taxes/liens NOT deducted)</div>'
+    + (mao ? Object.keys(mao).map(function(k){return '<div class="acq-row"><span>'+k+'%</span><span>$'+mao[k].toLocaleString()+'</span></div>';}).join("")
+          : '<div class="acq-note">Needs a confirmed ARV.</div>')
+    + '</div>';
+  h += '<div class="acq-card"><div class="acq-h">Seller Net Sheet</div>'
+    + '<div class="acq-row"><span>Agreed price</span><span>'+_lbl(s.agreed_price)+'</span></div>'
+    + '<div class="acq-row"><span>− Tax payoff (ACT live)</span><span>'+_lbl(s.tax_payoff)+'</span></div>'
+    + '<div class="acq-row"><span>− Tax-suit attorney fees</span><span>'+_lbl(s.tax_suit_attorney_fees)+'</span></div>'
+    + '<div class="acq-row"><span>− Mowing/labor & other liens</span><span>'+_lbl(s.mowing_labor_and_other_liens)+'</span></div>'
+    + '<div class="acq-row"><span>− Seller closing</span><span>'+_lbl(s.seller_closing_costs)+'</span></div>'
+    + '<div class="acq-row acq-net"><span>Seller net</span><span>'+_lbl(s.seller_net)+'</span></div>'
+    + '<div class="acq-row"><span>Closable</span><span>'+(s.closable===true?"YES":s.closable===false?'<b style="color:var(--red)">NO — payoffs exceed price</b>':"INDETERMINATE")+'</span></div>'
+    + '</div>';
+  h += '</div>';
+  // Comp workbench
+  var comps = data.proposed_comps || [];
+  var closed = comps.filter(function(c){return c.listing_status==="closed";});
+  var pend = comps.filter(function(c){return c.listing_status==="pending";});
+  h += '<div class="acq-card"><div class="acq-h">Comp workbench '
+    + '<button class="acq-btn" onclick="acqPropose(\''+cn+'\')">Propose comps (NTREIS)</button>'
+    + '<span class="acq-note" style="margin-left:8px">Confirmed comps only drive ARV ('+data.n_confirmed_comps+' confirmed). Photos are MLS hotlinks.</span></div>';
+  if (!closed.length) h += '<div class="acq-note">No comps proposed yet.</div>';
+  closed.forEach(function(c){
+    var conf = c.confirmation;
+    var media = (function(){ try { return JSON.parse(c.media_urls||"[]"); } catch(e){ return []; } })();
+    var flags = (function(){ try { return JSON.parse(c.arms_length_flags||"[]"); } catch(e){ return []; } })();
+    h += '<div class="acq-comp'+(conf==="confirmed"?" acq-comp-on":conf==="rejected"?" acq-comp-off":"")+'">'
+      + '<div class="acq-comp-ph">'+(media.length?'<img loading="lazy" src="'+media[0]+'" alt="comp">':'<div class="acq-ph0">'+ (c.photos_count||0) +' photos</div>')+'</div>'
+      + '<div class="acq-comp-b"><div><b>'+(c.address||c.mls_id)+'</b> '+(c.same_subdivision?'<span class="acq-lbl acq-verified">same subdivision</span>':'')+'</div>'
+      + '<div class="acq-note">'+c.gla+' sqft &middot; '+c.beds+'/'+c.baths+' &middot; yr '+c.year_built+' &middot; closed '+(c.close_date||"")+' &middot; MS '+c.match_score+'</div>'
+      + '<div>close $'+(c.close_price||0).toLocaleString()+' → adjusted <b>$'+(c.adjusted_value||0).toLocaleString()+'</b>'
+      + (flags.length?' <span class="acq-lbl acq-inf">'+flags.join("; ")+'</span>':'')+'</div></div>'
+      + '<div class="acq-comp-a">'
+      + (conf==="confirmed"?'<span class="acq-lbl acq-verified">confirmed</span>'
+         : '<button class="acq-btn acq-ok" onclick="acqDecide(\''+cn+'\',\''+c.mls_id+'\',\'confirm\')">Confirm</button>')
+      + (conf==="rejected"?'<span class="acq-lbl acq-unavail">rejected</span>'
+         : '<button class="acq-btn acq-no" onclick="acqDecide(\''+cn+'\',\''+c.mls_id+'\',\'reject\')">Reject</button>')
+      + '</div></div>';
+  });
+  if (pend.length) {
+    h += '<div class="acq-h" style="margin-top:12px">Pending — directional only (NEVER in the ARV)</div>';
+    pend.forEach(function(c){
+      h += '<div class="acq-comp acq-comp-pend"><div class="acq-comp-b"><div><b>'+(c.address||c.mls_id)+'</b> <span class="acq-lbl acq-inf">pending</span></div>'
+        + '<div class="acq-note">'+c.gla+' sqft &middot; list $'+(c.list_price||0).toLocaleString()+' &middot; bracket reference only</div></div></div>';
+    });
+  }
+  h += '</div>';
+  h += '<div class="acq-note" style="margin-top:6px">Every figure labeled verified / estimated / inferred / unavailable. No offer number rests on DCAD (§5.4).</div>';
+  return h;
+}
+async function acqPropose(cn) {
+  var el = document.getElementById("acq-panel");
+  try { el.insertAdjacentHTML("afterbegin", '<div class="acq-note" id="acq-flash">Proposing comps from NTREIS…</div>');
+    await _acqFetch(cn, "/comps/propose", {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
+    await renderAcquisition(window._currentRawCase||{});
+  } catch(e){ alert("Propose failed: "+e.message); var f=document.getElementById("acq-flash"); if(f) f.remove(); }
+}
+async function acqDecide(cn, mls, action) {
+  try { await _acqFetch(cn, "/comps/"+encodeURIComponent(mls)+"/"+action, {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
+    await renderAcquisition(window._currentRawCase||{});
+  } catch(e){ alert(action+" failed: "+e.message); }
 }
 
 // ═══════════════════════════════════════════

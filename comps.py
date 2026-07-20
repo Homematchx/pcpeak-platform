@@ -68,6 +68,8 @@ COMP_CONFIG = {
 
 # ── Bridge OData client ──────────────────────────────────────────────────────────────────────────
 def _load_env(path: str = "Anthropic_API_KEY.env") -> dict:
+    """os.environ wins (Railway/shell export); the local .env file is the fallback (dev)."""
+    import os
     env = {}
     try:
         for line in open(path):
@@ -77,7 +79,57 @@ def _load_env(path: str = "Anthropic_API_KEY.env") -> dict:
                 env[k] = v
     except FileNotFoundError:
         pass
+    for k in ("NTREIS_BASE_URL", "NTREIS_SERVER_TOKEN"):
+        if os.environ.get(k):
+            env[k] = os.environ[k]
     return env
+
+
+def _parse_baths(raw) -> Optional[float]:
+    """DCAD bathrooms come as 'full/half' (e.g. '2/1' → 2.5) or blank. Lenient; None if unparseable."""
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    s = str(raw).strip()
+    if not s:
+        return None
+    m = re.match(r'^\s*(\d+)\s*/\s*(\d+)\s*$', s)
+    if m:
+        return int(m.group(1)) + 0.5 * int(m.group(2))
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def subject_from_case(case: dict) -> dict:
+    """Build a comp-engine subject from a case row + its property_intel blob (design §3.4).
+    Postal code from property_address; subdivision parsed from the DCAD legal_description."""
+    pi = case.get("property_intel")
+    if isinstance(pi, str):
+        try:
+            pi = json.loads(pi)
+        except Exception:
+            pi = {}
+    pi = pi or {}
+    addr = case.get("property_address") or ""
+    m = re.search(r'\b(\d{5})(?:-\d{4})?\b', addr)
+    legal = pi.get("legal_description") or case.get("legal_description")
+    sub = parse_subdivision(legal)
+    lot_sqft = pi.get("lot_area_sqft")
+    return {
+        "case_number": case.get("case_number"),
+        "postal_code": m.group(1) if m else None,
+        "gla": pi.get("living_area_sqft"),
+        "beds": pi.get("bedrooms"),
+        "baths": _parse_baths(pi.get("bathrooms")),
+        "year_built": pi.get("year_built") or pi.get("effective_year_built"),
+        "lot_acres": round(lot_sqft / 43560, 4) if lot_sqft else None,
+        "subdivision": sub["normalized"] if sub else None,
+        "lat": None, "lng": None,
+        "market_value": pi.get("market_value"),
+    }
 
 
 class BridgeClient:
@@ -122,6 +174,41 @@ class BridgeClient:
             "$top": str(top),
         }
         return self.query("Property", params).get("value", [])
+
+    def pending_listings(self, postal_code: str, gla_min: Optional[float] = None,
+                         gla_max: Optional[float] = None, top: int = 40) -> list:
+        """Pending / under-contract SALES — DIRECTIONAL ONLY (no close price; never in ARV math)."""
+        clauses = ["PropertyType eq 'Residential'",
+                   "(StandardStatus eq 'Pending' or StandardStatus eq 'Active Under Contract')",
+                   f"PostalCode eq '{postal_code}'"]
+        if gla_min:
+            clauses.append(f"LivingArea ge {int(gla_min)}")
+        if gla_max:
+            clauses.append(f"LivingArea le {int(gla_max)}")
+        params = {"$filter": " and ".join(clauses), "$select": ",".join(COMP_CONFIG["select_fields"]),
+                  "$top": str(top)}
+        return self.query("Property", params).get("value", [])
+
+
+def fetch_candidates(subject: dict, client: Optional["BridgeClient"] = None, since: Optional[str] = None,
+                     include_pending: bool = True) -> dict:
+    """Live-fetch normalized closed comps (+ optional directional pendings) for a subject. Returns
+    {closed:[...], pending:[...]}. Pendings carry listing_status='pending', no close_price."""
+    client = client or BridgeClient()
+    band = COMP_CONFIG["qualification"]["gla_band_pct"]
+    gla = subject.get("gla")
+    lo, hi = (gla * (1 - band), gla * (1 + band)) if gla else (None, None)
+    pc = subject.get("postal_code")
+    closed = [dict(normalize(r), listing_status="closed") for r in client.closed_sales(pc, lo, hi, since=since)] if pc else []
+    pending = []
+    if include_pending and pc:
+        for r in client.pending_listings(pc, lo, hi):
+            n = normalize(r)
+            n["listing_status"] = "pending"
+            n["close_price"] = None            # directional only — no confirmed sale price
+            n["list_price_directional"] = r.get("ListPrice")
+            pending.append(n)
+    return {"closed": closed, "pending": pending}
 
 
 # ── subdivision parsing (DCAD legal_description → NTREIS-matchable name) ──────────────────────────
