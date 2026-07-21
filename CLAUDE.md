@@ -5,6 +5,75 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-07-21
+
+**ACQUISITION INTELLIGENCE layer — BUILT, DEPLOYED, and LIVE-VERIFIED end to end.** The whole
+initiative (design → Stage 1 → Stage 2 engine → Stage 2 workbench → deploy) shipped this cycle under
+the design-doc-first / one-proven-stage-at-a-time discipline. It is a downstream READ-mostly analysis
+layer over the enrichment `property_intel` already captures — NO new court scraping. Design:
+[`docs/acquisition-intelligence-design.md`](docs/acquisition-intelligence-design.md); NTREIS Phase-0
+findings: [`docs/acquisition-ntreis-phase0.md`](docs/acquisition-ntreis-phase0.md). Files:
+`acquisition.py` (Stage-1 pure calculators/gates) + `test_acquisition.py` (104/104), `comps.py` (NTREIS
+comp engine) + `test_comps.py` (45/45 offline), `backend/main.py` (schema + endpoints) +
+`backend/test_acquisition_api.py` (24/24), the frontend `Acquisition` tab. Transaction model =
+pre-foreclosure, direct-from-owner: no §34.21 redemption (auction-only); countdown = existing
+`oos_date`/`sale_scheduled_date`; we inherit the full lien stack (title/lien discovery is the primary
+gate); heirs/estates are core pipeline.
+- **Two calculators kept STRICTLY separate.** MAO = (ARV × Rule%) − Repairs (our ceiling; taxes/liens
+  NOT deducted). Seller Net = Agreed Price − ACT live balance − tax-suit attorney fees − mowing/labor
+  liens − seller closing (rep-facing). Fatal gate: Total Payoffs > Agreed Price → cannot close. Plus a
+  `structurally_unclosable` gate (payoffs exceed MAO at every rule% → NO-GO pre-negotiation, confirmed
+  valuation only) and `identified_unquantified_lien` (a known-but-unpriced lien holds a case
+  INDETERMINATE — never a false GO).
+- **PAYOFF MODEL (corrected + deployed).** Tax payoff = the ACT live balance (`current_tax_balance`),
+  used AS-IS (already includes penalties+interest to date) — never accrued upon or fee-loaded; labeled
+  verified. §33.48 accrual is a FALLBACK estimator only (no live balance). Attorney fees a SEPARATE
+  estimated line. The frontend `calcPayoff` (Financials tab) was fixed to match (commit `f8188d5`) — it
+  had been double-counting AND passing null for the live balance. Live-verified on prod: Tryon $71,938 /
+  Grant St $152,224 as "ACT live balance (as-is) [verified]"; the Acquisition and Financials tabs now agree.
+- **VALUATION HIERARCHY (locked, §5.4).** ARV from confirmed NTREIS comps ONLY. DCAD market value is
+  NEVER a valuation source — only a sanity band + labeled-estimated triage placeholder. `valuation_state`
+  is `confirmed` only when the ARV came from human-confirmed comps; that flips the Mission Score
+  provisional→confirmed. No offer number ever rests on DCAD.
+- **NTREIS = Bridge Interactive** (`api.bridgedataoutput.com/api/v2/OData/ntreis2`, bearer token). Phase-0
+  live-verified: sold data available but `ClosePrice` ABSENT → reconstructed as
+  `NTREIS2_RATIO_ClosePrice_By_LotSizeAcres × LotSizeAcres` (exact on ListPrice; same field is the §G
+  land/teardown basis). Filter `PropertyType='Residential'` (bare Closed = leases). Photos via the `Media`
+  field (hotlinked, never stored). Propose→confirm workbench: pendings are directional-only (never in ARV).
+- **VALIDATION (proof before trust).** Golden pins reproduce the human verdicts on all three cases:
+  TX-23-00423 Tryon → GO (closed @ $108k, seller net ~$21,674), TX-25-00249 Grant St → NO-GO
+  (structurally unclosable), TX-26-01379 Ruby Faye Brown → GO-WITH-CONDITIONS held INDETERMINATE by the
+  Mesquite NF SNF LLC unquantified lien. Subdivision-aware comp selection (parse_subdivision reproduces
+  DCAD-verified Mountain Lakeview/Forest Grove/Walls H G) lands confirmed-comp ARVs near the human CMAs
+  ($219k/$253.5k/$146k vs $225k/$265k/$110-140k) — a METHOD fix, zero adjustment-knob tuning to target.
+- **DEPLOY.** feature/main/production all FF to `f8188d5`; frontend `c9adeb10…`, backend `7ef551b0…`.
+  Railway env now has ACQUISITION_TOKEN + NTREIS_BASE_URL + NTREIS_SERVER_TOKEN. Endpoints live (401 not
+  503). **Bridge-from-Railway CONFIRMED via a live authenticated propose on TX-26-01379** (real comps +
+  arm's-length flags returned through the deployed workbench). Stage 2 is CLOSED end to end.
+
+**OPEN / NEXT (do NOT start without the user raising them):**
+- **August Tryon closing — fee verification.** At TX-23-00423's August 2026 closing, capture the title
+  company's ACTUAL payoff demands. If the real §33.48 attorney fee is materially off the 20% estimate,
+  recalibrate `tax_suit_atty_fee_rate` in `ACQ_CONFIG` and RE-RUN Grant St's verdict (its NO-GO is
+  fee-sensitive on the margin).
+- **Stage 3 — UNBUILT, its own cycle when the user raises it.** Exit matrix, sensitivity/stress testing,
+  the full reweighted Mission Score (weights are tunable config with framework defaults; need sign-off +
+  `n=` display before treated as authoritative).
+- **LOGGED (investigation, no action taken): provisional ARV can SNAP to a single comp.**
+  `comps.provisional_arv` synthesizes = median of a selected set, BUT with `prefer_same_subdivision` +
+  `min_same_subdivision=1`, if exactly ONE same-subdivision comp qualifies the set is that one comp and
+  median-of-one snaps to its adjusted value (**Grant St was the live n=1 case → $253,500 = a single
+  Mountain Lakeview comp**). The **TX-26-01379 batch does NOT snap** — 24 qualified, 0 same-subdivision
+  (WALLS H G absent in NTREIS naming) → area mode → synthesized median of 5. Mitigated already
+  (provisional/triage only; confirmed ARV needs human comp confirmation; the area sanity band is always
+  shown). A single-comp ARV is inherently less robust — a Stage-3/tuning candidate (e.g. require min-N
+  for the same-subdivision path, or flag low-n ARVs). NOT changed.
+- **LOGGED (Stage-3 design question, no action): graduate the heir/estate title gate.** Today
+  `heir_estate_title` fires uniformly on estate/absentee. Consider making it GRADUATED — a soft
+  *condition* when a conveyance path is identified (a named record owner exists, the Brown pattern:
+  DCAD owner Taylor Felicia D is a concrete party to negotiate/quiet-title through), and STRICTER
+  (blocking) only when NO record owner / no path exists (true unknown-heirs). Decide during Stage 3.
+
 ## SESSION HANDOFF — 2026-07-18
 
 **REP-ASSIGNMENT correctness + SELECTION-STABILITY: a chain of frontend root causes traced (not
