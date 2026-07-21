@@ -58,6 +58,8 @@ def _stub_source(subject):
     if cn == "TX-26-01379":   # Ruby — as-is ~$133K
         return {"closed": [_comp("R1", 1000, 138500, "Lagow School", 3, 2, 1953),
                            _comp("R2", 1050, 130000, "Sunrise Heights", 2, 1, 1945)], "pending": []}
+    if cn == "TX-23-00553":   # no-zip case, recovered via city fallback
+        return {"closed": [_comp("S1", 1174, 175000, "Sunset Summit", 3, 2, 1980)], "pending": []}
     return {"closed": [], "pending": []}
 
 
@@ -87,6 +89,16 @@ def seed():
         "property_intel": _pi(market_value=143320, current_tax_balance=11437.29, living_area_sqft=1077, bedrooms=2,
             bathrooms="1/0", year_built=1947, depreciation_pct=60, actual_age=79, lot_area_sqft=5310, is_absentee=True,
             legal_description="1: WALLS H G 2: BLK B/4773 LT 8 3:", owners=[{"name": "TAYLOR FELICIA D"}])})
+    # TX-23-00553 — the live gap: case address has NO zip, but property_intel is enriched (has GLA).
+    c.post("/api/cases", json={"case_number": "TX-23-00553",
+        "property_address": "2515 West Brooklyn Avenue, Dallas, Dallas County, Texas",
+        "total_due_filing": 9000, "property_type": "real",
+        "property_intel": _pi(market_value=120000, current_tax_balance=9500, living_area_sqft=1174, bedrooms=3,
+            bathrooms="2/0", year_built=1980, depreciation_pct=35, actual_age=46, lot_area_sqft=6000,
+            legal_description="1: SUNSET SUMMIT 2: BLK G/3483 LOT 16 3:", owners=[{"name": "HERNANDEZ NORMA"}])})
+    # A case with NO locality AND no enrichment → must still fail closed (422).
+    c.post("/api/cases", json={"case_number": "TX-23-01997", "property_address": "",
+        "total_due_filing": 5000, "property_type": "real", "property_intel": _pi(market_value=None)})
     return c
 
 
@@ -152,6 +164,14 @@ def run():
     check("Ruby closability INDETERMINATE", r["analysis"]["seller_net_sheet"]["closable"] is None)
     check("Ruby verdict GO-WITH-CONDITIONS", r["decision"] == "GO-WITH-CONDITIONS")
     check("Ruby NEVER a plain GO despite confirmed valuation", r["decision"] != "GO")
+
+    # ── LOCALITY FALLBACK: a no-zip but enriched case (TX-23-00553) proposes via city, no longer 422 ──
+    r553 = c.post("/api/cases/TX-23-00553/comps/propose", headers=TOK)
+    check("no-zip enriched case proposes (city fallback) — NOT 422", r553.status_code == 200)
+    check("city-fallback propose returned closed comps", any(x["listing_status"] == "closed" for x in r553.json()["comps"]))
+    # ── still FAIL CLOSED when there is neither a locality nor a living area ──
+    r1997 = c.post("/api/cases/TX-23-01997/comps/propose", headers=TOK)
+    check("no locality + no GLA → 422 (fails closed)", r1997.status_code == 422)
 
     # ── confirmed comps are FROZEN: a later re-propose with a changed price does not move a confirmed ARV ──
     def _cheaper(subject):

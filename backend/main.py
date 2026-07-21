@@ -1432,8 +1432,10 @@ async def propose_comps(case_number: str, body: ProposeIn = ProposeIn(),
             raise HTTPException(404, f"Case {case_number} not found")
         case = dict(row)
     subject = comps.subject_from_case({**case, "property_intel": case.get("property_intel")})
-    if not subject.get("postal_code") or not subject.get("gla"):
-        raise HTTPException(422, "subject lacks postal code / living area — cannot propose comps")
+    # Locality = postal code (precise) OR city (fallback for case addresses with no zip, e.g.
+    # TX-23-00553). Fail closed only when neither a locality nor a living area is available.
+    if not (subject.get("postal_code") or subject.get("city")) or not subject.get("gla"):
+        raise HTTPException(422, "subject lacks a locality (postal code or city) or living area — cannot propose comps")
 
     if _COMP_SOURCE is not None:
         cand = _COMP_SOURCE(subject)

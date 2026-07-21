@@ -180,6 +180,66 @@ def test_provisional_arv_no_qualified():
     check("no qualified → unavailable", r["provisional_arv"] is None and r["label"] == "unavailable")
 
 
+# ── locality fallback: city when the case address has no zip (real gap — TX-23-00553) ────────────
+def test_city_from_address():
+    f = comps.city_from_address
+    check("Dallas + county", f("2515 West Brooklyn Avenue, Dallas, Dallas County, Texas") == "Dallas")
+    check("strips 'City of' + normalizes case", f("1561 Dent Street, City of Garland, Texas") == "Garland")
+    check("uppercase → title", f("2412 ARCADY DRIVE, GARLAND, TX") == "Garland")
+    check("Rowlett w/ county", f("8305 Concord Drive, City of Rowlett, Dallas County, TX") == "Rowlett")
+    check("multi-comma addr", f("4548 Chaha Road, Unit 102, Building K, City of Garland, TX") == "Garland")
+    check("two-word city", f("2457 Grant St., Grand Prairie, TX 75051-5534") == "Grand Prairie")
+    check("no city → None", comps.city_from_address("") is None and comps.city_from_address(None) is None)
+
+
+def test_subject_from_case_locality_fallback():
+    # TX-23-00553: case address has NO zip, but property_intel is enriched (has GLA + legal).
+    case = {"case_number": "TX-23-00553",
+            "property_address": "2515 West Brooklyn Avenue, Dallas, Dallas County, Texas",
+            "property_intel": '{"living_area_sqft": 1174, "market_value": 120000, '
+                              '"legal_description": "1: SUNSET SUMMIT 2: BLK G/3483 LOT 16 3:"}'}
+    s = comps.subject_from_case(case)
+    check("no zip → postal_code None", s["postal_code"] is None)
+    check("city fallback = Dallas", s["city"] == "Dallas")
+    check("GLA still from DCAD", s["gla"] == 1174)
+    check("subdivision still parsed", s["subdivision"] == "SUNSET SUMMIT")
+
+
+def test_locality_clause():
+    check("zip → PostalCode filter", comps._locality_clause("75217", "Dallas") == "PostalCode eq '75217'")
+    check("no zip → City filter", comps._locality_clause(None, "Garland") == "City eq 'Garland'")
+    raised = False
+    try:
+        comps._locality_clause(None, None)
+    except ValueError:
+        raised = True
+    check("no locality → raises (caller fails closed)", raised)
+
+
+class _FakeClient:
+    def __init__(self): self.calls = []
+    def _row(self):
+        return {"ListingId": "L1", "LivingArea": 1150, "LotSizeAcres": 0.15, "CloseDate": "2026-06-01",
+                "NTREIS2_RATIO_ClosePrice_By_LotSizeAcres": 1_500_000, "BedroomsTotal": 3,
+                "BathroomsTotalInteger": 2, "YearBuilt": 1970, "SubdivisionName": "Sunset Summit"}
+    def closed_sales(self, postal_code=None, city=None, gla_min=None, gla_max=None, since=None, top=100):
+        self.calls.append(("closed", postal_code, city)); return [self._row()]
+    def pending_listings(self, postal_code=None, city=None, gla_min=None, gla_max=None, top=40):
+        self.calls.append(("pending", postal_code, city)); return []
+
+
+def test_fetch_candidates_uses_city_when_no_zip():
+    subj = dict(postal_code=None, city="Dallas", gla=1174)
+    fc = _FakeClient()
+    res = comps.fetch_candidates(subj, client=fc)
+    check("query used city (not zip) as locality", ("closed", None, "Dallas") in fc.calls)
+    check("returns a normalized closed comp via city fallback", len(res["closed"]) == 1 and res["closed"][0]["gla"] == 1150)
+    # no locality at all → nothing queried (upstream fails closed)
+    fc2 = _FakeClient()
+    res2 = comps.fetch_candidates(dict(postal_code=None, city=None, gla=1000), client=fc2)
+    check("no locality → no query, empty result", res2["closed"] == [] and fc2.calls == [])
+
+
 if __name__ == "__main__":
     for name, fn in sorted((k, v) for k, v in globals().items() if k.startswith("test_") and callable(v)):
         fn()

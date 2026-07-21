@@ -103,9 +103,26 @@ def _parse_baths(raw) -> Optional[float]:
         return None
 
 
+def city_from_address(addr: Optional[str]) -> Optional[str]:
+    """Normalize the city from a case (petition) address — the LOCALITY FALLBACK when the address has
+    no postal code. NTREIS `City` is case-sensitive Title Case ('Garland', not 'garland'/'CITY OF
+    GARLAND'). Returns None when no city is parseable. (NOTE: the DCAD situs address — which carries a
+    zip — is NOT stored in property_intel, so the city here comes from the case address, not DCAD.)"""
+    if not addr:
+        return None
+    m = re.search(r',\s*([A-Za-z][A-Za-z .]+?)\s*,\s*(?:Dallas County|Texas|TX)\b', addr, re.I)
+    if not m:
+        m = re.search(r'(?:CITY OF)\s+([A-Za-z][A-Za-z .]+?)\s*,', addr, re.I)
+    if not m:
+        return None
+    city = re.sub(r'^\s*city of\s+', '', m.group(1), flags=re.I).strip()
+    return city.title() if city else None
+
+
 def subject_from_case(case: dict) -> dict:
     """Build a comp-engine subject from a case row + its property_intel blob (design §3.4).
-    Postal code from property_address; subdivision parsed from the DCAD legal_description."""
+    Locality = postal code from property_address when present, else the city (fallback). GLA is the
+    DCAD living area; subdivision is parsed from the DCAD legal_description."""
     pi = case.get("property_intel")
     if isinstance(pi, str):
         try:
@@ -121,6 +138,7 @@ def subject_from_case(case: dict) -> dict:
     return {
         "case_number": case.get("case_number"),
         "postal_code": m.group(1) if m else None,
+        "city": city_from_address(addr),                 # locality fallback when no zip
         "gla": pi.get("living_area_sqft"),
         "beds": pi.get("bedrooms"),
         "baths": _parse_baths(pi.get("bathrooms")),
@@ -130,6 +148,16 @@ def subject_from_case(case: dict) -> dict:
         "lat": None, "lng": None,
         "market_value": pi.get("market_value"),
     }
+
+
+def _locality_clause(postal_code: Optional[str], city: Optional[str]) -> str:
+    """OData locality filter: PostalCode when known (precise), else City (broader fallback for case
+    addresses that carry no zip). Raises if neither — the caller must fail closed before this."""
+    if postal_code:
+        return f"PostalCode eq '{postal_code}'"
+    if city:
+        return f"City eq '{city}'"
+    raise ValueError("no locality (postal_code or city) for the comp query")
 
 
 class BridgeClient:
@@ -155,12 +183,12 @@ class BridgeClient:
         with urllib.request.urlopen(req, timeout=60, context=self._ctx) as r:
             return json.loads(r.read().decode("utf-8", "replace"))
 
-    def closed_sales(self, postal_code: str, gla_min: Optional[float] = None,
-                     gla_max: Optional[float] = None, since: Optional[str] = None,
-                     top: int = 100) -> list:
-        """Closed SFR SALES (PropertyType='Residential' — excludes leases, per Phase 0)."""
-        clauses = ["PropertyType eq 'Residential'", "StandardStatus eq 'Closed'",
-                   f"PostalCode eq '{postal_code}'"]
+    def closed_sales(self, postal_code: Optional[str] = None, city: Optional[str] = None,
+                     gla_min: Optional[float] = None, gla_max: Optional[float] = None,
+                     since: Optional[str] = None, top: int = 100) -> list:
+        """Closed SFR SALES (PropertyType='Residential' — excludes leases, per Phase 0). Locality =
+        PostalCode when known, else City (broader — fallback for case addresses with no zip)."""
+        clauses = ["PropertyType eq 'Residential'", "StandardStatus eq 'Closed'", _locality_clause(postal_code, city)]
         if gla_min:
             clauses.append(f"LivingArea ge {int(gla_min)}")
         if gla_max:
@@ -175,12 +203,13 @@ class BridgeClient:
         }
         return self.query("Property", params).get("value", [])
 
-    def pending_listings(self, postal_code: str, gla_min: Optional[float] = None,
-                         gla_max: Optional[float] = None, top: int = 40) -> list:
+    def pending_listings(self, postal_code: Optional[str] = None, city: Optional[str] = None,
+                         gla_min: Optional[float] = None, gla_max: Optional[float] = None,
+                         top: int = 40) -> list:
         """Pending / under-contract SALES — DIRECTIONAL ONLY (no close price; never in ARV math)."""
         clauses = ["PropertyType eq 'Residential'",
                    "(StandardStatus eq 'Pending' or StandardStatus eq 'Active Under Contract')",
-                   f"PostalCode eq '{postal_code}'"]
+                   _locality_clause(postal_code, city)]
         if gla_min:
             clauses.append(f"LivingArea ge {int(gla_min)}")
         if gla_max:
@@ -199,10 +228,14 @@ def fetch_candidates(subject: dict, client: Optional["BridgeClient"] = None, sin
     gla = subject.get("gla")
     lo, hi = (gla * (1 - band), gla * (1 + band)) if gla else (None, None)
     pc = subject.get("postal_code")
-    closed = [dict(normalize(r), listing_status="closed") for r in client.closed_sales(pc, lo, hi, since=since)] if pc else []
+    city = subject.get("city")
+    if not (pc or city):                       # no locality at all → nothing to query (fail closed upstream)
+        return {"closed": [], "pending": []}
+    closed = [dict(normalize(r), listing_status="closed")
+              for r in client.closed_sales(postal_code=pc, city=city, gla_min=lo, gla_max=hi, since=since)]
     pending = []
-    if include_pending and pc:
-        for r in client.pending_listings(pc, lo, hi):
+    if include_pending:
+        for r in client.pending_listings(postal_code=pc, city=city, gla_min=lo, gla_max=hi):
             n = normalize(r)
             n["listing_status"] = "pending"
             n["close_price"] = None            # directional only — no confirmed sale price
