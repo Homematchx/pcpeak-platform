@@ -73,6 +73,15 @@ gate); heirs/estates are core pipeline.
   *condition* when a conveyance path is identified (a named record owner exists, the Brown pattern:
   DCAD owner Taylor Felicia D is a concrete party to negotiate/quiet-title through), and STRICTER
   (blocking) only when NO record owner / no path exists (true unknown-heirs). Decide during Stage 3.
+- **LOGGED (measure-then-decide, no action — same treatment as the petition_href gap): 60 cases lack
+  DCAD living area.** The propose city-fallback (commit `5f5e2ca`, DEPLOYED) recovered ~20 no-zip cases
+  but 60 of the 81 that would 422 have NO `property_intel.living_area_sqft` (and `total_area_sqft` does
+  NOT rescue any — 0 have it), so they still fail closed (a subject needs a GLA). INVESTIGATE whether
+  that's FAILED enrichment worth a guarded re-scrape backfill (like `payment_backfill.py` /
+  `resolve_backlog.py`) or LEGITIMATELY no-GLA properties (vacant land, teardowns — where a §G land/
+  teardown valuation, not GLA-based ARV, is the right path anyway). MEASURE first (cluster the 60 by
+  city/account_status/improvement_value: near-zero improvement_value ⇒ likely land/legit; suburban/
+  out-of-county ⇒ likely the known enrichment gaps), THEN decide. No action until raised.
 
 ## SESSION HANDOFF — 2026-07-18
 
