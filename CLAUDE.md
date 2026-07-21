@@ -82,6 +82,19 @@ gate); heirs/estates are core pipeline.
   teardown valuation, not GLA-based ARV, is the right path anyway). MEASURE first (cluster the 60 by
   city/account_status/improvement_value: near-zero improvement_value ⇒ likely land/legit; suburban/
   out-of-county ⇒ likely the known enrichment gaps), THEN decide. No action until raised.
+- **LOGGED (Stage-3 scope, no action) — the APPRAISER-GRADE gap list.** Four items that complete the
+  "#1-appraiser standard" the comp engine was specified to; they feed the Mission Score valuation
+  component. (1) **Bracketing analysis** — confirm the subject is bracketed by comps above AND below on
+  price/GLA, with explicit `can't-bracket` flags when it isn't (all comps above, or all below). (2)
+  **Per-comp adjustment GRID in the workbench** — display the itemized line items, not just the adjusted
+  total. NOTE: the data already exists — `comps.adjust()` returns `adjustment_lines` (per-knob $) and it's
+  stored in the comp's `adjustment`; this is a UI/display addition, not new computation. (3) **Graduated
+  ARV confidence score** from comp count / recency / adjustment magnitude / bracketing, feeding the
+  Mission Score `valuation_confidence` (today it's None-until-confirmed then a flat 85; the raw material —
+  `selection_mode`, `n_same_subdivision`, `area_sanity_band`, `same_vs_area_divergence_pct` — already
+  comes out of `provisional_arv`, just not synthesized into a score). (4) **Market-conditions time
+  adjustment** for older comps (currently recency only gates qualification; no $ time-adjustment is
+  applied). Build during the Stage-3 cycle when raised.
 
 ## SESSION HANDOFF — 2026-07-18
 
