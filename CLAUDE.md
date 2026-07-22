@@ -82,19 +82,22 @@ gate); heirs/estates are core pipeline.
   teardown valuation, not GLA-based ARV, is the right path anyway). MEASURE first (cluster the 60 by
   city/account_status/improvement_value: near-zero improvement_value ⇒ likely land/legit; suburban/
   out-of-county ⇒ likely the known enrichment gaps), THEN decide. No action until raised.
-- **LOGGED (Stage-3 scope, no action) — the APPRAISER-GRADE gap list.** Four items that complete the
-  "#1-appraiser standard" the comp engine was specified to; they feed the Mission Score valuation
-  component. (1) **Bracketing analysis** — confirm the subject is bracketed by comps above AND below on
-  price/GLA, with explicit `can't-bracket` flags when it isn't (all comps above, or all below). (2)
-  **Per-comp adjustment GRID in the workbench** — display the itemized line items, not just the adjusted
-  total. NOTE: the data already exists — `comps.adjust()` returns `adjustment_lines` (per-knob $) and it's
-  stored in the comp's `adjustment`; this is a UI/display addition, not new computation. (3) **Graduated
-  ARV confidence score** from comp count / recency / adjustment magnitude / bracketing, feeding the
-  Mission Score `valuation_confidence` (today it's None-until-confirmed then a flat 85; the raw material —
-  `selection_mode`, `n_same_subdivision`, `area_sanity_band`, `same_vs_area_divergence_pct` — already
-  comes out of `provisional_arv`, just not synthesized into a score). (4) **Market-conditions time
-  adjustment** for older comps (currently recency only gates qualification; no $ time-adjustment is
-  applied). Build during the Stage-3 cycle when raised.
+- **LOGGED (Stage-3 scope, no action) — the CONFIRMED OUTPUT AS AN APPRAISAL REPORT** (supersedes /
+  reframes the earlier four appraiser-grade items into ONE report-shaped deliverable). The confirmed
+  acquisition output must read like an appraisal report whose purpose is minimizing PC Peak's RISK, the
+  way an appraisal minimizes a lender's. Four concrete parts: (1) **Tiered/capped propose pool** — the
+  proposed comps sectioned by MatchScore into strong/weak, weak collapsed by default, so it reads as comp
+  SELECTION not a dump. (2) **Reconciled 3–6 comp set** — confirming builds toward a 3–6 comp set;
+  display the confirmed set's RANGE, SPREAD, and MEDIAN as a reconciliation line. (3) **Bracketing check**
+  on the confirmed set with an explicit `can't-bracket` flag (subject bracketed above AND below on
+  price/GLA, or flag when not). (4) **Per-comp adjustment GRID at confirm time** — show the itemized line
+  items on confirm so the click is an AUDIT, not trust (the data already exists: `comps.adjust()` returns
+  `adjustment_lines`). Market-conditions time-adjustment for older comps folds in here. Build during the
+  Stage-3 cycle. FLEET STATIC-FIRE (2026-07-21, read-only, changed nothing) quantified two motivations:
+  the single-comp SNAP hits **17/41 (41%) of same-subdivision provisional ARVs** (incl. high-value ones
+  — TX-25-00497 $533k @ n=1), and **20 cases (9%) rest on the broad city-fallback pool** — both are why
+  the reconciliation-line + bracketing + n= display matter. (Cold fleet verdicts: 85% HOLD, 15%
+  GO-WITH-CONDITIONS via the substantive heir gate, GO=0/NO-GO=0 — the decision-table fix behaving.)
 
 ## SESSION HANDOFF — 2026-07-18
 
