@@ -5,6 +5,65 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-07-21 (continued — post-Stage-2 hardening + fleet static-fire)
+
+Everything here is AFTER the Stage-2-close handoff (immediately below, which covers the full
+Acquisition Intelligence build). The layer is LIVE and was hardened through additional deploys; a
+fleet-wide static-fire then validated its behavior at scale. **Current deployed state:
+feature/main/production all FF to `be66c5e`** — `acquisition.py` `f060600c`, `backend/main.py`
+`7919141a`, `comps.py` `7e4ca32f`, `frontend/index.html` `c9adeb10`. All acquisition suites green
+(`test_acquisition` 116/116, `test_comps` 62/62, `backend/test_acquisition_api` 31/31, regressions green).
+
+**Shipped + deployed after Stage-2 close:**
+- **calcPayoff fix (`f8188d5`).** Financials-tab tax payoff = ACT live balance AS-IS (was fee-loaded AND
+  passed null for the live balance) — now matches `acquisition.py`; the Acquisition and Financials tabs
+  agree. Live-verified (Tryon $71,938 / Grant St $152,224).
+- **City locality fallback (`5f5e2ca`).** propose 422'd on 37% of cases (81/220). `property_intel` stores
+  NO DCAD situs/zip anywhere, so the subject-builder now derives the CITY from the case address
+  (normalized Title Case; NTREIS `City` is case-SENSITIVE) and the comp query uses PostalCode else City.
+  Recovered ~20 no-zip-but-enriched cases (TX-23-00553 → 'Dallas'); the 60 no-GLA cases correctly still
+  fail closed. City-wide = broader/less precise (provisional/triage). Live-verified.
+- **Decision-table drift fix + GRADUATED HEIR GATE + 0-photo block (`be66c5e`) — LIVE VERDICT SEMANTICS.**
+  A provisional/unconfirmed valuation NO LONGER lifts a case out of HOLD (§5.4 — provisional is
+  triage-only). Gate severities regrouped `fatal|substantive|generic`; table = fatal→NO-GO,
+  substantive→GO-WITH-CONDITIONS (regardless of valuation), confirmed valuation→GO/GO-WITH-CONDITIONS,
+  else→HOLD. The graduated heir gate (a logged Stage-3 item, DELIVERED EARLY): `heir_estate_title` is
+  substantive only on a real owner-mismatch (`owner_defendant_mismatch` — DCAD owner-of-record a
+  differently-named party than the defendant; name-token overlap, noise-word aware); absentee/estate
+  without a mismatch = generic non-lifting `estate_absentee_signal`. Added `defendant` to CaseInput +
+  backend `_case_input`. Resolved the TX-23-00553 contradiction as case (b): its heir flag is a GENUINE
+  owner-mismatch (BACA NORMA ESTELA ET AL ≠ Pauline Hernandez) → GO-WITH-CONDITIONS is its correct verdict
+  regardless of valuation; the pre-propose HOLD was the bug. 0-photo comps BLOCKED on confirm (422,
+  mandatory-photo rule §6.3). Golden pins UNCHANGED (Tryon GO / Grant NO-GO / Ruby GO-WITH-CONDITIONS);
+  00553 + a provisional-alone→HOLD case explicitly pinned.
+
+**FLEET STATIC-FIRE (read-only, changed NOTHING) — full report:**
+[`docs/fleet-static-fire-2026-07-21.md`](docs/fleet-static-fire-2026-07-21.md). Cold analysis over all
+220 cases: verdicts **85% HOLD / 15% GO-WITH-CONDITIONS / GO=0 / NO-GO=0** (decision-table fix behaving —
+no false GO is structurally possible cold); graduated heir gate fires **15%** (well-calibrated, not a
+suspicious majority); ARV modes same-subdiv 19% / area 38% / city-fallback 9% / none 35%. Two quantified
+anomalies (both = logged Stage-3 items): single-comp SNAP = **17/41 (41%)** of same-subdiv provisional
+ARVs (incl. $533k @ n=1); city-fallback broad = 20 (9%).
+
+**PENDING (do NOT start without the user raising them):**
+- **60-no-GLA measurement — RUNNING IN ITS OWN SESSION** (task chip started). 60 cases lack DCAD
+  `living_area_sqft` so still 422 on propose after the city fallback. Measure-then-decide: failed
+  enrichment (guarded re-scrape backfill, `payment_backfill.py`/`resolve_backlog.py` pattern) vs
+  legit no-GLA land/teardown (→ §G land valuation). Fold that session's result in when it lands.
+- **Stage 3 — UNBUILT, its own cycle when raised.** Reframed around the **CONFIRMED OUTPUT AS AN
+  APPRAISAL REPORT** (supersedes the four appraiser-grade items): (1) tiered/capped propose pool by
+  MatchScore (weak collapsed) = selection not a dump; (2) reconciled 3–6 comp set → range/spread/median
+  reconciliation line; (3) bracketing check + explicit can't-bracket flag; (4) per-comp adjustment grid
+  at confirm = audit not trust. Time-adjustment folds in. Plus exit matrix, sensitivity, full reweighted
+  Mission Score. The fleet static-fire quantified why the reconciliation line + `n=` display matter (41%
+  single-comp snap).
+- **August Tryon closing — fee verification.** At TX-23-00423's Aug 2026 closing, capture the title
+  company's ACTUAL payoff demands; if the real §33.48 attorney fee is materially off the 20% estimate,
+  recalibrate `tax_suit_atty_fee_rate` in `ACQ_CONFIG` and RE-RUN Grant St's verdict (its NO-GO is
+  fee-sensitive on the margin).
+- **Branch:** all work on `claude/remove-analyze-with-ai-0vu5i9`; feature is ahead of main/production by
+  DOC-ONLY commits (fleet report + the Stage-3/60-GLA logs) — they ride to prod on the next code deploy.
+
 ## SESSION HANDOFF — 2026-07-21
 
 **ACQUISITION INTELLIGENCE layer — BUILT, DEPLOYED, and LIVE-VERIFIED end to end.** The whole
