@@ -61,8 +61,27 @@ ARVs (incl. $533k @ n=1); city-fallback broad = 20 (9%).
   company's ACTUAL payoff demands; if the real §33.48 attorney fee is materially off the 20% estimate,
   recalibrate `tax_suit_atty_fee_rate` in `ACQ_CONFIG` and RE-RUN Grant St's verdict (its NO-GO is
   fee-sensitive on the margin).
+- **LOGGED (Stage-3 candidate, no action) — a 'provisionally unclosable' ADVISORY flag.** The fleet
+  static-fire's NO-GO=0 cold is CORRECT — `structurally_unclosable` is confirmed-valuation-gated so it
+  never false-kills a deal on a noisy provisional ARV — but it means cold triage cannot surface an
+  arithmetic-dead deal (provisional ARV fails every MAO rung). Candidate: a TRIAGE MARKER (never a
+  verdict, never NO-GO) that flags "provisionally unclosable" when the provisional ARV can't clear the
+  payoffs at any rule%, so the fleet view can prioritize; the actual NO-GO stays confirmed-valuation-
+  gated. Decide during Stage 3.
+- **LOGGED (enrichment gap, no action) — owner-of-record coverage is the THIRD enrichment-gap figure.**
+  The heir gate can only fire where DCAD owner data exists: **131/220 (60%)**, so **89/220 (40%) of the
+  fleet is BLIND to the substantive owner-mismatch check** (defaults to non-lifting → HOLD). Track it
+  alongside the other two enrichment gaps surfaced by the fleet static-fire: **no-GLA 60**, **no-locality
+  61**, **no-DCAD-owner-of-record 89 (40%)**. The 60-no-GLA measurement session covers the first;
+  owner-of-record + locality coverage are candidates for the same measure-then-decide backfill treatment.
 - **Branch:** all work on `claude/remove-analyze-with-ai-0vu5i9`; feature is ahead of main/production by
-  DOC-ONLY commits (fleet report + the Stage-3/60-GLA logs) — they ride to prod on the next code deploy.
+  DOC-ONLY commits (fleet report + the Stage-3/60-GLA/coverage logs) — they ride to prod on the next
+  code deploy.
+
+**SESSION DONE (2026-07-21).** Acquisition Intelligence is built, deployed (`be66c5e`), live-verified,
+and fleet-validated; the corrections above are all shipped; every remaining item is LOGGED and
+explicitly gated on the user raising it. Nothing is mid-flight in this session (the 60-no-GLA
+measurement runs in its own session).
 
 ## SESSION HANDOFF — 2026-07-21
 

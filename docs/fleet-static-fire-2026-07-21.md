@@ -134,6 +134,16 @@ Two checks were requested — *any GO with thin support*, and *any gate firing o
    provisional/triage; the bracketing + reconciliation display should make its breadth visible.
 5. **35% of the fleet can't produce an ARV** at all (mostly the 60 no-GLA cases) — sequenced under the
    separate 60-no-GLA measure-then-decide follow-up (enrichment backfill vs. land/teardown routing).
+6. **NO-GO=0 cold is correct but leaves a triage blind spot.** `structurally_unclosable` is
+   confirmed-valuation-gated (so it never false-kills a deal on a noisy provisional ARV) — but that means
+   cold triage can't surface an *arithmetic-dead* deal (provisional ARV failing every MAO rung).
+   Stage-3 candidate: a **"provisionally unclosable" advisory flag** — a triage marker only, never a
+   verdict, never NO-GO — so the fleet view can prioritize while the actual NO-GO stays confirmed-gated.
+7. **Owner-of-record coverage is a third enrichment gap.** The heir gate only fires where DCAD owner data
+   exists — **131/220 (60%)** — so **89/220 (40%) of the fleet is blind to the substantive owner-mismatch
+   check** and defaults to non-lifting (HOLD). The three enrichment-gap figures from this run:
+   **no-GLA 60 · no-locality 61 · no-DCAD-owner-of-record 89 (40%)**. The first is under the 60-no-GLA
+   session; the other two are candidates for the same measure-then-decide backfill.
 
 ## Reproduce
 
