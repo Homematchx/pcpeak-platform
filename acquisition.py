@@ -23,6 +23,7 @@ ARV is Stage 2 and is gated on this stage validating against the golden cases.
 from __future__ import annotations
 
 import datetime
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -136,6 +137,7 @@ class CaseInput:
     oos_date: Optional[str] = None
     sale_scheduled_date: Optional[str] = None
     owner_of_record: Optional[str] = None         # DCAD current owner (may differ from defendant → heir)
+    defendant: Optional[str] = None               # the sued party; owner_of_record ≠ defendant = title question
 
 
 @dataclass
@@ -344,37 +346,67 @@ def seller_net_sheet(case: CaseInput, acq: AcquisitionInputs, tax_pay: dict) -> 
     }
 
 
-# ── deal-killer gates (fatal overrides — framework §XVIII, pre-foreclosure subset) ────────────────
+# Gate severity model (design §7, decision-table §7):
+#   fatal       → NO-GO (overrides everything)
+#   substantive → an IDENTIFIED condition that shapes a real conditional verdict (a named owner-mismatch
+#                 to convey through, an identified-but-unpriced lien). LIFTS to GO-WITH-CONDITIONS
+#                 regardless of valuation state (the Ruby / TX-23-00553 pattern).
+#   generic     → a "still-gathering / soft-signal" state (liens not yet entered, absentee/estate with
+#                 NO owner-mismatch, unconfirmed property type). Does NOT by itself lift out of HOLD;
+#                 with a CONFIRMED valuation it becomes a listed condition (GO-WITH-CONDITIONS).
+_NAME_NOISE = {"ET", "AL", "ETAL", "ESTATE", "EST", "OF", "HEIRS", "HEIR", "DEVISEE", "DECEASED", "THE",
+               "AND", "LIFE", "JR", "SR", "III", "LLC", "INC", "TRUST", "TRUSTEE", "AKA", "DBA"}
+
+
+def _name_tokens(name: Optional[str]) -> set:
+    if not name:
+        return set()
+    return {t for t in re.findall(r"[A-Za-z]{2,}", name.upper()) if t not in _NAME_NOISE and len(t) >= 3}
+
+
+def owner_defendant_mismatch(case: CaseInput) -> bool:
+    """SUBSTANTIVE title question (the graduated heir gate): the DCAD owner-of-record is a DIFFERENT
+    named party than the sued defendant — an identified counterpart to convey / quiet-title through
+    (Ruby: TAYLOR FELICIA D ≠ Ruby Faye Brown; TX-23-00553: BACA NORMA ESTELA ≠ Pauline Hernandez).
+    True only when BOTH are named and share NO significant name token; a shared token = same party.
+    Absentee/estate language WITHOUT such a mismatch is a generic soft signal, not this."""
+    o, d = _name_tokens(case.owner_of_record), _name_tokens(case.defendant)
+    if not o or not d:
+        return False
+    return o.isdisjoint(d)
+
+
 def deal_gates(case: CaseInput, acq: AcquisitionInputs, seller: dict) -> list:
     gates = []
     if case.property_type == "personal":
         gates.append({"gate": "bpp", "severity": "fatal", "detail": "business personal property — not a real-estate deal"})
     if case.property_type == "unknown":
-        gates.append({"gate": "property_type_unknown", "severity": "hold", "detail": "docket Comment missing — confirm real vs personal before analysis"})
+        gates.append({"gate": "property_type_unknown", "severity": "generic", "detail": "docket Comment missing — confirm real vs personal before analysis"})
     if seller["gate"] == "fatal_negative_seller_net":
         gates.append({"gate": "unclosable", "severity": "fatal",
                       "detail": "Total payoffs exceed agreed price — seller nets negative, deal cannot close"})
-    # Identified-but-unquantified lien (e.g. a recorded LLC interest with no dollar figure): a HARD
-    # INDETERMINATE hold. The engine must NEVER emit GO while a known lien has no quantified amount.
+    # Identified-but-unquantified lien (e.g. a recorded LLC interest with no dollar figure): SUBSTANTIVE
+    # — a specific instrument to quantify. The engine must NEVER emit GO while a known lien is unpriced.
     unquantified = [l for l in (acq.lien_stack or []) if l.get("amount") is None]
     if unquantified:
         holders = "; ".join(l.get("holder", "unknown holder") for l in unquantified)
-        gates.append({"gate": "identified_unquantified_lien", "severity": "blocking",
+        gates.append({"gate": "identified_unquantified_lien", "severity": "substantive",
                       "detail": f"Identified but UNQUANTIFIED lien/interest ({holders}) — quantify the instrument "
                                 f"before any GO; closability INDETERMINATE until then"})
     elif acq.lien_status == "unavailable":
-        gates.append({"gate": "lien_discovery_required", "severity": "blocking",
-                      "detail": "Lien stack unknown — closability INDETERMINATE until title/lien discovery (design §5.3, OPEN #1)"})
-    if case.owner_of_record and _looks_like_heir_mismatch(case):
-        gates.append({"gate": "heir_estate_title", "severity": "condition",
-                      "detail": f"DCAD owner '{case.owner_of_record}' differs from the defendant — likely heir/estate; confirm who can convey"})
+        gates.append({"gate": "lien_discovery_required", "severity": "generic",
+                      "detail": "Lien stack unknown — title/lien discovery not yet done (design §5.3, OPEN #1)"})
+    # Heir/estate title — GRADUATED (minimal Stage-3 graduated gate). A real owner-mismatch (named
+    # counterpart) is SUBSTANTIVE and lifts; absentee/estate language without a mismatch is a GENERIC
+    # soft signal that does not lift out of HOLD on its own.
+    if owner_defendant_mismatch(case):
+        gates.append({"gate": "heir_estate_title", "severity": "substantive",
+                      "detail": f"DCAD owner '{case.owner_of_record}' differs from the defendant "
+                                f"'{case.defendant}' — identified conveyance-path/title question; confirm who can convey"})
+    elif (case.estate or case.is_absentee) and case.owner_of_record:
+        gates.append({"gate": "estate_absentee_signal", "severity": "generic",
+                      "detail": "Estate/absentee signal (no confirmed owner-mismatch) — soft note; verify who conveys"})
     return gates
-
-
-def _looks_like_heir_mismatch(case: CaseInput) -> bool:
-    # Best-effort signal only; real determination is a title question. Flag when we already know it's
-    # an estate/absentee AND we have an owner-of-record to reconcile against the seller party.
-    return bool(case.estate or case.is_absentee)
 
 
 def structural_unclosability(case: CaseInput, acq: AcquisitionInputs, mao: dict, payoff: dict) -> Optional[dict]:
@@ -465,20 +497,24 @@ def analyze(case: CaseInput, acq: AcquisitionInputs, as_of: Optional[datetime.da
         components["margin_strength"] = max(0, min(100, round(equity / acq.arv * 200))) if acq.arv else None
     ms = mission_score(components)
 
-    # Decision (design §7). Precedence: a fatal gate overrides everything; a blocking gate or a
-    # provisional valuation can NEVER be a plain GO (design §5.4 / the INDETERMINATE-never-false-GO
-    # rule); GO requires a CONFIRMED valuation, no fatal/blocking gates, and no unresolved conditions.
-    blocking = any(g["severity"] in ("blocking", "hold") for g in gates)
-    conditions = any(g["severity"] == "condition" for g in gates)
-    provisional_valuation = acq.arv_label != VERIFIED
+    # Decision table (design §7, corrected 2026-07-21). A PROVISIONAL/unconfirmed valuation never by
+    # itself lifts a case out of HOLD (design §5.4 — provisional is triage-only, never trusted). The
+    # ONLY things that lift out of HOLD are: a fatal gate (→ NO-GO), a SUBSTANTIVE identified condition
+    # (→ GO-WITH-CONDITIONS regardless of valuation — Ruby's unquantified lien, TX-23-00553's owner-
+    # mismatch), or a CONFIRMED valuation. A GENERIC gate (liens-not-yet-entered, absentee/estate with
+    # no mismatch) is a listed condition only once the valuation is confirmed. GO requires a confirmed
+    # valuation with nothing outstanding.
+    substantive = any(g["severity"] == "substantive" for g in gates)
+    generic = any(g["severity"] == "generic" for g in gates)
+    confirmed_valuation = acq.arv is not None and acq.arv_label == VERIFIED
     if fatal:
         decision = "NO-GO"
-    elif acq.arv is None:
-        decision = "HOLD"                    # no valuation to even shape a verdict
-    elif blocking or provisional_valuation or conditions:
-        decision = "GO-WITH-CONDITIONS"      # economically plausible but gated; NEVER a plain GO
+    elif substantive:
+        decision = "GO-WITH-CONDITIONS"      # an identified condition — lifts regardless of valuation
+    elif confirmed_valuation:
+        decision = "GO-WITH-CONDITIONS" if generic else "GO"
     else:
-        decision = "GO"
+        decision = "HOLD"                    # unconfirmed valuation + only generic/no conditions
 
     return {
         "case_number": case.case_number,

@@ -40,13 +40,15 @@ TRYON = CaseInput(
     actual_age=43, year_built=1983, distress_level="high",
     distress_signals=["depreciation", "no_homestead", "payment_gap"], no_homestead=True,
     property_type="real", case_track="dismissed_owing", owner_of_record="TRYON CHARLIE B",
+    defendant="Charlie B. Tryon",  # same party as owner → no mismatch
 )
 RUBY = CaseInput(
     case_number="TX-26-01379", market_value=143320, owed=11437.29, total_due_filing=11437.29,
     filed_date="2026-07-06", judgment_date=None, living_area_sqft=1077, depreciation_pct=60,
     actual_age=79, year_built=1947, distress_level="high",
     distress_signals=["high_depreciation", "no_homestead"], no_homestead=True, is_absentee=True,
-    property_type="real", case_track=None, owner_of_record="TAYLOR FELICIA D",  # ≠ defendant → heir
+    property_type="real", case_track=None, owner_of_record="TAYLOR FELICIA D",
+    defendant="Ruby Faye Brown",  # owner ≠ defendant → substantive heir mismatch
 )
 GRANT = CaseInput(
     case_number="TX-25-00249", market_value=232800, owed=152224.40, total_due_filing=80583.24,
@@ -54,6 +56,7 @@ GRANT = CaseInput(
     actual_age=48, year_built=1978, distress_level="high",
     distress_signals=["depreciation", "no_homestead", "payment_gap"], no_homestead=True,
     property_type="real", case_track="judged_pending", owner_of_record="MIDDLETON MICHAEL",
+    defendant="Michael Middleton",  # same party as owner → no mismatch
 )
 
 
@@ -209,7 +212,7 @@ def test_golden_derivable():
         check(f"{case.case_number} condition class", r["condition"]["condition_class"]["value"] == exp_cls, r["condition"]["condition_class"]["value"])
         check(f"{case.case_number} rehab base", r["condition"]["rehab_base"]["value"] == exp_rehab, r["condition"]["rehab_base"]["value"])
         check(f"{case.case_number} lien gate blocking", any(g["gate"] == "lien_discovery_required" for g in r["gates"]))
-        check(f"{case.case_number} not a GO without confirmed comps", r["decision"] in ("HOLD", "NO-GO"))
+        check(f"{case.case_number} never a plain GO without confirmed comps", r["decision"] != "GO")
         check(f"{case.case_number} valuation provisional", r["valuation_state"] == "provisional")
 
 
@@ -296,6 +299,53 @@ def test_pin_ruby_held_indeterminate_never_go():
     # And if that lien were later quantified low + ARV confirmed, it could promote — sanity that the
     # ONLY thing blocking a clean path here is the lien + provisional valuation, not a fatal flaw.
     check("Ruby not fatal", not any(g["severity"] == "fatal" for g in r["gates"]))
+
+
+# ── GRADUATED heir/estate gate + decision-table drift fix (2026-07-21) ────────────────────────────
+TX_00553 = CaseInput(  # the live gap case: no-zip (city fallback) AND a real owner-mismatch
+    case_number="TX-23-00553", market_value=120000, owed=9500, total_due_filing=9000,
+    living_area_sqft=1174, depreciation_pct=35, actual_age=46, year_built=1980, distress_level="high",
+    distress_signals=["no_homestead"], no_homestead=True, is_absentee=True, estate=True,
+    property_type="real", owner_of_record="BACA NORMA ESTELA ET AL &", defendant="Pauline Hernandez",
+)
+
+
+def test_owner_defendant_mismatch():
+    check("Ruby owner≠defendant (TAYLOR vs BROWN) → mismatch", A.owner_defendant_mismatch(RUBY) is True)
+    check("00553 owner≠defendant (BACA vs HERNANDEZ) → mismatch", A.owner_defendant_mismatch(TX_00553) is True)
+    check("Tryon owner==defendant → no mismatch", A.owner_defendant_mismatch(TRYON) is False)
+    check("no defendant → no mismatch", A.owner_defendant_mismatch(CaseInput("X", owner_of_record="SMITH JOHN")) is False)
+    check("shared surname + 'ET AL' noise → NOT a mismatch",
+          A.owner_defendant_mismatch(CaseInput("X", owner_of_record="SMITH JOHN ET AL", defendant="John Smith")) is False)
+
+
+def test_pin_00553_go_with_conditions_via_owner_mismatch():
+    # RESOLUTION of the decision-table contradiction: 00553's heir flag is a GENUINE owner-mismatch
+    # (BACA NORMA ESTELA ET AL ≠ Pauline Hernandez), same substantive class as Ruby → verdict is
+    # GO-WITH-CONDITIONS, driven by the title question NOT the provisional ARV. The pre-propose HOLD
+    # was the bug; the verdict holds REGARDLESS of valuation state.
+    r0 = A.analyze(TX_00553, AcquisitionInputs(), AS_OF)                                  # no ARV at all
+    check("00553 heir_estate_title is SUBSTANTIVE (owner-mismatch)",
+          any(g["gate"] == "heir_estate_title" and g["severity"] == "substantive" for g in r0["gates"]))
+    check("00553 → GO-WITH-CONDITIONS even with NO valuation (substantive owner-mismatch)",
+          r0["decision"] == "GO-WITH-CONDITIONS", r0["decision"])
+    rp = A.analyze(TX_00553, AcquisitionInputs(arv=304000, arv_label=A.ESTIMATED), AS_OF)  # noisy city-wide ARV
+    check("00553 → GO-WITH-CONDITIONS with a provisional ARV too (same reason, not the ARV)",
+          rp["decision"] == "GO-WITH-CONDITIONS", rp["decision"])
+    check("00553 valuation still provisional", rp["valuation_state"] == "provisional")
+
+
+def test_pin_provisional_alone_stays_hold():
+    # THE drift fix: a provisional ARV with NO substantive condition must NOT lift out of HOLD.
+    clean = CaseInput("TX-99-CLEAN", market_value=200000, owed=30000, total_due_filing=30000,
+                      living_area_sqft=1500, depreciation_pct=20, year_built=2000, property_type="real",
+                      owner_of_record="SMITH JOHN", defendant="John Smith")   # owner==defendant, not absentee/estate
+    r = A.analyze(clean, AcquisitionInputs(arv=250000, arv_label=A.ESTIMATED, lien_status="unavailable"), AS_OF)
+    check("clean case has no substantive condition", not any(g["severity"] == "substantive" for g in r["gates"]))
+    check("provisional ARV ALONE → stays HOLD (drift fixed)", r["decision"] == "HOLD", r["decision"])
+    r2 = A.analyze(clean, AcquisitionInputs(arv=250000, arv_label=A.VERIFIED, lien_status="unavailable"), AS_OF)
+    check("same case + CONFIRMED valuation + generic gate → GO-WITH-CONDITIONS",
+          r2["decision"] == "GO-WITH-CONDITIONS", r2["decision"])
 
 
 def _print_pin_verdicts():

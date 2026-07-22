@@ -1342,6 +1342,7 @@ def _case_input(case: dict, pi: dict):
         oos_date=case.get("oos_date"),
         sale_scheduled_date=case.get("sale_scheduled_date"),
         owner_of_record=(owners[0].get("name") if owners else None),
+        defendant=case.get("defendant"),
     )
 
 
@@ -1493,6 +1494,15 @@ async def confirm_comp(case_number: str, mls_id: str, body: CompDecision = CompD
         c = dict(c)
         if c["listing_status"] != "closed":
             raise HTTPException(400, "pending listings are directional-only and cannot be confirmed into the ARV")
+        # Mandatory-photo rule (design §6.3): a comp with no viewable photos can't be interior-condition
+        # verified, so it must not drive a confirmed ARV. Blocked on confirm; stays reference-only.
+        try:
+            _photos = json.loads(c.get("media_urls") or "[]")
+        except Exception:
+            _photos = []
+        if not _photos:
+            raise HTTPException(422, "comp has 0 photos — cannot confirm (mandatory-photo rule: interior "
+                                     "condition can't be verified without photos); it stays reference-only")
         db.execute("INSERT INTO ledger.comp_confirmations (case_number, mls_id, decided_by, decision, "
                    "adjusted_value, frozen_comp, note) VALUES (?,?,?,?,?,?,?)",
                    [case_number, mls_id, body.decided_by, "confirmed", c["adjusted_value"],

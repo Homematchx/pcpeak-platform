@@ -49,6 +49,8 @@ def _stub_source(subject):
         closed = [_comp("T1", 1014, 225000, "Forest Grove", 3, 2, 1983),
                   _comp("T2", 1000, 220000, "Forest Grove 07", 3, 2, 1985),
                   _comp("T3", 1030, 230000, "Forest Grove", 3, 2, 1980)]
+        z = _comp("T0", 1010, 215000, "Forest Grove", 3, 2, 1982); z["media_urls"] = []; z["photos_count"] = 0
+        closed.append(z)   # 0-photo comp — must be blocked on confirm (mandatory-photo rule)
         pending = [{"mls_id": "TP1", "gla": 1020, "list_price_directional": 240000, "close_price": None,
                     "close_date": None, "beds": 3, "baths": 2, "year_built": 1982, "subdivision": "Forest Grove",
                     "media_urls": [], "photos_count": 5, "address": "Pending Ct", "listing_status": "pending"}]
@@ -90,12 +92,13 @@ def seed():
             bathrooms="1/0", year_built=1947, depreciation_pct=60, actual_age=79, lot_area_sqft=5310, is_absentee=True,
             legal_description="1: WALLS H G 2: BLK B/4773 LT 8 3:", owners=[{"name": "TAYLOR FELICIA D"}])})
     # TX-23-00553 — the live gap: case address has NO zip, but property_intel is enriched (has GLA).
-    c.post("/api/cases", json={"case_number": "TX-23-00553",
+    c.post("/api/cases", json={"case_number": "TX-23-00553", "defendant": "Pauline Hernandez",
         "property_address": "2515 West Brooklyn Avenue, Dallas, Dallas County, Texas",
         "total_due_filing": 9000, "property_type": "real",
         "property_intel": _pi(market_value=120000, current_tax_balance=9500, living_area_sqft=1174, bedrooms=3,
-            bathrooms="2/0", year_built=1980, depreciation_pct=35, actual_age=46, lot_area_sqft=6000,
-            legal_description="1: SUNSET SUMMIT 2: BLK G/3483 LOT 16 3:", owners=[{"name": "HERNANDEZ NORMA"}])})
+            bathrooms="2/0", year_built=1980, depreciation_pct=35, actual_age=46, lot_area_sqft=6000, is_absentee=True,
+            legal_description="1: SUNSET SUMMIT 2: BLK G/3483 LOT 16 3:",
+            owners=[{"name": "BACA NORMA ESTELA ET AL &"}])})   # owner ≠ defendant → substantive heir mismatch
     # A case with NO locality AND no enrichment → must still fail closed (422).
     c.post("/api/cases", json={"case_number": "TX-23-01997", "property_address": "",
         "total_due_filing": 5000, "property_type": "real", "property_intel": _pi(market_value=None)})
@@ -169,6 +172,15 @@ def run():
     r553 = c.post("/api/cases/TX-23-00553/comps/propose", headers=TOK)
     check("no-zip enriched case proposes (city fallback) — NOT 422", r553.status_code == 200)
     check("city-fallback propose returned closed comps", any(x["listing_status"] == "closed" for x in r553.json()["comps"]))
+    a553 = c.get("/api/cases/TX-23-00553/acquisition", headers=TOK).json()
+    check("00553 heir_estate_title is SUBSTANTIVE (owner BACA ≠ defendant Hernandez)",
+          any(g["gate"] == "heir_estate_title" and g["severity"] == "substantive" for g in a553["analysis"]["gates"]))
+    check("00553 verdict GO-WITH-CONDITIONS (owner-mismatch, NOT the provisional ARV)",
+          a553["decision"] == "GO-WITH-CONDITIONS")
+    check("00553 valuation still provisional (0 confirmed comps)", a553["valuation_state"] == "provisional")
+    # mandatory-photo rule: the 0-photo comp T0 cannot be confirmed
+    check("0-photo comp confirm → 422 (mandatory-photo rule)",
+          c.post("/api/cases/TX-23-00423/comps/T0/confirm", headers=TOK).status_code == 422)
     # ── still FAIL CLOSED when there is neither a locality nor a living area ──
     r1997 = c.post("/api/cases/TX-23-01997/comps/propose", headers=TOK)
     check("no locality + no GLA → 422 (fails closed)", r1997.status_code == 422)
