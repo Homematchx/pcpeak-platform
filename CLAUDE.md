@@ -81,9 +81,40 @@ run again on this Mac.
    symptoms now: (a) the 502 bursts (2026-07-18), (b) the widened navigation-race window
    (selection-stability bugs), (c) it determines how long THIS session's stale-intel-panel window
    lasts. Past "logged optimization." Fix: batch events into the `/api/cases` payload (one response).
-2. **Land comp display — evidence behind the §G floor** (collapsible banded land-sale set; unchanged
-   from prior handoff).
-3. **Fleet-wide standing land floors** (batch-compute, not propose-triggered; unchanged).
+2. **Fleet-wide standing land floors** (batch-compute, not propose-triggered). **DEFERRED FROM the
+   land-display increment with a MEASUREMENT, not a guess:** 136 of 247 cases carry a
+   `lot_area_sqft`, so one fleet pass = **~136 live Bridge/NTREIS `land_sales` fetches, worst case
+   ~272** (each thin band re-fetches at 24mo). That is a real batch job with its own design
+   decisions — scheduling (on-demand vs nightly), rate-limiting, storage + staleness/TTL (reuse
+   `comp_batches` or a new standing-floors table), and WHERE it runs. Note a 272-call sequential
+   loop on the Railway dyno is the SAME load shape as the events-batching item above; sequence it
+   after that fix so it isn't built on the pattern being removed.
+
+**DONE THIS INCREMENT — land comp display (was queue item 2, promoted to FIRST).** Priority
+argument on record: on a land-dominant subject (Kemrock TX-26-01190) the ARV is unavailable and the
+MAO ladder cannot compute, so the §G floor is **the only valuation on the screen** — a real capital
+decision rested on a derived number with no drill-down to its evidence. **A telemetry value an
+operator can't verify is a defect, not a backlog item.**
+- **Persistence was ALREADY in place** (verified, not assumed): `land_floor()` returns the qualified
+  banded set as `comps`, and `comp_batches.land_json` stores the whole dict, which the analysis
+  endpoint returns. The gap was purely DISPLAY.
+- **`comps.py`:** per-comp derived `lot_sqft` + `price_per_lot_sqft`, set-level `median` (explicit)
+  and `median_price_per_lot_sqft` (SECONDARY display only); evidence sorted ascending by close so
+  the median reads off the middle. New `SQFT_PER_ACRE` constant — one definition shared with subject
+  lot parsing. The derived ratios are DESCRIPTIVE ONLY; the floor stays the median of actual
+  reconstructed closes (§16.2 standing rule — pinned by a test that the floor ≠ the $/lot-sqft
+  extrapolation).
+- **Frontend:** collapsible `<details>` beneath the Land floor line (native, so open/closed state
+  survives re-render with no JS): per-comp address, lot acres + sqft, close date, reconstructed
+  close price, $/lot-sqft — plus a reconciliation line stating range, **median = the floor above**,
+  that closes are RECONSTRUCTED, that the method is median-of-actual-closes never a per-unit
+  extrapolation, and that it never feeds MAO. **Read-only** (no confirm flow until the land/teardown
+  exit mode exists). Collapsed by default.
+- **Tests:** `test_comps` 84→**98** (evidence set auditable, reconciliation, derived-ratio-is-not-
+  the-method, survives the json round-trip that `land_json` persists),
+  `test_land_evidence_browser.py` **26/26** (every field on screen, median==floor, read-only, no-comps
+  ⇒ no section, MAO still can't compute). `test_acquisition` 126/126 + `test_acquisition_api` 46/46
+  green — the floor still feeds nothing.
 
 **LOGGED — ARCHITECTURAL, NO ACTION (design when raised):** the mirror-everything client cache is
 approaching end of life. The full localStorage mirror is **6.66 MB and grows with fleet size** — at

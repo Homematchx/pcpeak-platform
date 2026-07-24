@@ -12,6 +12,7 @@ Stage-2 report; it is not run here (non-deterministic, and must not persist MLS 
 Run: python3 test_comps.py  →  "N/N".
 """
 import datetime
+import json
 
 import comps
 
@@ -309,6 +310,47 @@ def test_net_of_demolition_is_a_separate_line():
     check("demolition cost surfaced", r["demolition_cost"] == demo)
     vac = comps.land_floor({**LAND_SUBJ, "gla": None}, [_land(0.15, 80000)], AS_OF)
     check("vacant lot → no demo deduction", vac["net_of_demolition"] is None and "no structure" in vac["demolition_note"])
+
+
+def test_land_evidence_set_is_auditable():
+    """§16.9 — the floor must ship its EVIDENCE. On a land-dominant subject (Kemrock: no ARV, MAO
+    can't compute) this floor is the only valuation on the screen, so a real capital decision rests
+    on it; a telemetry value an operator can't verify is a defect. Pins the per-comp display fields,
+    the reconciliation, and that the derived ratios are DESCRIPTIVE — never inputs to the floor."""
+    pool = [_land(0.15, 80000), _land(0.18, 103000), _land(0.166, 90000), _land(0.90, 400000)]
+    r = comps.land_floor(LAND_SUBJ, pool, AS_OF)
+    ev = r["comps"]
+    check("every qualified comp is returned as evidence", len(ev) == r["n"] == 3)
+    check("out-of-band comp is NOT in the evidence set",
+          all(c["lot_acres"] != 0.90 for c in ev))
+    check("evidence carries the display fields (lot sqft + $/lot sqft)",
+          all(c.get("lot_sqft") and c.get("price_per_lot_sqft") for c in ev))
+    one = next(c for c in ev if c["lot_acres"] == 0.15)
+    check("lot_sqft = acres × 43560", one["lot_sqft"] == round(0.15 * comps.SQFT_PER_ACRE), one["lot_sqft"])
+    check("$/lot sqft = close ÷ lot sqft",
+          one["price_per_lot_sqft"] == round(80000 / (0.15 * comps.SQFT_PER_ACRE), 2), one["price_per_lot_sqft"])
+    check("evidence is ordered by close price (the median reads off the middle)",
+          [c["close_price"] for c in ev] == sorted(c["close_price"] for c in ev))
+    # RECONCILIATION — what the UI prints must be checkable against the set on screen.
+    closes = [c["close_price"] for c in ev]
+    check("median == the floor", r["median"] == r["land_floor"] == 90000)
+    check("median is the middle of the displayed closes",
+          r["median"] == sorted(closes)[len(closes) // 2])
+    check("range brackets the floor", r["range"][0] <= r["land_floor"] <= r["range"][1])
+    check("range == min/max of the displayed closes", r["range"] == [min(closes), max(closes)])
+    check("median $/lot sqft reported as a SECONDARY field", r["median_price_per_lot_sqft"] is not None)
+    # The derived ratio must never become the pricing method (§16.2 standing rule).
+    ppsf_extrapolation = round(r["median_price_per_lot_sqft"] * LAND_SUBJ["lot_acres"] * comps.SQFT_PER_ACRE)
+    check("floor is NOT the $/lot-sqft extrapolation", r["land_floor"] != ppsf_extrapolation,
+          (r["land_floor"], ppsf_extrapolation))
+    check("evidence survives the json round-trip that land_json persists",
+          len(json.loads(json.dumps(r))["comps"]) == 3)
+
+
+def test_land_evidence_absent_when_no_floor():
+    """No floor ⇒ no evidence table to render (the UI must not claim a set it doesn't have)."""
+    r = comps.land_floor(LAND_SUBJ, [_land(0.90, 400000)], AS_OF)
+    check("unavailable floor exposes no comps", not r.get("comps"))
 
 
 if __name__ == "__main__":

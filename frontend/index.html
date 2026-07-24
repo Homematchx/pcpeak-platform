@@ -2157,6 +2157,54 @@ function _acqHtml(cn, data) {
           + (lf.recency_widened?' (widened — thin band)':'')+'</span></div>';
         if (lf.net_of_demolition) s += '<div class="acq-row"><span style="padding-left:10px">&#8627; net of demolition</span>'
           + '<span>$'+lf.net_of_demolition.toLocaleString()+' <span class="acq-lbl acq-est">estimated</span></span></div>';
+        // ── EVIDENCE BEHIND THE FLOOR (design §16.9) — the banded land-sale set, collapsible. ──
+        // On a land-dominant subject (Kemrock: no ARV, MAO can't compute) this floor is the ONLY
+        // valuation on the screen, so a real capital decision rests on it. A telemetry value an
+        // operator cannot verify is a defect — same audit-not-trust principle as the per-comp
+        // adjustment grid. Read-only: no confirm flow until the land/teardown exit mode exists.
+        // <details> keeps the open/closed state in the DOM with no JS and nothing to lose on re-render.
+        var lc = lf.comps || [];
+        if (lc.length) {
+          var acres = function(a){ return a==null ? "—" : (Math.round(a*1000)/1000)+" ac"; };
+          var rows = lc.map(function(c){
+            var flags = (c.qualification && c.qualification.arms_length_flags) || [];
+            return '<tr>'
+              + '<td style="padding:4px 8px 4px 0;color:var(--text2)">'+(c.address||"—")
+              + (flags.length ? ' <span title="'+flags.join(", ").replace(/"/g,"&quot;")+'" style="color:var(--amber)">&#9888;</span>' : '')
+              + '</td>'
+              // Acres + sqft stacked in ONE cell: the card is a third of the grid, and a sixth
+              // column pushed $/lot-sqft off the visible area — the figure an operator most needs
+              // to sanity-check each sale.
+              + '<td style="padding:4px 8px;text-align:right;white-space:nowrap">'+acres(c.lot_acres)
+              + '<div style="color:var(--text3)">'+(c.lot_sqft!=null ? c.lot_sqft.toLocaleString()+" sf" : "—")+'</div></td>'
+              + '<td style="padding:4px 8px;text-align:right;white-space:nowrap">'+(c.close_date||"—")+'</td>'
+              + '<td style="padding:4px 8px;text-align:right;white-space:nowrap;font-weight:600">'
+              + (c.close_price!=null ? "$"+c.close_price.toLocaleString() : "—")+'</td>'
+              + '<td style="padding:4px 0 4px 8px;text-align:right;white-space:nowrap;color:var(--text3)">'
+              + (c.price_per_lot_sqft!=null ? "$"+c.price_per_lot_sqft : "—")+'</td>'
+              + '</tr>';
+          }).join("");
+          s += '<details style="margin:6px 0 2px"><summary style="cursor:pointer;font-size:11px;color:var(--text3);padding:4px 0">'
+            + 'Show the '+lc.length+' land sale'+(lc.length===1?"":"s")+' behind this floor</summary>'
+            + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
+            + '<thead><tr style="color:var(--text3);text-align:left;border-bottom:1px solid var(--border2)">'
+            + '<th style="padding:4px 8px 4px 0;font-weight:600">Address</th>'
+            + '<th style="padding:4px 8px;text-align:right;font-weight:600">Lot</th>'
+            + '<th style="padding:4px 8px;text-align:right;font-weight:600">Closed</th>'
+            + '<th style="padding:4px 8px;text-align:right;font-weight:600">Close</th>'
+            + '<th style="padding:4px 0 4px 8px;text-align:right;font-weight:600">$/lot sf</th>'
+            + '</tr></thead><tbody>'+rows+'</tbody></table></div>'
+            // Reconciliation line — the floor IS the median of the closes above, the way §16.2
+            // measured it. Stated explicitly so the floor is never read as a $/sqft extrapolation.
+            + '<div class="acq-note" style="margin-top:6px;line-height:1.5">'
+            + 'Range $'+lf.range[0].toLocaleString()+' – $'+lf.range[1].toLocaleString()
+            + ' &middot; <b>median $'+(lf.median!=null?lf.median:lf.land_floor).toLocaleString()+'</b> = the floor above'
+            + (lf.median_price_per_lot_sqft!=null ? ' &middot; median $'+lf.median_price_per_lot_sqft+'/lot sf' : '')
+            + '<br>Close prices are <b>reconstructed</b> (NTREIS omits ClosePrice; ratio &times; lot acres). '
+            + 'The floor is the <b>median of these actual closes</b> — never a per-unit rate extrapolated '
+            + 'across sizes. Display only: it never feeds MAO or the verdict.</div>'
+            + '</details>';
+        }
         return s;
       })()
     + '</div>';

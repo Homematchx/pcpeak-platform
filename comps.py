@@ -28,6 +28,7 @@ import urllib.request
 from typing import Optional
 
 UNAVAILABLE_LABEL = "unavailable"   # matches acquisition.UNAVAILABLE (kept literal to avoid a cycle)
+SQFT_PER_ACRE = 43560               # one definition — subject lot parsing and land-comp display agree
 
 # ── tunable comp config (Dallas defaults) — every magnitude named, never inline. [SIGN-OFF] ───────
 # These are appraisal knobs; the defaults are reasonable-but-uncalibrated placeholders (same standard
@@ -165,7 +166,7 @@ def subject_from_case(case: dict) -> dict:
         "beds": pi.get("bedrooms"),
         "baths": _parse_baths(pi.get("bathrooms")),
         "year_built": pi.get("year_built") or pi.get("effective_year_built"),
-        "lot_acres": round(lot_sqft / 43560, 4) if lot_sqft else None,
+        "lot_acres": round(lot_sqft / SQFT_PER_ACRE, 4) if lot_sqft else None,
         "subdivision": sub["normalized"] if sub else None,
         "lat": None, "lng": None,
         "market_value": pi.get("market_value"),
@@ -366,15 +367,28 @@ def land_floor(subject: dict, land_comps: list, as_of: Optional[datetime.date] =
     if not q:
         return {"land_floor": None, "label": UNAVAILABLE_LABEL, "n": 0, "subject_lot_acres": sa,
                 "lot_band_acres": band, "note": "no qualified land comps in the lot-size band"}
+    # DERIVED DISPLAY FIELDS — the evidence an operator needs to audit the floor (design §16.9).
+    # These are per-comp descriptive ratios, NOT inputs: the floor stays the median of ACTUAL
+    # reconstructed closes. Never extrapolate a per-unit rate across dissimilar sizes (§16.2 standing
+    # rule) — $/lot-sqft is shown so a human can sanity-check each sale, never to price the subject.
+    for c in q:
+        acres = c.get("lot_acres")
+        c["lot_sqft"] = round(acres * SQFT_PER_ACRE) if acres else None
+        c["price_per_lot_sqft"] = (round(c["close_price"] / (acres * SQFT_PER_ACRE), 2)
+                                   if acres and c.get("close_price") else None)
+    q.sort(key=lambda c: c.get("close_price") or 0)   # ascending — the median reads off the middle
     closes = sorted(c["close_price"] for c in q)
     n = len(closes)
     med = closes[n // 2] if n % 2 else round((closes[n // 2 - 1] + closes[n // 2]) / 2)
     ppa = sorted(round(c["close_price"] / c["lot_acres"]) for c in q if c.get("lot_acres"))
+    ppsf = sorted(c["price_per_lot_sqft"] for c in q if c.get("price_per_lot_sqft") is not None)
     return {
         "land_floor": med, "label": "estimated", "n": n,
         "range": [closes[0], closes[-1]], "spread": closes[-1] - closes[0],
         "subject_lot_acres": sa, "lot_band_acres": band,
+        "median": med,                                                    # explicit: the floor IS the median
         "median_price_per_acre": (ppa[len(ppa) // 2] if ppa else None),   # SECONDARY display only
+        "median_price_per_lot_sqft": (ppsf[len(ppsf) // 2] if ppsf else None),   # SECONDARY display only
         "n_arms_length_flagged": sum(1 for c in q if c["qualification"]["arms_length_flags"]),
         # Self-describing defaults so every caller (including a direct land_floor() call) carries
         # provenance; land_floor_for_subject() overrides these when it widens the window.
