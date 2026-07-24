@@ -58,7 +58,15 @@ CTX = ssl.create_default_context(cafile=certifi.where())
 
 # Fields never pushed: id is prod's own autoincrement; rep_assigned is owned by
 # the live site; prod_ready is a LOCAL approval signal, not prod state (see invariants).
-SKIP_CASE_FIELDS = {"id", "rep_assigned", "prod_ready"}
+# Never sent local→prod. rep_assigned is live-owned; prod_ready is the local approval gate;
+# the disposition_* / pending_review* columns are prod-owned DERIVED CACHES of the
+# case_dispositions log (which lives only on prod, in ledger.db). A local sync must never
+# push a disposition up or clobber one — an archived case still RECEIVES fact updates from
+# local re-scrapes (a defaulted §33.02 plan, or a re-scrape that fixes a data_quality case,
+# must both surface), but the human decision is untouchable from here.
+SKIP_CASE_FIELDS = {"id", "rep_assigned", "prod_ready",
+                    "disposition_state", "disposition_code", "disposition_at",
+                    "pending_review", "pending_review_code"}
 
 
 def api(method, path, body=None):
@@ -228,11 +236,18 @@ def main():
         return
 
     # Fetch prod first — needed both for the sync diff and to reconcile already-live cases.
+    # include_archived=1 IS REQUIRED, not a nicety: /api/cases now defaults to the working view
+    # (archived excluded). Sync needs prod's TRUE INVENTORY — an archived case that looked absent
+    # would be re-pushed as "new" on every run and would break the already-live prod_ready
+    # reconcile. Disposition columns are skip-listed, so a push can never disturb the archive.
     try:
-        status, prod_list = api("GET", "/api/cases")
+        status, prod_list = api("GET", "/api/cases?include_archived=1")
     except Exception as e:
         print(f"ERROR: can't reach {PROD}: {e}"); sys.exit(1)
     prod = {c["case_number"]: c for c in prod_list}
+    n_arch = sum(1 for c in prod_list if (c.get("disposition_state") or "active") == "archived")
+    print(f"prod inventory: {len(prod)} case(s) "
+          f"({n_arch} archived — counted here, hidden from the default view)")
 
     # Already live on prod ⇒ implicitly approved. Reconcile so --update-existing keeps working
     # for public cases; the gate then only blocks NEW, unapproved local cases.
@@ -353,7 +368,7 @@ def main():
     # 3) Verify live count after a real run.
     if not dry and created:
         try:
-            _, after = api("GET", "/api/cases")
+            _, after = api("GET", "/api/cases?include_archived=1")   # same denominator as `prod`
             expected = len(prod) + created
             print(f"\nverify: prod now {len(after)} cases (expected {expected}) "
                   f"{'OK' if len(after) == expected else 'MISMATCH — check errors above'}")

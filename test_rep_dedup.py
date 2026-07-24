@@ -12,7 +12,8 @@ import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
-CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"
+from browser_env import chrome_path
+CHROME = chrome_path()   # pinned sandbox path first, else the local playwright cache
 HTML = Path("frontend/index.html").resolve()
 
 _res = []

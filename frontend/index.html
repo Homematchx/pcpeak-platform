@@ -375,6 +375,10 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
           <button id="estate-toggle" onclick="toggleEstate()" title="Show only estate / heirs cases" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid #5b2a86;background:var(--surface);color:#5b2a86;cursor:pointer">&#9906; Estate</button>
         </div>
       </div>
+      <!-- DISPOSITION VIEWS (design §8). Archived is excluded server-side; `watching` ships with
+           the payload but leaves the working queue — queue composition lives here, not in the API. -->
+      <div id="dview" style="display:flex;gap:4px;margin:6px 0 2px;flex-wrap:wrap"></div>
+      <div id="dcounts" style="font-size:10px;color:var(--text3);padding:0 0 4px"></div>
       <div class="clist" id="clist"><div style="font-size:12px;color:var(--text3);padding:6px 0">No cases yet.</div></div>
       <div id="cpage" style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 0 2px"></div>
     </div>
@@ -383,7 +387,6 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
       <div style="display:flex;flex-direction:column;gap:6px">
         <button class="btn btn-g btn-sm" style="width:100%;justify-content:center" onclick="expData()">&#128190; Export JSON</button>
         <button class="btn btn-g btn-sm" style="width:100%;justify-content:center" onclick="impData()">&#128193; Import JSON</button>
-        <button class="btn btn-g btn-sm" style="width:100%;justify-content:center;color:var(--red)" onclick="clearAll()">&#128465; Clear All</button>
       </div>
     </div>
   </div>
@@ -462,6 +465,14 @@ function platformToV3(pc, events) {
     uploadedAt: pc.last_agent_run || pc.updated_at || new Date().toISOString(),
     fileNames: ["[Platform Agent — " + (pc.last_agent_run ? new Date(pc.last_agent_run).toLocaleDateString() : "synced") + "]"],
     property_intel: pc.property_intel || null,
+    // Disposition state (docs/case-disposition-design.md). Archived cases never reach here —
+    // /api/cases excludes them server-side — so `watching` is the only non-active state the
+    // list has to compose around.
+    disposition_state: pc.disposition_state || "active",
+    disposition_code:  pc.disposition_code || "",
+    disposition_at:    pc.disposition_at || "",
+    pending_review:      !!pc.pending_review,
+    pending_review_code: pc.pending_review_code || "",
     extracted: {
       caseNumber:               pc.case_number || "",
       court:                    pc.court || "",
@@ -640,7 +651,14 @@ async function syncFromPlatform() {
       const seenDraft = new Set();
       const drafts = cases.filter(c => {
         const cn = c.extracted && c.extracted.caseNumber;
-        const isDraft = !!(c.inputMethod || c.uploadedAt);
+        // A case that CAME FROM the platform is never a draft, even once the platform stops
+        // returning it. platformToV3 always stamps uploadedAt and an id of "<case>_platform", so
+        // the old `inputMethod || uploadedAt` test matched every platform case — meaning any case
+        // the server dropped (archived, or BPP-purged) was silently RE-CLASSIFIED as a local draft
+        // and kept in the mirror forever. That would have made archiving cosmetic in exactly the
+        // way the old Remove button was. Genuine drafts are local-only records, never _platform.
+        const fromPlatform = String(c.id || "").endsWith("_platform");
+        const isDraft = !fromPlatform && !!(c.inputMethod || c.uploadedAt);
         if (!(isDraft && cn && !platformNums.has(cn))) return false;
         if (seenDraft.has(cn)) return false; seenDraft.add(cn); return true;
       });
@@ -949,6 +967,10 @@ async function loadAgentStatus() {
 function init() {
   renderCities();
   renderCaseLog();
+  // Disposition taxonomy + counts, then re-render so the chips resolve their labels.
+  loadDispoCodes().then(function(){ renderList(); renderViewPills(); });
+  loadDispoCounts();
+  renderViewPills();
   renderList();
   if (cases.length) selectCase(cases[cases.length-1].id);
   // Auto-sync from platform on load — silent, immediate
@@ -1360,7 +1382,16 @@ function renderDetail(c) {
                + abtn("Payment History", function(a){return "https://www.dallasact.com/act_webdev/dallas/reports/paymentinfo.jsp?can="+a+"&ownerno=0";});
         })()}
         ${ex.propertyAddress?`<a href="https://www.google.com/maps/search/${encodeURIComponent(ex.propertyAddress)}" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Street View</a>`:""}
-        <button onclick="delCase('${c.id}')" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text3)">&#128465; Remove</button>
+        <button onclick="openDispose('${c.id}')" title="Archive with a disposition — never deletes; reversible and logged" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text3)">&#128452; Dispose&hellip;</button>
+        ${(function(){
+          // Current disposition + one-click reversal. Reopen is always available: an archive is
+          // reversible by design, and its full history stays in the append-only log either way.
+          if((c.disposition_state||"active")==="active") return "";
+          var s=dispoSpec(c.disposition_code), w=c.disposition_state==="watching";
+          return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:5px 10px;border-radius:var(--rs);background:var(--surface3);color:var(--text2);border:1px solid var(--border2)">
+            <b>${w?"Watching":"Archived"}</b>${s?" &middot; "+s.label:""}${c.disposition_at?" &middot; "+fmt(c.disposition_at):""}
+            <button onclick="reopenCase('${(c.extracted||{}).caseNumber}')" style="font-family:var(--FB);font-size:10px;padding:2px 8px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Reopen</button></span>`;
+        })()}
         <span style="display:flex;align-items:center;gap:8px;margin-left:auto">
           <div id="rep-av-${c.id}" style="width:26px;height:26px;border-radius:50%;background:${c.rep_assigned?'var(--accent2)':'var(--surface3)'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${c.rep_assigned?'#fff':'var(--text3)'};flex:0 0 auto">${repInitials(c.rep_assigned)}</div>
           <select id="rep-sel-${c.id}" onchange="assignRep('${c.id}', this.value)" title="Assign this case to a rep"
@@ -2248,6 +2279,12 @@ function getFilteredCases(){
   var f = window._filters||{};
   var list = cases.filter(function(c){
     var ex = c.extracted||{};
+    // QUEUE COMPOSITION (design §8): `watching` cases ship from the API — a warm lead is still a
+    // real lead and belongs in fleet analyses — but they leave the WORKING queue and get their
+    // own view. Archived never arrives here at all (excluded server-side).
+    var ds = c.disposition_state || "active";
+    if ((window._dview||"active") === "watching") { if (ds !== "watching") return false; }
+    else if (ds === "watching") return false;
     if(window._cityFilter && (c.city||"dallas")!==window._cityFilter) return false;
     if(f.complexity && (ex.complexity||"medium")!==f.complexity) return false;
     if(f.stage && caseStage(ex)!==f.stage) return false;
@@ -2361,11 +2398,25 @@ function renderList() {
             var tip=(c.account_note||dflt).replace(/"/g,'&quot;');
             return `<span title="${tip}" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${nl?'#8a5a00':'#8a1f1f'};color:#fff;border:1px solid ${nl?'#8a5a00':'#8a1f1f'}">&#9888; ${nl?'NEEDS ACCT':'BAD ACCT'}</span>`;})()}
           ${dbadge}
+          ${(function(){
+            // Disposition chips. A review flag NEVER changes what the case is — it only marks
+            // that a human should look, so it renders alongside (not instead of) the state.
+            var out="";
+            if(c.disposition_state==="watching"){
+              var ws=dispoSpec(c.disposition_code);
+              out+=`<span title="Watching — out of the working queue, still a live lead" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:#1f5673;color:#fff;border:1px solid #1f5673">&#128065; ${ws?ws.label:"WATCHING"}</span>`;
+            }
+            if(c.pending_review){
+              var rs=dispoSpec(c.pending_review_code);
+              out+=`<span title="Auto-flagged for review — a human decides; nothing is archived automatically" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:#8a5a00;color:#fff;border:1px solid #8a5a00">&#9888; REVIEW${rs?": "+rs.label:""}</span>`;
+            }
+            return out;
+          })()}
           ${ds?`<span style="font-size:10px;color:${acqDot};font-weight:600">${ds}</span>`:""}
           ${rep?`<span style="font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text2);border:1px solid var(--border2)">&#128100; ${rep}</span>`:""}
         </div>
       </div>
-      <button class="cdel" onclick="delCase('${c.id}',event)">&#215;</button>
+      <button class="cdel" title="Dispose — archive with a reason (never deletes)" onclick="openDispose('${c.id}',event)">&#215;</button>
     </div>`;
   }).join("");
   if(pageEl){
@@ -2517,24 +2568,231 @@ function setCity(k) { selCity=k; renderCities(); if(activeId) selectCase(activeI
 // ═══════════════════════════════════════════
 // CRUD + PERSIST
 // ═══════════════════════════════════════════
-function delCase(id, e) {
-  if (e) e.stopPropagation();
-  if (!confirm("Remove this case?")) return;
-  cases = cases.filter(x => x.id!==id);
-  if (activeId===id) {
-    activeId = null;
-    document.getElementById("empstate").style.display = "flex";
-    document.getElementById("cdet").style.display = "none";
-  }
-  save(); renderList();
+// ═══════════════════════════════════════════
+// CASE DISPOSITION  (docs/case-disposition-design.md)
+// ═══════════════════════════════════════════
+// Replaces the old delCase()/clearAll() pair. Those were localStorage-only edits that made NO
+// network call at all: syncFromPlatform's authoritative rebuild (cases = platformV3.concat(drafts))
+// put every platform case straight back ~30s later, so "Remove" looked like it worked and didn't.
+// A disposition is a real, durable, reversible state change written to the prod-owned log — and
+// because an archived case drops out of /api/cases, the card now stays gone.
+// ARCHIVE-NEVER-DELETE: nothing here deletes anything, ever.
+
+var DISPO = { codes: [], groups: [], loaded: false };
+
+function loadDispoCodes() {
+  // The taxonomy is SERVED, never a second copy in the UI that can drift from the server's.
+  return fetch(PLATFORM_API + "/dispositions/codes").then(function(r){ return r.json(); })
+    .then(function(d){ DISPO.codes = d.codes||[]; DISPO.groups = d.groups||[]; DISPO.loaded = true; })
+    .catch(function(e){ console.warn("disposition codes unavailable:", e); });
 }
 
-function clearAll() {
-  if (!confirm("Clear ALL cases? Cannot be undone.")) return;
-  cases=[]; activeId=null;
-  document.getElementById("empstate").style.display="flex";
-  document.getElementById("cdet").style.display="none";
-  save(); renderList();
+function dispoSpec(code) {
+  for (var i=0;i<DISPO.codes.length;i++) if (DISPO.codes[i].code===code) return DISPO.codes[i];
+  return null;
+}
+
+function openDispose(id, e) {
+  if (e) e.stopPropagation();
+  var c = cases.find(function(x){ return x.id===id; });
+  if (!c) return;
+  if (!DISPO.loaded) { loadDispoCodes().then(function(){ openDispose(id); }); return; }
+  var cn = (c.extracted||{}).caseNumber || "";
+  var body = DISPO.groups.map(function(g){
+    var opts = DISPO.codes.filter(function(s){ return s.group===g; }).map(function(s){
+      return '<option value="'+s.code+'">'+s.label+(s.state==="watching"?" → Watching":"")+'</option>';
+    }).join("");
+    return '<optgroup label="'+g+'">'+opts+'</optgroup>';
+  }).join("");
+  var reps = allReps().map(function(r){ return '<option value="'+r+'">'+r+'</option>'; }).join("");
+  var m = document.createElement("div");
+  m.id = "dispo-modal";
+  m.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;"
+    + "justify-content:center;z-index:9999";
+  m.innerHTML =
+    '<div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;'
+    + 'padding:18px;width:460px;max-width:92vw;font-family:var(--FB)">'
+    + '<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px">Dispose case</div>'
+    + '<div style="font-size:11px;color:var(--text3);margin-bottom:12px">'+cn+' &middot; archived cases are '
+    + 'never deleted &mdash; they stay permanently searchable and can be reopened.</div>'
+    + '<label style="font-size:11px;color:var(--text2);font-weight:600">Disposition</label>'
+    + '<select id="dispo-code" onchange="dispoPreview()" style="width:100%;margin:4px 0 10px;padding:7px;'
+    + 'border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);'
+    + 'font-family:var(--FB);font-size:12px"><option value="">Select…</option>'+body+'</select>'
+    + '<label style="font-size:11px;color:var(--text2);font-weight:600">Comment <span id="dispo-req" '
+    + 'style="color:var(--red)"></span></label>'
+    + '<textarea id="dispo-comment" rows="3" placeholder="What happened?" style="width:100%;margin:4px 0 10px;'
+    + 'padding:7px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);'
+    + 'color:var(--text);font-family:var(--FB);font-size:12px;resize:vertical"></textarea>'
+    + '<label style="font-size:11px;color:var(--text2);font-weight:600">Decided by '
+    + '<span title="There is no login on this platform, so this is self-attested — the append-only, '
+    + 'reversible, attributed log is the control." style="color:var(--text3);font-weight:400">'
+    + '(self-attested)</span></label>'
+    + '<select id="dispo-by" style="width:100%;margin:4px 0 10px;padding:7px;border-radius:var(--rs);'
+    + 'border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--FB);'
+    + 'font-size:12px"><option value="">Unattributed</option>'+reps+'</select>'
+    + '<div id="dispo-preview" style="font-size:11px;color:var(--text2);background:var(--surface3);'
+    + 'border-radius:var(--rs);padding:8px;margin-bottom:12px;min-height:16px"></div>'
+    + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+    + '<button onclick="closeDispose()" style="font-family:var(--FB);font-size:12px;padding:7px 14px;'
+    + 'border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text2);'
+    + 'cursor:pointer">Cancel</button>'
+    + '<button id="dispo-go" onclick="submitDispose(\''+id+'\')" style="font-family:var(--FB);font-size:12px;'
+    + 'font-weight:600;padding:7px 14px;border-radius:var(--rs);border:1px solid var(--accent2);'
+    + 'background:var(--accent2);color:#fff;cursor:pointer">Confirm</button></div></div>';
+  document.body.appendChild(m);
+  dispoPreview();
+}
+
+function closeDispose(){ var m=document.getElementById("dispo-modal"); if(m) m.remove(); }
+
+function dispoPreview() {
+  var sel = document.getElementById("dispo-code"); if (!sel) return;
+  var s = dispoSpec(sel.value);
+  var req = document.getElementById("dispo-req"), pv = document.getElementById("dispo-preview");
+  req.textContent = (s && s.comment) ? "(required)" : "";
+  if (!s) { pv.textContent = "Pick a disposition to see what it will do."; return; }
+  // The confirm line NAMES THE RESULTING STATE in plain language — a rep should never have to
+  // infer whether a code archives or only stops showing the case in their queue.
+  pv.innerHTML = s.state === "watching"
+    ? "Moves to <b>Watching</b>. It leaves your working queue but stays a live lead — "
+      + "we'll flag it if the premise changes."
+    : "<b>Archives</b> the case. It leaves your active list and stays permanently searchable.";
+}
+
+function submitDispose(id) {
+  var c = cases.find(function(x){ return x.id===id; }); if (!c) return;
+  var cn = (c.extracted||{}).caseNumber;
+  var code = document.getElementById("dispo-code").value;
+  var comment = document.getElementById("dispo-comment").value.trim();
+  var by = document.getElementById("dispo-by").value;
+  var s = dispoSpec(code);
+  if (!s) { alert("Pick a disposition."); return; }
+  if (s.comment && !comment) { alert('"'+s.label+'" requires a comment.'); return; }
+  var btn = document.getElementById("dispo-go"); btn.disabled = true; btn.textContent = "Saving…";
+  fetch(PLATFORM_API + "/cases/" + encodeURIComponent(cn) + "/disposition", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({code: code, comment: comment, decided_by: by})
+  }).then(function(r){
+    return r.json().then(function(j){ if(!r.ok) throw new Error(j.detail||"failed"); return j; });
+  }).then(function(j){
+    closeDispose();
+    if (j.state === "archived" && activeId === id) {
+      activeId = null;
+      document.getElementById("empstate").style.display = "flex";
+      document.getElementById("cdet").style.display = "none";
+    }
+    // Re-sync from the platform so the list reflects the SERVER's view (an archived case is gone
+    // from /api/cases). Never edit the local mirror to fake it — that was the old bug.
+    return syncFromPlatform();
+  }).then(function(){ loadDispoCounts(); })
+    .catch(function(e){
+      alert("Could not dispose: " + e.message);
+      var b=document.getElementById("dispo-go"); if(b){ b.disabled=false; b.textContent="Confirm"; }
+    });
+}
+
+function reopenCase(cn) {
+  if (!confirm("Reopen " + cn + "?\n\nIt returns to your active list. Its full disposition history "
+             + "stays in the log.")) return;
+  fetch(PLATFORM_API + "/cases/" + encodeURIComponent(cn) + "/disposition/reopen", {
+    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({code:"reopened"})
+  }).then(function(r){ if(!r.ok) throw new Error("reopen failed"); return syncFromPlatform(); })
+    .then(function(){ setView(window._dview||"active"); loadDispoCounts(); })
+    .catch(function(e){ alert(e.message); });
+}
+
+function dismissFlag(cn) {
+  fetch(PLATFORM_API + "/cases/" + encodeURIComponent(cn) + "/disposition/dismiss", {
+    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({code:""})
+  }).then(function(r){ if(!r.ok) throw new Error("dismiss failed"); return syncFromPlatform(); })
+    .then(function(){ setView(window._dview||"active"); loadDispoCounts(); })
+    .catch(function(e){ alert(e.message); });
+}
+
+// ─── views: active | watching | review | archived ───
+window._dview = "active";
+
+function setView(v) {
+  window._dview = v;
+  window._page = 1;
+  if (v === "archived" || v === "review") { renderDispoList(v); }
+  else { renderList(); }
+  renderViewPills();
+}
+
+function renderViewPills() {
+  var el = document.getElementById("dview"); if (!el) return;
+  var v = window._dview || "active";
+  var n = window._dcounts || {};
+  var pill = function(key, label, count) {
+    var on = v === key;
+    return '<button onclick="setView(\''+key+'\')" style="font-family:var(--FB);font-size:10px;'
+      + 'font-weight:600;padding:3px 9px;border-radius:20px;cursor:pointer;border:1px solid '
+      + (on?'var(--accent2)':'var(--border2)') + ';background:' + (on?'var(--accent2)':'var(--surface)')
+      + ';color:' + (on?'#fff':'var(--text3)') + '">' + label
+      + (count!==undefined && count!==null ? ' ' + count : '') + '</button>';
+  };
+  el.innerHTML = pill("active","Active",n.active) + pill("watching","Watching",n.watching)
+    + pill("review","Review",n.pending_review) + pill("archived","Archived",n.archived);
+}
+
+function loadDispoCounts() {
+  return fetch(PLATFORM_API + "/stats").then(function(r){ return r.json(); }).then(function(s){
+    window._dcounts = {active:s.active_cases, watching:s.watching_cases,
+                       archived:s.archived_cases, total_all:s.total_all,
+                       pending_review:s.pending_review};
+    var el = document.getElementById("dcounts");
+    // Counts must RECONCILE on their face — the denominator is never left implicit.
+    if (el && s.total_all !== undefined) {
+      el.textContent = s.active_cases + " active · " + s.watching_cases + " watching · "
+                     + s.archived_cases + " archived · " + s.total_all + " total";
+    }
+    renderViewPills();
+  }).catch(function(e){ console.warn("disposition counts unavailable:", e); });
+}
+
+function renderDispoList(which) {
+  // Archived + review render from /api/dispositions (purpose-built): archived cases are excluded
+  // from /api/cases by design, so they are NOT in the local mirror at all.
+  var list = document.getElementById("clist"), pageEl = document.getElementById("cpage");
+  if (pageEl) pageEl.innerHTML = "";
+  list.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0">Loading…</div>';
+  fetch(PLATFORM_API + "/dispositions").then(function(r){ return r.json(); }).then(function(d){
+    var rows = which === "review" ? (d.review_queue||[]) : (d.recently_archived||[])
+                 .filter(function(r){ return r.disposition_state === "archived"; });
+    var cnt = document.getElementById("cct");
+    if (cnt) cnt.textContent = rows.length + (which==="review" ? " to review" : " archived");
+    if (!rows.length) {
+      list.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0">'
+        + (which==="review" ? "Nothing needs review." : "No archived cases.") + '</div>';
+      return;
+    }
+    list.innerHTML = rows.map(function(r){
+      var spec = dispoSpec(which==="review" ? r.pending_review_code : r.disposition_code);
+      var label = spec ? spec.label : (r.disposition_code||"");
+      var act = which === "review"
+        ? '<button onclick="dismissFlag(\''+r.case_number+'\')" style="font-family:var(--FB);'
+          + 'font-size:10px;padding:3px 8px;border-radius:var(--rs);border:1px solid var(--border2);'
+          + 'background:var(--surface);color:var(--text3);cursor:pointer">Dismiss flag</button>'
+        : '<button onclick="reopenCase(\''+r.case_number+'\')" style="font-family:var(--FB);'
+          + 'font-size:10px;padding:3px 8px;border-radius:var(--rs);border:1px solid var(--border2);'
+          + 'background:var(--surface);color:var(--text2);cursor:pointer">Reopen</button>';
+      return '<div class="cchip" style="cursor:default"><div class="cchip-b">'
+        + '<div class="cchip-n">'+r.case_number+'</div>'
+        + '<div style="font-size:12px;color:var(--text);margin-top:1px">'
+        + ((r.property_address||"").split(",")[0]||r.defendant||"")+'</div>'
+        + '<div class="cchip-m" style="margin-top:5px">'
+        + '<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;'
+        + 'background:var(--surface3);color:var(--text2);border:1px solid var(--border2)">'
+        + (which==="review" ? "⚠ " : "") + label + '</span>'
+        + (r.decided_by ? '<span style="font-size:9px;color:var(--text3)">by '+r.decided_by+'</span>' : '')
+        + act + '</div></div></div>';
+    }).join("");
+  }).catch(function(e){
+    list.innerHTML = '<div style="font-size:12px;color:var(--red);padding:6px 0">Could not load: '
+      + e.message + '</div>';
+  });
 }
 
 function save() {

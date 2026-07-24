@@ -113,7 +113,8 @@ def account_status_of(acct):
 # legitimate INSERT (logging) and UPDATE (reconcile). Installed on EVERY connection, so the tables
 # are protected the instant they exist — before they ever hold real data.
 PROD_OWNED_TABLES = ("prediction_ledger", "rep_actions", "case_snapshots",
-                     "comps", "comp_confirmations", "acquisition_analysis", "comp_batches")
+                     "comps", "comp_confirmations", "acquisition_analysis", "comp_batches",
+                     "case_dispositions", "case_comments")
 
 def _restore_guard_authorizer(action, arg1, arg2, db_name, trigger_name):
     if action in (sqlite3.SQLITE_DELETE, sqlite3.SQLITE_DROP_TABLE) and arg1 in PROD_OWNED_TABLES:
@@ -480,6 +481,52 @@ def init_db():
             land_json         TEXT
         );
         CREATE INDEX IF NOT EXISTS ledger.idx_cb_case ON comp_batches(case_number, fetched_at);
+
+        -- ── CASE DISPOSITION (docs/case-disposition-design.md §3.2) ──
+        -- Append-only decision log. ARCHIVE-NEVER-DELETE: a case never leaves the platform; a
+        -- disposition is a STATE (active|watching|archived), not a removal. This is a HUMAN
+        -- DECISION and is non-regenerable — same class as rep_actions — so it lives here in
+        -- ledger.db behind the restore guard, where a raw pcpeak.db restore physically cannot
+        -- erase it.
+        --
+        -- Three row kinds, all appended, nothing ever updated (§3.2):
+        --   proposal  — the engine flags (source='auto_flag', state NULL, evidence populated)
+        --   decision  — a human commits a code and the state it puts the case in
+        --   dismissal — a human rejects a proposal; the case stays exactly as it is
+        -- Both derived facts read off row ORDER, so there is no resolution column to keep
+        -- consistent and no in-place update anywhere:
+        --   current state   = state of the latest 'decision' row, else 'active'
+        --   open review flag = a 'proposal' row newer than the latest decision-or-dismissal
+        -- A reversal is a NEW decision row (e.g. back to 'active'), never an edit.
+        CREATE TABLE IF NOT EXISTS ledger.case_dispositions (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_number    TEXT NOT NULL,
+            entered_at     TEXT NOT NULL DEFAULT (datetime('now')),
+            kind           TEXT NOT NULL,      -- proposal | decision | dismissal
+            state          TEXT,               -- decisions only: active | watching | archived
+            code           TEXT NOT NULL,      -- taxonomy code (DISPOSITION_CODES)
+            comment        TEXT,               -- required for some codes
+            decided_by     TEXT,               -- rep name — SELF-ATTESTED (no auth; design §9)
+            source         TEXT NOT NULL,      -- human | auto_flag
+            evidence       TEXT,               -- JSON: what the auto-flag saw (balance, event id…)
+            model_version  TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS ledger.idx_cd_case ON case_dispositions(case_number, id);
+
+        -- Per-case rep comment thread. Deliberately NOT rep_actions with action_type='comment':
+        -- rep_actions drives the derived deal_status funnel cache, so a free-text note routed
+        -- through it would silently advance a case from not_contacted to contacted — a fabricated
+        -- funnel state. A NOTE MUST NEVER ADVANCE deal_status (design §3.3). The funnel log stays
+        -- rigid and typed; the two are interleaved at READ time for display.
+        CREATE TABLE IF NOT EXISTS ledger.case_comments (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_number    TEXT NOT NULL,
+            author         TEXT,
+            body           TEXT NOT NULL,
+            created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+            disposition_id INTEGER             -- set when the comment accompanies a disposition
+        );
+        CREATE INDEX IF NOT EXISTS ledger.idx_cc_case ON case_comments(case_number, id);
         """)
     
     # Seed known benchmarks
@@ -524,7 +571,18 @@ def init_db():
             # a deliberate, explicit act (sync_to_prod.py --approve). A case already live on
             # prod is implicitly approved (sync_to_prod reconciles it to 1). Local-only signal —
             # never sent up (SKIP_CASE_FIELDS); prod carries the column but doesn't use it.
-            ("prod_ready", "INTEGER DEFAULT 0"),
+            # DERIVED caches of the prod-owned case_dispositions log (ledger.db), exactly like
+            # deal_status/last_action_at above: recomputable from the log at any time, never
+            # authoritative. ARCHIVE-NEVER-DELETE — 'archived' hides a case from default views
+            # but it stays permanently queryable by case number.
+            # Review-flagging is ORTHOGONAL to state (design §3.1): a flag marks that a human
+            # should look and never changes what the case IS, so a watching/archived case can
+            # carry an open flag (an invalidation, §6) without changing state.
+            ("disposition_state", "TEXT DEFAULT 'active'"),   # active | watching | archived
+            ("disposition_code", "TEXT"),
+            ("disposition_at", "TEXT"),
+            ("pending_review", "INTEGER DEFAULT 0"),
+            ("pending_review_code", "TEXT"),
         ]:
             if col not in cols:
                 db.execute(f"ALTER TABLE cases ADD COLUMN {col} {typedef}")
@@ -556,6 +614,16 @@ def init_db():
                 except Exception: bal = None
             db.execute("UPDATE cases SET case_track=? WHERE case_number=?",
                        [case_track_of(pt, od, jt, jd, bal), cn])
+        # Normalize the disposition cache so no case sits at NULL — a NULL state is
+        # indistinguishable from a real one, which is exactly the falsy-conflation the
+        # project standard forbids. Every pre-existing case starts 'active' with NO
+        # disposition row: there is deliberately NO BACKFILL that infers a disposition from
+        # case_track or a zero balance (design §10.3) — a machine-inferred disposition
+        # attributed to nobody is the fabricated-value pattern already stripped out three
+        # times. The auto-flag surfaces the obvious ones for a human on the next write.
+        db.execute("UPDATE cases SET disposition_state='active' "
+                   "WHERE disposition_state IS NULL OR TRIM(disposition_state)=''")
+        db.execute("UPDATE cases SET pending_review=0 WHERE pending_review IS NULL")
         # One-time case_snapshots BASELINE: every case already live at migration time gets a genesis
         # snapshot of its current field values (source='baseline', old=NULL), so history doesn't start
         # blank for the existing book — new changes then diff against a real baseline instead of a void.
@@ -987,6 +1055,405 @@ def snapshot_case(db, case_number, old_row, new_row, source):
     return {"batch_id": batch, "changed": changed} if changed else None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CASE DISPOSITION  (docs/case-disposition-design.md)
+# ═══════════════════════════════════════════════════════════════════════════════
+# ARCHIVE-NEVER-DELETE. A case never leaves the platform; a disposition is a STATE. The
+# decision is prod-owned, append-only, and lives in ledger.db behind the restore guard.
+#
+# THREE STATES (§3.1) — active | watching | archived:
+#   watching = a warm lead that legitimately comes back (plans default, loans mature,
+#   circumstances change). Out of the working queue, NEVER filed next to `duplicate`.
+# Review-flagging is ORTHOGONAL to state, not a fourth state: a flag marks that a human
+# should look and never changes what the case IS, which is what lets an invalidation (§6)
+# fire against a watching or archived case.
+
+DISPOSITION_STATES = ("active", "watching", "archived")
+
+# Tunable magnitudes for the invalidation predicates — named config, never inline
+# constants (project standard). A predicate must not fire on rounding noise.
+DISPOSITION_CONFIG = {
+    "balance_increase_min": 500.0,   # $ rise over the at-decision balance that reads as real
+    "sale_window_days": 120,         # owner_declined re-approach window before a set sale date
+}
+
+# ─── TAXONOMY — 15 codes (§4): 3 + 4 + 1 + 5 + 2 ───
+#   state        — the state a committed decision puts the case in
+#   comment      — free text required at decision time
+#   invalidation — §6 predicate that can re-flag the case later (None = never re-flags)
+#   zero_balance — server-side guard: refuse unless the live balance is a REAL 0.0
+DISPOSITION_CODES = {
+    # ── Group A — taxpayer resolved the delinquency ──
+    "paid_in_full": {
+        "label": "Paid / zero balance", "group": "Taxpayer resolved", "state": "archived",
+        "comment": False, "invalidation": "balance_positive", "zero_balance": True},
+    "payment_plan_33_02": {
+        "label": "§33.02 payment plan", "group": "Taxpayer resolved", "state": "watching",
+        "comment": True, "invalidation": "plan_default"},
+    "tax_loan_32_06": {
+        "label": "§32.06 tax-loan transfer", "group": "Taxpayer resolved", "state": "watching",
+        "comment": True, "invalidation": "new_suit_activity"},
+    # ── Group B — property or owner left our scope ──
+    "ownership_changed": {
+        "label": "Ownership changed", "group": "Out of scope", "state": "archived",
+        "comment": True, "invalidation": None},
+    "sold_at_tax_sale": {
+        "label": "Sold at tax sale", "group": "Out of scope", "state": "archived",
+        "comment": False, "invalidation": None},
+    "not_distressed": {
+        "label": "Not distressed", "group": "Out of scope", "state": "archived",
+        "comment": True, "invalidation": "distress_returned"},
+    "out_of_market": {
+        "label": "Out of market", "group": "Out of scope", "state": "archived",
+        "comment": True, "invalidation": None},
+    # ── Group C — court outcome ──
+    # There is deliberately NO plain `dismissed` code: a dismissed case that still owes tax is
+    # the CORE LEAD PIPELINE (case_track='dismissed_owing'; TX-23-00423 was dismissed owing
+    # $72k, then closed at $108k). A one-click "dismissed" archive would let the most valuable
+    # bucket on the platform be filed away as finished. Guarded server-side, not by UI
+    # convention: balance >0 or unknown -> refused.
+    "dismissed_resolved": {
+        "label": "Dismissed — nothing owed", "group": "Court outcome", "state": "archived",
+        "comment": False, "invalidation": "balance_positive", "zero_balance": True},
+    # ── Group D — PC Peak outcome ──
+    # Kept at five deliberately: "our offer lost" / "our approach lost" / "our own gates said
+    # no" are three different lessons, and the only ground truth the acquisition verdicts will
+    # ever be scored against. The person who lived the deal picks correctly without thinking.
+    "acquired": {
+        "label": "Acquired by PC Peak", "group": "PC Peak outcome", "state": "archived",
+        "comment": True, "invalidation": None},
+    "lost_to_competitor": {
+        "label": "Lost to competitor", "group": "PC Peak outcome", "state": "archived",
+        "comment": True, "invalidation": None},
+    "owner_declined": {
+        "label": "Owner declined", "group": "PC Peak outcome", "state": "watching",
+        "comment": True, "invalidation": "sale_date_approaching"},
+    "unable_to_contact": {
+        "label": "Unable to contact", "group": "PC Peak outcome", "state": "watching",
+        "comment": True, "invalidation": "new_contact_path"},
+    "no_go_underwriting": {
+        "label": "No-go — underwriting", "group": "PC Peak outcome", "state": "archived",
+        "comment": True, "invalidation": None},
+    # ── Group E — data quality ──
+    # Collapsed from four: `bad_data` vs `wrong_property_type` is genuinely ambiguous to a rep
+    # facing a garbled record, and a confidently-labeled wrong code is fabricated data in the
+    # calibration set. These also carry the LOWEST calibration value (they describe our
+    # pipeline, not the market). The required comment holds the specifics.
+    "duplicate": {
+        "label": "Duplicate of another case", "group": "Data quality", "state": "archived",
+        "comment": True, "invalidation": None},
+    "data_quality": {
+        "label": "Unusable record", "group": "Data quality", "state": "archived",
+        "comment": True, "invalidation": "account_resolved"},
+}
+
+DISPOSITION_GROUP_ORDER = ["Taxpayer resolved", "Out of scope", "Court outcome",
+                           "PC Peak outcome", "Data quality"]
+
+
+def _live_balance(row):
+    """The ACT live tax balance from property_intel, or None for UNKNOWN. A real 0.0 and an
+    unknown balance are DIFFERENT and must never collapse (standing falsy-conflation rule) —
+    the zero-balance guard and every balance predicate depend on the distinction."""
+    raw = (row or {}).get("property_intel")
+    if not raw:
+        return None
+    try:
+        bal = json.loads(raw).get("current_tax_balance")
+    except Exception:
+        return None
+    try:
+        return float(bal) if bal is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def derive_disposition(rows):
+    """PURE derivation of a case's disposition from its append-only log, by ROW ORDER (§3.2).
+    No resolution column to keep consistent, no in-place update anywhere.
+        current state    = state of the latest 'decision' row, else 'active'
+        open review flag = a 'proposal' newer than the latest decision-or-dismissal
+    `rows` is the case's rows as dicts, ascending by id. Kept pure so the reversal sequences
+    in the validation plan can be pinned without a database."""
+    state, code, at = "active", None, None
+    boundary = 0            # id of the latest decision-or-dismissal
+    for r in rows:
+        if r.get("kind") == "decision":
+            state = r.get("state") or "active"
+            code = r.get("code")
+            at = r.get("entered_at")
+            boundary = r.get("id") or boundary
+        elif r.get("kind") == "dismissal":
+            boundary = r.get("id") or boundary
+    pending = None
+    for r in rows:
+        if r.get("kind") == "proposal" and (r.get("id") or 0) > boundary:
+            pending = r          # keep the LATEST open proposal
+    return {"state": state, "code": code, "at": at,
+            "pending_review": 1 if pending else 0,
+            "pending_review_code": pending.get("code") if pending else None,
+            "pending_review_evidence": pending.get("evidence") if pending else None}
+
+
+def disposition_of(db, case_number):
+    rows = [dict(r) for r in db.execute(
+        "SELECT * FROM ledger.case_dispositions WHERE case_number=? ORDER BY id", [case_number])]
+    d = derive_disposition(rows)
+    d["log"] = rows
+    return d
+
+
+def refresh_disposition_cache(db, case_number):
+    """Rewrite the derived cache columns on `cases` from the authoritative log. These are
+    caches exactly like deal_status/last_action_at — recomputable at any time, never the
+    source of truth (design §3.4)."""
+    d = disposition_of(db, case_number)
+    db.execute("UPDATE cases SET disposition_state=?, disposition_code=?, disposition_at=?, "
+               "pending_review=?, pending_review_code=? WHERE case_number=?",
+               [d["state"], d["code"], d["at"], d["pending_review"],
+                d["pending_review_code"], case_number])
+    return d
+
+
+def _premise_snapshot(db, case_number, case_row):
+    """What the disposition's premise RESTED ON at decision time. Stored on the decision row so
+    §6 can later ask 'does this premise still hold?' — a computable question — instead of
+    re-running the proposal engine, which would re-propose paid_in_full against an `acquired`
+    case forever (its balance is zero and always will be)."""
+    case_row = dict(case_row or {})
+    last_event = db.execute("SELECT MAX(event_date) FROM docket_events WHERE case_number=?",
+                            [case_number]).fetchone()[0]
+    owners = ""
+    try:
+        pi = json.loads(case_row.get("property_intel") or "{}")
+        owners = json.dumps([pi.get("owners"), pi.get("ownership_history", [{}])[:1]],
+                            sort_keys=True, default=str)
+    except Exception:
+        owners = ""
+    return {
+        "balance": _live_balance(case_row),
+        "last_event_date": last_event,
+        "judgment_date": case_row.get("judgment_date"),
+        "sale_date_set": bool((case_row.get("oos_date") or "").strip()
+                              or (case_row.get("sale_scheduled_date") or "").strip()),
+        "account_status": case_row.get("account_status"),
+        "contact_hash": hashlib.sha256(owners.encode()).hexdigest()[:16],
+    }
+
+
+# ─── §6 INVALIDATION PREDICATES ───
+# Each asks ONLY "does this disposition's premise still hold?" — never "what would we propose
+# for this case?". Returns an evidence dict when the premise is falsified, else None.
+
+def _inv_balance_positive(db, cn, case, was):
+    bal = _live_balance(case)
+    if bal is not None and bal > 0:
+        return {"reason": "live balance is no longer zero", "balance": bal,
+                "balance_at_decision": was.get("balance")}
+    return None
+
+
+def _inv_new_docket_activity(db, cn, case, was):
+    since = was.get("last_event_date")
+    if not since:
+        return None
+    row = db.execute("SELECT event_date, description FROM docket_events "
+                     "WHERE case_number=? AND event_date > ? ORDER BY event_date DESC LIMIT 1",
+                     [cn, since]).fetchone()
+    if row:
+        return {"reason": "new docket activity since the decision",
+                "event_date": row[0], "event": row[1]}
+    return None
+
+
+def _inv_balance_increase(db, cn, case, was):
+    bal, base = _live_balance(case), was.get("balance")
+    if bal is None or base is None:
+        return None
+    if bal - float(base) >= DISPOSITION_CONFIG["balance_increase_min"]:
+        return {"reason": "balance rose materially since the decision",
+                "balance": bal, "balance_at_decision": base}
+    return None
+
+
+def _inv_plan_default(db, cn, case, was):
+    # A §33.02 plan defaults quietly: the balance climbs again, or the suit resumes moving.
+    # THIS predicate is the reason `watching` earns its keep.
+    return _inv_balance_increase(db, cn, case, was) or _inv_new_docket_activity(db, cn, case, was)
+
+
+def _inv_distress_returned(db, cn, case, was):
+    hit = _inv_balance_increase(db, cn, case, was)
+    if hit:
+        return hit
+    jd = (case.get("judgment_date") or "").strip()
+    if jd and jd != (was.get("judgment_date") or "").strip():
+        return {"reason": "a judgment was entered since the decision", "judgment_date": jd}
+    return None
+
+
+def _inv_sale_date_approaching(db, cn, case, was):
+    # People change their minds as the sale date closes — surface the re-approach window.
+    if was.get("sale_date_set"):
+        return None
+    for field in ("oos_date", "sale_scheduled_date"):
+        val = (case.get(field) or "").strip()
+        if val:
+            return {"reason": "a sale date is now set — re-approach window", field: val}
+    return None
+
+
+def _inv_new_contact_path(db, cn, case, was):
+    now = _premise_snapshot(db, cn, case)
+    if was.get("contact_hash") and now["contact_hash"] != was["contact_hash"]:
+        return {"reason": "owner / mailing address changed — a new contact path exists"}
+    return None
+
+
+def _inv_account_resolved(db, cn, case, was):
+    if (case.get("account_status") == "resolved"
+            and was.get("account_status") in ("needs_lookup", "invalid")):
+        return {"reason": "the DCAD account resolved — the record may now be usable",
+                "account_status_at_decision": was.get("account_status")}
+    return None
+
+
+INVALIDATION_PREDICATES = {
+    "balance_positive": _inv_balance_positive,
+    "plan_default": _inv_plan_default,
+    "new_suit_activity": _inv_new_docket_activity,
+    "distress_returned": _inv_distress_returned,
+    "sale_date_approaching": _inv_sale_date_approaching,
+    "new_contact_path": _inv_new_contact_path,
+    "account_resolved": _inv_account_resolved,
+}
+
+
+# ─── §5 PROPOSAL RULES (auto-flag on an undispositioned case) ───
+
+def _propose_for(db, case_number, case):
+    """The engine's proposal for an ACTIVE, never-dispositioned case. Returns (code, evidence)
+    or None. Never archives anything — a proposal is a prompt for a human (§5)."""
+    bal = _live_balance(case)
+    # DERIVE the track with case_track_of rather than reading the stored column: create_case does
+    # not recompute case_track on write (it is set by discover.py at scrape time and backfilled at
+    # migration), so the column can legitimately be empty on a fresh prod write — and a proposal
+    # rule that silently reads an empty column would just never fire.
+    track = case_track_of(case.get("property_type"), case.get("oos_date"),
+                          case.get("judgment_type"), case.get("judgment_date"), bal)
+    if track == "personal_property":
+        return None                     # BPP is a different instrument — never dispositioned here
+
+    # A dismissal ALONE never flags. `dismissed_paid` is already the platform's single derived
+    # truth for "dismissed AND a real $0 balance" (case_track_of), so reusing that function both
+    # avoids a second dismissal parser that could drift from the first AND makes it STRUCTURALLY
+    # impossible to propose an archive for a dismissed_owing case (§4.3).
+    if track == "dismissed_paid":
+        return "dismissed_resolved", {"reason": "dismissed with a zero live balance",
+                                      "case_track": track, "balance": bal}
+
+    # Real 0.0 only — an unknown balance must never read as paid.
+    if bal is not None and bal == 0.0:
+        return "paid_in_full", {"reason": "ACT live balance is zero", "balance": bal}
+
+    # A completed sale, not an ORDER of sale (which is only authorization and is the single
+    # most common docket line on the platform). NOTE: the live corpus currently contains ZERO
+    # completed-sale events — discover.py does not capture sale outcomes (a known, already
+    # logged gap), so this rule is CORRECT AND DORMANT until that capture exists. It is not
+    # written to look like it works: the validation run reports its proposal count as 0.
+    row = db.execute(
+        "SELECT id, event_date, description FROM docket_events WHERE case_number=? "
+        "AND (UPPER(description) LIKE '%SHERIFF%DEED%' OR UPPER(description) LIKE '%CONSTABLE%DEED%' "
+        "  OR UPPER(description) LIKE '%RETURN OF SALE%' OR UPPER(description) LIKE '%SALE HELD%' "
+        "  OR UPPER(description) LIKE '%PROPERTY SOLD%') "
+        "ORDER BY event_date DESC LIMIT 1", [case_number]).fetchone()
+    if row:
+        return "sold_at_tax_sale", {"reason": "a completed-sale docket entry exists",
+                                    "event_id": row[0], "event_date": row[1], "event": row[2]}
+
+    # Ownership changed: a DEED TRANSFER DATED AFTER FILING is the signal — NOT a name
+    # mismatch on its own. An owner-of-record who differs from the defendant is the ESTATE/HEIR
+    # signal (the graduated heir gate), not a sale to a third party; treating it as one would
+    # archive the heir pipeline. DCAD's 1/1/1900 is a known no-transfer sentinel, not a date.
+    try:
+        pi = json.loads(case.get("property_intel") or "{}")
+    except Exception:
+        pi = {}
+    xfer, filed = _norm_us_date(pi.get("deed_transfer_date")), _norm_date(case.get("filed_date"))
+    if xfer and filed and xfer > filed:
+        owner = (pi.get("owners") or [{}])[0].get("name") if pi.get("owners") else None
+        if owner and _name_tokens_overlap(owner, case.get("defendant")) is False:
+            return "ownership_changed", {"reason": "deed transferred after filing to a party "
+                                                   "unrelated to the defendant",
+                                         "deed_transfer_date": xfer, "filed_date": filed,
+                                         "dcad_owner": owner, "defendant": case.get("defendant")}
+    return None
+
+
+def _norm_us_date(v):
+    """DCAD dates arrive as M/D/YYYY. 1/1/1900 is its NO-DATE sentinel — the same falsy
+    conflation already fixed once in this pipeline — and must never read as a real transfer."""
+    s = (str(v or "")).strip()
+    if not s or s in ("1/1/1900", "01/01/1900"):
+        return None
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
+    if not m:
+        return _norm_date(s)
+    mo, d, y = m.groups()
+    return f"{y}-{int(mo):02d}-{int(d):02d}"
+
+
+_DISP_NAME_NOISE = {"ET", "AL", "ETAL", "ESTATE", "EST", "OF", "HEIRS", "HEIR", "DEVISEE",
+                    "DECEASED", "THE", "AND", "MRS", "MR", "JR", "SR", "III", "II"}
+
+
+def _name_tokens_overlap(a, b):
+    """Whether two party names share a meaningful token — the heir-gate rule (acquisition.py
+    _name_tokens), duplicated here rather than imported so the backend keeps no dependency on
+    the acquisition module. Returns None when either side is unknown (never a mismatch claim)."""
+    def toks(n):
+        return {t for t in re.findall(r"[A-Za-z]{2,}", (n or "").upper())
+                if t not in _DISP_NAME_NOISE and len(t) >= 3}
+    ta, tb = toks(a), toks(b)
+    if not ta or not tb:
+        return None
+    return bool(ta & tb)
+
+
+def evaluate_dispositions(db, case_number, case):
+    """Flag engine, run on the WRITE path. Appends at most ONE proposal row and NEVER changes
+    state — a proposal is a prompt (§5), an invalidation is a premise check (§6), and neither
+    ever archives or reopens anything. Idempotent: an already-open proposal for the same code
+    is not re-appended."""
+    d = disposition_of(db, case_number)
+    if d["state"] == "active" and not d["code"]:
+        hit = _propose_for(db, case_number, case)              # §5 — never dispositioned yet
+        code, evidence = hit if hit else (None, None)
+    else:
+        # §6 — ask ONLY whether THIS disposition's premise still holds.
+        spec = DISPOSITION_CODES.get(d["code"] or "", {})
+        pred = INVALIDATION_PREDICATES.get(spec.get("invalidation") or "")
+        if not pred:
+            return None                                        # this code never re-flags
+        was = {}
+        for r in reversed(d["log"]):
+            if r.get("kind") == "decision":
+                try: was = json.loads(r.get("evidence") or "{}")
+                except Exception: was = {}
+                break
+        evidence = pred(db, case_number, dict(case), was)
+        code = d["code"] if evidence else None
+    if not code:
+        return None
+    if d["pending_review"] and d["pending_review_code"] == code:
+        return None                                            # already open — idempotent
+    db.execute("INSERT INTO ledger.case_dispositions (case_number, kind, code, source, "
+               "evidence, model_version) VALUES (?,'proposal',?,'auto_flag',?,?)",
+               [case_number, code, json.dumps(evidence, default=str), MODEL_VERSION])
+    refresh_disposition_cache(db, case_number)
+    return {"proposed": code, "evidence": evidence}
+
+
 # ─── API ROUTES ───────────────────────────────────────────────
 
 @app.get("/")
@@ -1012,10 +1479,22 @@ async def favicon():
     return HTMLResponse("")
 
 @app.get("/api/cases")
-async def get_cases(status: str = None, stage: str = None, city: str = None):
+async def get_cases(status: str = None, stage: str = None, city: str = None,
+                    state: str = None, include_archived: int = 0):
+    """DEFAULT EXCLUDES ARCHIVED CASES (design §8). `watching` cases DO ship — carrying their
+    disposition_state — because a warm lead is still a real lead and belongs in fleet analyses;
+    keeping it out of the working queue is a frontend queue-composition rule, not a data rule.
+    Archived is the hard server-side line. This was chosen over an opt-in flag deliberately:
+    an opt-in means every existing consumer silently keeps archived cases in its denominators
+    forever, which is the worse failure mode. `?state=` selects one state exactly;
+    `?include_archived=1` returns everything."""
     with get_db() as db:
         q = "SELECT * FROM cases WHERE 1=1"
         params = []
+        if state:
+            q += " AND COALESCE(disposition_state,'active')=?"; params.append(state)
+        elif not include_archived:
+            q += " AND COALESCE(disposition_state,'active')!='archived'"
         if status: q += " AND case_status=?"; params.append(status)
         if stage:  q += " AND stage=?"; params.append(stage)
         if city:   q += " AND city=?"; params.append(city)
@@ -1115,6 +1594,15 @@ async def create_case(data: dict):
         try:
             snapshot_case(db, cn, dict(existing) if existing else None, merged,
                           source="update" if existing else "initial")
+        except Exception:
+            pass
+
+        # Disposition auto-flag (design §5/§6): propose on a never-dispositioned case, or check
+        # whether an existing disposition's premise still holds. NEVER changes state and never
+        # archives or reopens — it only appends a proposal for a human. Wrapped so flagging can
+        # never break a case write (same discipline as log_prediction / snapshot_case).
+        try:
+            evaluate_dispositions(db, cn, merged)
         except Exception:
             pass
 
@@ -1300,6 +1788,234 @@ async def get_case_snapshots(case_number: str):
         }
     return {"case_number": case_number, "count": len(rows),
             "latest_batch": latest, "snapshots": rows}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════
+# CASE DISPOSITION ENDPOINTS (docs/case-disposition-design.md §10.1)
+# Open on read/write like the rest of the case API. Archiving is deliberately NOT token-gated
+# (§9): the action is reversible, append-only, and attributed, and archived cases stay
+# permanently queryable — THE AUDIT TRAIL IS THE CONTROL, NOT THE GATE. `decided_by` is a pick
+# from the rep roster and is SELF-ATTESTED; the platform has no authentication, and standing
+# one up inside a disposition build is how architectural commitments get made without being
+# decided. Auth is logged as its own initiative.
+# ═══════════════════════════════════════════════════════════════════════════════════════════════════
+
+class DispositionIn(BaseModel):
+    code: str
+    comment: Optional[str] = None
+    decided_by: Optional[str] = None
+
+
+class CommentIn(BaseModel):
+    body: str
+    author: Optional[str] = None
+
+
+def _require_case(db, case_number):
+    row = db.execute("SELECT * FROM cases WHERE case_number=?", [case_number]).fetchone()
+    if not row:
+        raise HTTPException(404, f"Case {case_number} not found")
+    return dict(row)
+
+
+@app.get("/api/cases/{case_number}/disposition")
+async def get_disposition(case_number: str):
+    with get_db() as db:
+        _require_case(db, case_number)
+        d = disposition_of(db, case_number)
+    spec = DISPOSITION_CODES.get(d["code"] or "", {})
+    return {"case_number": case_number, "state": d["state"], "code": d["code"],
+            "label": spec.get("label"), "at": d["at"],
+            "pending_review": d["pending_review"],
+            "pending_review_code": d["pending_review_code"],
+            "pending_review_label": DISPOSITION_CODES.get(
+                d["pending_review_code"] or "", {}).get("label"),
+            "pending_review_evidence": d["pending_review_evidence"],
+            "log": d["log"]}
+
+
+@app.get("/api/dispositions/codes")
+async def get_disposition_codes():
+    """The taxonomy, so the UI never hardcodes a second copy that can drift from the server's."""
+    return {"groups": DISPOSITION_GROUP_ORDER,
+            "codes": [dict(spec, code=c) for c, spec in DISPOSITION_CODES.items()]}
+
+
+@app.post("/api/cases/{case_number}/disposition")
+async def set_disposition(case_number: str, body: DispositionIn):
+    """Commit a disposition. The STATE is derived from the code (§4) — a caller never picks it,
+    so `payment_plan_33_02` can only ever mean `watching`."""
+    code = (body.code or "").strip()
+    spec = DISPOSITION_CODES.get(code)
+    if not spec:
+        raise HTTPException(400, f"unknown disposition code '{code}'")
+    comment = (body.comment or "").strip()
+    if spec.get("comment") and not comment:
+        raise HTTPException(400, f"'{spec['label']}' requires a comment")
+    with get_db() as db:
+        case = _require_case(db, case_number)
+        # ZERO-BALANCE GUARD (§4.3). Refuses on >0 AND on unknown: an unknown balance must never
+        # read as paid. This is what stops the dismissed-owing pipeline — the most valuable
+        # bucket on the platform — from being one-clicked into the archive.
+        if spec.get("zero_balance"):
+            bal = _live_balance(case)
+            if bal is None:
+                raise HTTPException(409, f"'{spec['label']}' needs a verified live tax balance; "
+                                         f"this case's balance is UNKNOWN (not enriched). "
+                                         f"Re-enrich the case, or pick a code that fits what we know.")
+            if bal > 0:
+                raise HTTPException(409, f"'{spec['label']}' requires a zero balance; this case "
+                                         f"still owes ${bal:,.2f}. A dismissed case that still "
+                                         f"owes tax is an ACTIVE LEAD, not a resolved one.")
+        premise = _premise_snapshot(db, case_number, case)
+        cur = db.execute(
+            "INSERT INTO ledger.case_dispositions (case_number, kind, state, code, comment, "
+            "decided_by, source, evidence, model_version) VALUES (?,'decision',?,?,?,?,'human',?,?)",
+            [case_number, spec["state"], code, comment or None, (body.decided_by or "").strip() or None,
+             json.dumps(premise, default=str), MODEL_VERSION])
+        if comment:
+            db.execute("INSERT INTO ledger.case_comments (case_number, author, body, disposition_id) "
+                       "VALUES (?,?,?,?)",
+                       [case_number, (body.decided_by or "").strip() or None, comment, cur.lastrowid])
+        d = refresh_disposition_cache(db, case_number)
+    return {"status": "ok", "case_number": case_number, "state": d["state"], "code": code,
+            "label": spec["label"]}
+
+
+@app.post("/api/cases/{case_number}/disposition/dismiss")
+async def dismiss_disposition_flag(case_number: str, body: DispositionIn):
+    """Reject an open proposal — the case stays EXACTLY as it is. Appended, never an update."""
+    with get_db() as db:
+        _require_case(db, case_number)
+        d = disposition_of(db, case_number)
+        if not d["pending_review"]:
+            raise HTTPException(409, "no open review flag on this case")
+        db.execute("INSERT INTO ledger.case_dispositions (case_number, kind, code, comment, "
+                   "decided_by, source, model_version) VALUES (?,'dismissal',?,?,?,'human',?)",
+                   [case_number, d["pending_review_code"], (body.comment or "").strip() or None,
+                    (body.decided_by or "").strip() or None, MODEL_VERSION])
+        d = refresh_disposition_cache(db, case_number)
+    return {"status": "ok", "case_number": case_number, "state": d["state"]}
+
+
+@app.post("/api/cases/{case_number}/disposition/reopen")
+async def reopen_case(case_number: str, body: DispositionIn):
+    """Return a case to `active`. A reversal is a NEW decision row, never an edit — the prior
+    disposition stays in the log permanently."""
+    with get_db() as db:
+        case = _require_case(db, case_number)
+        d = disposition_of(db, case_number)
+        if d["state"] == "active":
+            raise HTTPException(409, "case is already active")
+        premise = _premise_snapshot(db, case_number, case)
+        db.execute("INSERT INTO ledger.case_dispositions (case_number, kind, state, code, comment, "
+                   "decided_by, source, evidence, model_version) "
+                   "VALUES (?,'decision','active','reopened',?,?,'human',?,?)",
+                   [case_number, (body.comment or "").strip() or None,
+                    (body.decided_by or "").strip() or None,
+                    json.dumps(premise, default=str), MODEL_VERSION])
+        d = refresh_disposition_cache(db, case_number)
+    return {"status": "ok", "case_number": case_number, "state": d["state"]}
+
+
+@app.get("/api/cases/{case_number}/comments")
+async def get_case_comments(case_number: str):
+    with get_db() as db:
+        rows = [dict(r) for r in db.execute(
+            "SELECT * FROM ledger.case_comments WHERE case_number=? ORDER BY id", [case_number])]
+    return {"case_number": case_number, "count": len(rows), "comments": rows}
+
+
+@app.post("/api/cases/{case_number}/comments")
+async def add_case_comment(case_number: str, body: CommentIn):
+    """Append a note. Deliberately NOT written to rep_actions: that log drives the derived
+    deal_status funnel, and a note must NEVER advance a case from not_contacted to contacted."""
+    text = (body.body or "").strip()
+    if not text:
+        raise HTTPException(400, "comment body required")
+    with get_db() as db:
+        _require_case(db, case_number)
+        cur = db.execute("INSERT INTO ledger.case_comments (case_number, author, body) "
+                         "VALUES (?,?,?)", [case_number, (body.author or "").strip() or None, text])
+        rid = cur.lastrowid
+    return {"status": "ok", "id": rid}
+
+
+@app.get("/api/cases/{case_number}/history")
+async def get_case_history(case_number: str):
+    """The MERGED timeline (§3.5) — case_snapshots (field changes) + case_dispositions
+    (decisions) + case_comments (notes), each row tagged with its origin.
+
+    Merged at READ, never at write. case_snapshots is untouched by the disposition system: its
+    purpose is detecting MACHINE derivation bugs on re-scrape ('this value moved with no docket
+    evidence'), and a disposition has no docket evidence by nature and never will. Writing human
+    decisions into it would make that signal mean two different things. Each table on disk keeps
+    recording only what it is authoritative for; unification happens here."""
+    with get_db() as db:
+        _require_case(db, case_number)
+        snaps = [dict(r) for r in db.execute(
+            "SELECT * FROM ledger.case_snapshots WHERE case_number=? ORDER BY id", [case_number])]
+        disps = [dict(r) for r in db.execute(
+            "SELECT * FROM ledger.case_dispositions WHERE case_number=? ORDER BY id", [case_number])]
+        notes = [dict(r) for r in db.execute(
+            "SELECT * FROM ledger.case_comments WHERE case_number=? ORDER BY id", [case_number])]
+    items = []
+    for r in snaps:
+        items.append({"origin": "snapshot", "at": r["changed_at"], "field": r["field"],
+                      "old": r["old_value"], "new": r["new_value"],
+                      "evidence_desc": r["evidence_desc"], "source": r["source"]})
+    for r in disps:
+        spec = DISPOSITION_CODES.get(r["code"] or "", {})
+        items.append({"origin": "disposition", "at": r["entered_at"], "kind": r["kind"],
+                      "state": r["state"], "code": r["code"], "label": spec.get("label"),
+                      "comment": r["comment"], "decided_by": r["decided_by"],
+                      "source": r["source"], "evidence": r["evidence"]})
+    for r in notes:
+        if r["disposition_id"]:
+            continue          # already shown on its disposition row — don't double-render
+        items.append({"origin": "comment", "at": r["created_at"],
+                      "body": r["body"], "author": r["author"]})
+    items.sort(key=lambda i: (i["at"] or ""))
+    return {"case_number": case_number, "count": len(items), "history": items}
+
+
+@app.get("/api/dispositions")
+async def list_dispositions(state: str = None):
+    """Fleet roll-up + the two review surfaces: the open-flag queue, and RECENTLY ARCHIVED —
+    the visibility that makes an open (ungated) archive safe, since a wrong archive is then
+    noticed rather than silent (§9)."""
+    with get_db() as db:
+        by_code = [{"code": r[0], "label": DISPOSITION_CODES.get(r[0] or "", {}).get("label"),
+                    "state": r[1], "n": r[2]}
+                   for r in db.execute(
+                       "SELECT disposition_code, disposition_state, COUNT(*) FROM cases "
+                       "WHERE disposition_code IS NOT NULL GROUP BY 1,2 ORDER BY 3 DESC")]
+        by_state = {r[0]: r[1] for r in db.execute(
+            "SELECT COALESCE(disposition_state,'active'), COUNT(*) FROM cases GROUP BY 1")}
+        q = ("SELECT case_number, property_address, defendant, disposition_state, "
+             "disposition_code, disposition_at, pending_review, pending_review_code FROM cases ")
+        review = [dict(r) for r in db.execute(
+            q + "WHERE pending_review=1 ORDER BY updated_at DESC")]
+        recent = [dict(r) for r in db.execute(
+            q + "WHERE disposition_state!='active' AND disposition_at IS NOT NULL "
+                "ORDER BY disposition_at DESC LIMIT 50")]
+        rows = []
+        if state:
+            rows = [dict(r) for r in db.execute(
+                q + "WHERE COALESCE(disposition_state,'active')=? ORDER BY disposition_at DESC",
+                [state])]
+    # Attach who decided, so the recently-archived surface answers "who filed this?" at a glance.
+    with get_db() as db:
+        for r in recent:
+            d = db.execute("SELECT decided_by FROM ledger.case_dispositions WHERE case_number=? "
+                           "AND kind='decision' ORDER BY id DESC LIMIT 1", [r["case_number"]]).fetchone()
+            r["decided_by"] = d[0] if d else None
+    return {"by_code": by_code, "by_state": by_state,
+            "counts": {"active": by_state.get("active", 0),
+                       "watching": by_state.get("watching", 0),
+                       "archived": by_state.get("archived", 0),
+                       "total_all": sum(by_state.values())},
+            "review_queue": review, "recently_archived": recent, "cases": rows}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -1986,23 +2702,42 @@ async def get_run_status(run_id: int):
 async def get_stats():
     with get_db() as db:
         total = db.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
-        pre_j = db.execute("SELECT COUNT(*) FROM cases WHERE stage='pre_judgment'").fetchone()[0]
-        judged = db.execute("SELECT COUNT(*) FROM cases WHERE judgment_date IS NOT NULL AND oos_issued=0").fetchone()[0]
+        # The portfolio stage buckets sit ABOVE the case list, so they must share its
+        # denominator: an archived case excluded from the list but counted in "OOS Issued"
+        # is the stat-vs-card contradiction this project has already fixed twice.
+        _live = " AND COALESCE(disposition_state,'active')!='archived'"
+        pre_j = db.execute("SELECT COUNT(*) FROM cases WHERE stage='pre_judgment'" + _live).fetchone()[0]
+        judged = db.execute("SELECT COUNT(*) FROM cases WHERE judgment_date IS NOT NULL AND oos_issued=0" + _live).fetchone()[0]
         # A pulled sale is its own (latest) stage — count it as sale_pulled, not oos_issued, so
         # the portfolio buckets stay mutually exclusive AND the "Sale Pulled" stat matches the
         # card badge. Count sale_pulled by the DATE field (not just the stage column), since a
         # re-scrape recomputes stage from orderOfSaleIssued and would otherwise revert it to
         # oos_issued (discover.py doesn't yet capture sale-pulled events — see known gaps).
         _pulled_where = "(stage='sale_pulled' OR (sale_pulled_date IS NOT NULL AND TRIM(sale_pulled_date)!=''))"
-        oos = db.execute(f"SELECT COUNT(*) FROM cases WHERE oos_issued=1 AND NOT {_pulled_where}").fetchone()[0]
-        pulled = db.execute(f"SELECT COUNT(*) FROM cases WHERE {_pulled_where}").fetchone()[0]
+        oos = db.execute(f"SELECT COUNT(*) FROM cases WHERE oos_issued=1 AND NOT {_pulled_where}{_live}").fetchone()[0]
+        pulled = db.execute(f"SELECT COUNT(*) FROM cases WHERE {_pulled_where}{_live}").fetchone()[0]
         last_run = db.execute("SELECT started_at FROM agent_runs ORDER BY id DESC LIMIT 1").fetchone()
+        # DISPOSITION COUNTS (design §8) — four numbers that visibly reconcile
+        # (active + watching + archived == total_all), rather than one that silently shrinks.
+        # `total_cases` stays the DEFAULT-VIEW denominator (non-archived) so it agrees with what
+        # /api/cases returns; total_all is stated alongside it so the gap is never invisible.
+        dstate = {r[0]: r[1] for r in db.execute(
+            "SELECT COALESCE(disposition_state,'active'), COUNT(*) FROM cases GROUP BY 1")}
+        active_n = dstate.get("active", 0)
+        watching_n = dstate.get("watching", 0)
+        archived_n = dstate.get("archived", 0)
+        pending_n = db.execute("SELECT COUNT(*) FROM cases WHERE pending_review=1").fetchone()[0]
         return {
-            "total_cases": total,
+            "total_cases": active_n + watching_n,   # default view (archived excluded)
             "pre_judgment": pre_j,
             "judgment_entered": judged,
             "oos_issued": oos,
             "sale_pulled": pulled,
+            "active_cases": active_n,
+            "watching_cases": watching_n,
+            "archived_cases": archived_n,
+            "total_all": total,
+            "pending_review": pending_n,
             "last_agent_run": last_run[0] if last_run else None
         }
 

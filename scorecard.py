@@ -57,6 +57,16 @@ def main():
     rows = [c for c in all_rows
             if c.get("property_type") != "personal" and c.get("case_track") != "personal_property"]
     excluded_bpp = len(all_rows) - len(rows)
+
+    # DENOMINATOR DISCLOSURE (docs/case-disposition-design.md §8). Archived cases are excluded
+    # from the platform's default views, so any run that quietly counted them would not be
+    # comparable to a run made before dispositions existed — or to a fleet count taken from the
+    # live API. State the denominator on its face rather than leaving it implicit.
+    has_dispo = "disposition_state" in {r[1] for r in db.execute("PRAGMA table_info(cases)")}
+    archived = 0
+    if has_dispo:
+        archived = sum(1 for c in rows if (c.get("disposition_state") or "active") == "archived")
+        rows = [c for c in rows if (c.get("disposition_state") or "active") != "archived"]
     total = len(rows)
 
     # Ground truth = an actual Order-of-Sale date (real property only, per the filter above).
@@ -68,6 +78,12 @@ def main():
     print("  PROJECTION-vs-ACTUAL SCORECARD")
     print("=" * 68)
     print(f"  cases: {total}   with an actual OOS date (scoreable): {len(resolved)}")
+    if has_dispo:
+        print(f"  denominator: non-archived cases in this DB "
+              f"({archived} archived case(s) excluded)")
+    else:
+        print("  denominator: ALL cases in this DB — it carries no disposition state "
+              "(dispositions are prod-owned), so nothing is excluded as archived")
     if not resolved:
         print("\n  No cases with a real oos_date yet — backfill closed cases:")
         print("    python3 discover.py --pattern TX-25 --include-closed --individuals-only")
