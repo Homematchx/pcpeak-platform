@@ -646,6 +646,12 @@ async function syncFromPlatform() {
     // impossible. Guarded: never rebuild against an empty/failed platform list (must not wipe the mirror).
     const platformNums = new Set(platformCases.map(pc => pc.case_number));
     const beforeLen = cases.length;
+    // Capture whether the OPEN case had usable property_intel BEFORE the rebuild. A hard reload
+    // boots from the slim localStorage cache (property_intel stripped at quota), so the open
+    // case's detail renders "Not Yet Loaded"; the rebuild below then replaces it with the full
+    // fetched object. We re-render ONLY when intel goes absent→present for the open case — never
+    // on a steady-state tick (intel already present ⇒ no change), so the anti-tab-reset rule holds.
+    const openIntelBefore = hasUsableIntel(activeId ? cases.find(x => x.id === activeId) : null);
     if (platformNums.size > 0) {
       // Keep genuine LOCAL-ONLY drafts (not on the platform), themselves deduped by case number.
       const seenDraft = new Set();
@@ -683,6 +689,16 @@ async function syncFromPlatform() {
     let openCase = activeId ? cases.find(x => x.id === activeId) : null;
     if (!openCase && selectedCn) openCase = cases.find(x => x.extracted && x.extracted.caseNumber === selectedCn);
     if (openCase) activeId = openCase.id;
+
+    // Targeted re-render: the open case's property_intel just MATERIALIZED (slim boot → full
+    // fetch). This is the one case where re-rendering the open detail is correct — the rep is
+    // looking at "Not Yet Loaded" for data that now exists. Preserve their active tab so the
+    // refresh doesn't yank them to Overview.
+    if (openCase && !openIntelBefore && hasUsableIntel(openCase)) {
+      var _keepTab = activeDetailTabId();
+      renderDetail(openCase);
+      reactivateDetailTab(_keepTab);
+    }
 
     save();
     renderList();
@@ -1165,6 +1181,32 @@ function fmtC(n) { if(!n&&n!==0) return "—"; return "$"+parseFloat(n).toLocale
 // ═══════════════════════════════════════════
 // RENDER CASE DETAIL
 // ═══════════════════════════════════════════
+// Does a case carry USABLE property_intel? Mirrors renderPropertyIntel's gate EXACTLY, so
+// "materialized" here means precisely "the panel would flip from Not-Yet-Loaded to loaded".
+// A case booted from the slim localStorage cache has property_intel stripped → returns false.
+function hasUsableIntel(c) {
+  var pi = (c && c.property_intel) ? parseIntel(c.property_intel) : null;
+  return !!(pi && (pi.market_value != null || pi.current_tax_balance != null || pi.year_built != null));
+}
+
+// The detail tab the rep is currently on (by its visible panel), or null. Used to preserve the
+// tab across a data-materialized re-render so the panel refresh doesn't snap them back to Overview.
+function activeDetailTabId() {
+  var p = document.querySelector("#cdet .tp.on");
+  return p ? p.id.replace(/^tp-/, "") : null;
+}
+
+function reactivateDetailTab(tabId) {
+  // Re-select a non-Overview tab after renderDetail (which always defaults to Overview). Skip
+  // 'petition' — its swTab handler re-opens the PDF, which must never fire on a background sync.
+  if (!tabId || tabId === "ov" || tabId === "petition") return;
+  var btn = Array.from(document.querySelectorAll("#cdet .tb")).find(function(b){
+    var oc = b.getAttribute("onclick") || "";
+    return oc.indexOf("'" + tabId + "'") >= 0;
+  });
+  if (btn) swTab({ target: btn }, tabId);
+}
+
 function selectCase(id) {
   activeId = id;
   const c = cases.find(x => x.id===id);
@@ -2808,14 +2850,20 @@ function save() {
     return;
   } catch (e) { /* quota exceeded — fall through to a slim cache */ }
   try {
+    // Slim cache: drop the heavy per-case blobs so the mirror fits. RETAIN the OPEN case's
+    // property_intel (a single ~15KB blob is trivial against the freed megabytes) so the case a
+    // rep is mid-review on survives a hard reload WITHOUT the Not-Yet-Loaded flash — it only has
+    // to wait out the sync for every OTHER case. memo is always dropped (re-fetched on sync).
+    var openId = activeId;
     var slim = cases.map(function(c){
       var s = Object.assign({}, c);
-      delete s.property_intel; delete s.memo;
+      if (c.id !== openId) delete s.property_intel;
+      delete s.memo;
       return s;
     });
     localStorage.setItem("tfi_v5", JSON.stringify(slim));
     if (!window.__slimWarned) { window.__slimWarned = true;
-      console.warn("localStorage quota reached — caching a slim case list (property_intel/memo dropped; re-fetched on each sync)."); }
+      console.warn("localStorage quota reached — caching a slim case list (property_intel dropped except the open case; memo dropped; re-fetched on each sync)."); }
   } catch (e2) {
     try { localStorage.removeItem("tfi_v5"); } catch (_e) {}
     console.warn("localStorage full even for a slim cache — local cache disabled this session (data is safe on the server).");

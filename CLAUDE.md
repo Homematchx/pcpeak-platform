@@ -5,6 +5,108 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-07-23 (case disposition system + stale-intel-panel fix — SESSION DONE)
+
+**Two initiatives shipped this session, both deployed + fingerprint-verified + live-verified.**
+
+**1. CASE DISPOSITION SYSTEM (design-first, approved) — archive-never-delete. LIVE.**
+Design: [`docs/case-disposition-design.md`](docs/case-disposition-design.md) (all 7 open decisions
+settled, §12). TRACE FIRST established the old `🗑 Remove` made NO network call — a localStorage
+edit `syncFromPlatform` silently undid ~30s later (nothing hard-deleted; a dead affordance that
+looked like it worked). Replaced with a real, durable, reversible disposition STATE written to a
+prod-owned append-only log.
+- **Schema (ledger.db, restore-guarded):** `case_dispositions` (append-only; three row kinds
+  proposal|decision|dismissal; state + code + comment + decided_by + evidence) + `case_comments`
+  (separate from rep_actions so a note NEVER advances the deal_status funnel). Both in
+  PROD_OWNED_TABLES. Derived cache cols on `cases` (disposition_state/code/at, pending_review*),
+  skip-listed in sync_to_prod. `test_restore_guard` auto-rose to 47.
+- **Three states:** active | **watching** | archived. watching = warm leads that legitimately come
+  back (§33.02 plan, §32.06 loan, owner_declined, unable_to_contact) — out of the working queue,
+  never filed next to `duplicate`. Review-flagging is ORTHOGONAL to state (a flag never changes what
+  a case IS), which lets §6 invalidation predicates fire against watching/archived cases.
+- **15-code taxonomy** served via `/api/dispositions/codes` (UI keeps no drifting copy): 3+4+1+5+2.
+  **NO plain `dismissed` code** — dismissed-owing is the core pipeline; `dismissed_resolved` is
+  guarded server-side on a REAL 0.0 balance (>0 or unknown REFUSED).
+- **Derivation is PURE row-order** (current state = latest decision's state else active; open flag =
+  a proposal newer than the latest decision-or-dismissal). No resolution column, no in-place update;
+  reversal is a new decision row.
+- **Auto-flag (§5) proposes, human commits; invalidation predicates (§6) ask "does the premise still
+  hold?"** — never auto-archive, never auto-reopen. The §33.02 plan-default detector is what makes
+  `watching` earn its keep.
+- **`/api/cases` DEFAULT-EXCLUDES archived** (?include_archived=1 / ?state= restore); this is the one
+  behavior change reaching existing consumers, chosen over an opt-in flag deliberately (an opt-in
+  leaves archived cases in every denominator forever). `/api/stats` returns four reconciling numbers.
+  **Denominator-printing requirement (§8)** applied to sync_to_prod (reads include_archived=1 for
+  TRUE inventory so archived cases aren't re-pushed as new) and scorecard.py.
+- **PROVENANCE PRINCIPLE recorded:** the prediction ledger's outcomes come from DOCKET EVIDENCE,
+  never human filing decisions — a `sold_at_tax_sale` disposition is a rep's judgment, the docket's
+  sale entry is the fact. Dispositions write NOTHING to prediction_ledger.outcome_type. Joinable-but-
+  separate. Calibration labels captured (§7) but nothing consumes them yet (out of scope).
+- **Tests:** `backend/test_disposition.py` 75/75 (every §13 pin incl. append-only reversal
+  sequences, guards, deal_status isolation, count reconciliation, non-interference, invalidation
+  precision), `test_disposition_browser.py` 24/24 (incl. the archived-case-stays-gone-across-a-sync
+  pin). Verified against a copy of the real 247-case prod DB: migration clean+idempotent, NO inferred
+  backfill (every case starts active). Live curl round-trip: guard 409, archive hides+stays-queryable,
+  reopen restores.
+
+**2. STALE PROPERTY-INTEL PANEL fix (traced from a live TX-26-01298 report).** Panel showed "Not Yet
+Loaded" for property_intel the server WAS returning (15,405 chars). TRACE (real data, in-browser):
+NEITHER suspect strips the in-memory object — `save()` slims a COPY, the sync rebuild REPLACES from
+the fresh fetch. Root cause = the **full localStorage mirror is 6.66 MB**, over the ~5 MB per-origin
+quota → save() degrades to a SLIM cache (property_intel stripped: 6.66MB→1.70MB measured). A hard
+reload BOOTS from that slim cache (in-memory intel absent), and `syncFromPlatform` re-fetches the
+full intel but DELIBERATELY didn't re-render the open detail (the 2026-07-18 anti-tab-reset rule) —
+so the panel stayed stale until a manual click. **Pre-existing, NOT caused by the disposition work.**
+- **Fix #1 (targeted):** after the rebuild, re-render the open detail ONLY when the open case's
+  property_intel goes absent→present (`hasUsableIntel` mirrors the panel gate exactly), preserving
+  the active tab (`activeDetailTabId`/`reactivateDetailTab`, petition tab skipped). Fires on material
+  change ONLY — a steady-state 30s tick with intel already present does NOT re-render, so the
+  anti-tab-reset rule holds by construction.
+- **Fix #2 (complement):** the slim cache RETAINS the currently-open case's property_intel (one
+  ~15KB blob is trivial against the freed megabytes) so the case a rep is mid-review on survives a
+  hard reload without the flash.
+- **Tests:** `test_intel_reload.py` 10/10 (deterministic hold-gate: pre-sync slim boot renders Not-
+  Yet-Loaded, post-sync AUTO-populates with no click + tab preserved, steady-state second sync does
+  NOT re-render, #2 open-case retention). `test_quota_save.py` updated for #2 (heavy case is now
+  non-open so general slimming still drops it) → 5/5.
+
+**Also this session:** `browser_env.py` — the 8 Playwright suites hardcoded a Linux chromium path
+(`/opt/pw-browsers/chromium-1194/...`) and had SILENTLY STOPPED being checks on a Mac checkout;
+`chrome_path()` resolves the pinned path first, else the local playwright cache. All browser suites
+run again on this Mac.
+
+**QUEUED FOR NEXT INCREMENT:**
+1. **⬆ EVENTS-BATCHING — TOP OF QUEUE (elevated; THIRD STRIKE).** `syncFromPlatform` does 1
+   `/api/cases` GET + ~244 SEQUENTIAL `/api/events/{cn}` GETs. One root cause, three independent
+   symptoms now: (a) the 502 bursts (2026-07-18), (b) the widened navigation-race window
+   (selection-stability bugs), (c) it determines how long THIS session's stale-intel-panel window
+   lasts. Past "logged optimization." Fix: batch events into the `/api/cases` payload (one response).
+2. **Land comp display — evidence behind the §G floor** (collapsible banded land-sale set; unchanged
+   from prior handoff).
+3. **Fleet-wide standing land floors** (batch-compute, not propose-triggered; unchanged).
+
+**LOGGED — ARCHITECTURAL, NO ACTION (design when raised):** the mirror-everything client cache is
+approaching end of life. The full localStorage mirror is **6.66 MB and grows with fleet size** — at
+400+ cases the SLIM path becomes the PERMANENT boot state for every rep (property_intel never cached,
+every case waits out the sync). Fixes #1/#2 mitigate the symptom; they don't move the ceiling. The
+eventual fix is caching the case-list SKELETON and fetching detail ON DEMAND — which also DELETES the
+quota problem entirely. Stage-3-adjacent.
+
+**ALSO PENDING (unchanged, gated on the user raising them):**
+- **Disposition follow-ups (Stage-3-adjacent):** calibration FROM disposition labels (v1 captures
+  only); platform AUTHENTICATION as its own named initiative (triggered when reps beyond the owner
+  are daily users — `decided_by` is self-attested today, the append-only reversible attributed log is
+  the control, NOT a gate); bulk disposition.
+- **2 pre-existing `test_petition_link` failures on HEAD** (`B: WITH url → link visible` / `href is
+  the real https court URL`) — surfaced now that browser_env.py made the suites runnable again. NOT
+  from this work (confirmed on unmodified HEAD). No action; someone should eventually look. See
+  memory `petition-link-browser-failures`.
+- Everything from the §G-land-floor handoff below (case disposition was the "queued next initiative"
+  there — now DONE; the rest stands).
+
+**SESSION DONE (2026-07-23, second session).** Both initiatives built, tested, deployed, live-
+verified. Every remaining item logged and gated.
+
 ## SESSION HANDOFF — 2026-07-23 (§G land floor + batch legibility — SESSION DONE)
 
 **Platform LIVE at `9c4a389`** (feature/main/production all FF, no force). Served artifacts:

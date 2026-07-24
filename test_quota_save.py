@@ -58,6 +58,10 @@ with sync_playwright() as p:
         cases = [{ id:'TX-26-01192_platform', city:'dallas', rep_assigned:'Tim Summers', memo:'m',
                    property_intel: pi,
                    extracted:{ caseNumber:'TX-26-01192', propertyAddress:'1909 Leroy Rd.', defendant:'Debra Myers' } }];
+        // No open case — so the slim path drops this heavy blob (it retains ONLY the OPEN case's
+        // property_intel; that retention is covered by test_intel_reload). Here we exercise the
+        // general slimming: the heavy blob must be dropped so the mirror fits.
+        activeId = null;
         try { save(); return {threw:false}; } catch(e){ return {threw:true, err:String(e)}; }
     }""")
     check("save() does NOT throw when the full payload exceeds quota", setup.get("threw") is False)
