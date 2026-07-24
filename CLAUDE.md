@@ -1060,6 +1060,21 @@ origin production && git checkout main`. Railway deploys `production`. DB is on 
 data loss), scraping is local (prod only serves), so a bad deploy's blast radius is a broken
 site, not lost data — recoverable via revert + redeploy.
 
+**STANDING RULES (2026-07-23) — the feature branch must ALWAYS be the complete record:**
+1. **Every commit is preceded by a branch check** (`git branch --show-current`). Feature-first
+   authoring order is NOT ceremony — it is what guarantees the feature branch originates every
+   change, so it is never behind main/production. (Bit once: a fix was committed on `main`
+   directly because a prior deploy left the checkout there; the feature branch had to be
+   FF-reconciled after the fact. Net result was correct, but the branch briefly wasn't the
+   record.) Commit on the FEATURE branch, then run the FF chain feature → main → production.
+2. **Every deploy sequence ENDS by checking out the feature branch** (`git checkout
+   claude/remove-analyze-with-ai-0vu5i9`), never leaving the tree on `main` or `production`.
+   This is what prevents rule 1 from being violated on the next commit.
+3. FF chain is **no-force**, always. Verify FF-safety (`git merge-base --is-ancestor`) before
+   each hop, and fingerprint both served artifacts (`backend/main.py`, `frontend/index.html`)
+   before AND after — same standard as any prod/history op ([[prod-history-fingerprint-proof]]).
+   End state: all three origin refs at ONE SHA.
+
 > **CORRECTION (verified live 2026-07-11): `f7a3003` is actually SAFE to deploy.** My
 > earlier concern — that untracking `data/pdfs/` would 404 the "Petition PDF" button — was
 > WRONG. The frontend `openPetitionPDF()` does `fetch('/api/petition/'+cn).then(r=>r.json())`
