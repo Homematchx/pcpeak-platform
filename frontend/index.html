@@ -2157,63 +2157,10 @@ function _acqHtml(cn, data) {
           + (lf.recency_widened?' (widened — thin band)':'')+'</span></div>';
         if (lf.net_of_demolition) s += '<div class="acq-row"><span style="padding-left:10px">&#8627; net of demolition</span>'
           + '<span>$'+lf.net_of_demolition.toLocaleString()+' <span class="acq-lbl acq-est">estimated</span></span></div>';
-        // ── EVIDENCE BEHIND THE FLOOR (design §16.9) — the banded land-sale set, collapsible. ──
-        // On a land-dominant subject (Kemrock: no ARV, MAO can't compute) this floor is the ONLY
-        // valuation on the screen, so a real capital decision rests on it. A telemetry value an
-        // operator cannot verify is a defect — same audit-not-trust principle as the per-comp
-        // adjustment grid. Read-only: no confirm flow until the land/teardown exit mode exists.
-        // <details> keeps the open/closed state in the DOM with no JS and nothing to lose on re-render.
-        var lc = lf.comps || [];
-        if (lc.length) {
-          var acres = function(a){ return a==null ? "—" : (Math.round(a*1000)/1000)+" ac"; };
-          var rows = lc.map(function(c){
-            var flags = (c.qualification && c.qualification.arms_length_flags) || [];
-            return '<tr>'
-              + '<td style="padding:4px 8px 4px 0;color:var(--text2)">'+(c.address||"—")
-              + (flags.length ? ' <span title="'+flags.join(", ").replace(/"/g,"&quot;")+'" style="color:var(--amber)">&#9888;</span>' : '')
-              + '</td>'
-              // Acres + sqft stacked in ONE cell: the card is a third of the grid, and a sixth
-              // column pushed $/lot-sqft off the visible area — the figure an operator most needs
-              // to sanity-check each sale.
-              + '<td style="padding:4px 8px;text-align:right;white-space:nowrap">'+acres(c.lot_acres)
-              + '<div style="color:var(--text3)">'+(c.lot_sqft!=null ? c.lot_sqft.toLocaleString()+" sf" : "—")+'</div></td>'
-              + '<td style="padding:4px 8px;text-align:right;white-space:nowrap">'+(c.close_date||"—")+'</td>'
-              + '<td style="padding:4px 8px;text-align:right;white-space:nowrap;font-weight:600">'
-              + (c.close_price!=null ? "$"+c.close_price.toLocaleString() : "—")+'</td>'
-              + '<td style="padding:4px 0 4px 8px;text-align:right;white-space:nowrap;color:var(--text3)">'
-              + (c.price_per_lot_sqft!=null ? "$"+c.price_per_lot_sqft : "—")+'</td>'
-              + '</tr>';
-          }).join("");
-          // OPEN-STATE LIVES OUTSIDE THE DOM. The panel is rebuilt by any re-render —
-          // renderAcquisition on a tab switch or retry, and the sync-time renderDetail that
-          // repopulates materialized property_intel — and each rebuild creates a NEW <details>,
-          // which defaults to closed. That silently shut the drill-down under a reviewer and read
-          // as "clicking the summary does nothing" (the element was fine; it was being replaced).
-          // Holding the flag in a variable makes the state survive every rebuild path by
-          // construction; `ontoggle` keeps it in sync with what the user actually did.
-          s += '<details' + (window._landEvidenceOpen ? ' open' : '')
-            + ' ontoggle="window._landEvidenceOpen=this.open" style="margin:6px 0 2px">'
-            + '<summary style="cursor:pointer;font-size:11px;color:var(--text3);padding:4px 0">'
-            + 'Show the '+lc.length+' land sale'+(lc.length===1?"":"s")+' behind this floor</summary>'
-            + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
-            + '<thead><tr style="color:var(--text3);text-align:left;border-bottom:1px solid var(--border2)">'
-            + '<th style="padding:4px 8px 4px 0;font-weight:600">Address</th>'
-            + '<th style="padding:4px 8px;text-align:right;font-weight:600">Lot</th>'
-            + '<th style="padding:4px 8px;text-align:right;font-weight:600">Closed</th>'
-            + '<th style="padding:4px 8px;text-align:right;font-weight:600">Close</th>'
-            + '<th style="padding:4px 0 4px 8px;text-align:right;font-weight:600">$/lot sf</th>'
-            + '</tr></thead><tbody>'+rows+'</tbody></table></div>'
-            // Reconciliation line — the floor IS the median of the closes above, the way §16.2
-            // measured it. Stated explicitly so the floor is never read as a $/sqft extrapolation.
-            + '<div class="acq-note" style="margin-top:6px;line-height:1.5">'
-            + 'Range $'+lf.range[0].toLocaleString()+' – $'+lf.range[1].toLocaleString()
-            + ' &middot; <b>median $'+(lf.median!=null?lf.median:lf.land_floor).toLocaleString()+'</b> = the floor above'
-            + (lf.median_price_per_lot_sqft!=null ? ' &middot; median $'+lf.median_price_per_lot_sqft+'/lot sf' : '')
-            + '<br>Close prices are <b>reconstructed</b> (NTREIS omits ClosePrice; ratio &times; lot acres). '
-            + 'The floor is the <b>median of these actual closes</b> — never a per-unit rate extrapolated '
-            + 'across sizes. Display only: it never feeds MAO or the verdict.</div>'
-            + '</details>';
-        }
+        // The EVIDENCE for this floor is NOT here — it is its own workbench section below, with
+        // the same visual weight as the ARV comp workbench (they do the same evidentiary job, and
+        // on a land-dominant subject the floor is the ONLY valuation on the screen). This card
+        // keeps just the headline figure + provenance.
         return s;
       })()
     + '</div>';
@@ -2274,6 +2221,104 @@ function _acqHtml(cn, data) {
     });
   }
   h += '</div>';
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // LAND COMP WORKBENCH (§G) — the SAME evidentiary standard as the ARV comp workbench above.
+  // Both answer "why should I believe this number?", so they get the same visual weight, the
+  // same photo treatment, the same relevance score, and flags spelled out in words. On a
+  // land-dominant subject (no ARV, MAO can't compute) this floor is the ONLY valuation on the
+  // screen — so it is EXPANDED BY DEFAULT in exactly that case.
+  // READ-ONLY: no confirm/reject until the land/teardown exit mode exists.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  h += (function(){
+    var lf = data.land_floor;
+    if (!lf || !lf.land_floor || !(lf.comps||[]).length) return "";
+    var lc = lf.comps, med = (lf.median!=null ? lf.median : lf.land_floor);
+    // The sales that DEFINE the median — one on an odd n, the two straddling closes on an even n
+    // (where the median is a midpoint no single sale equals, so an equality test would silently
+    // never mark anything). Falls back to an equality test on older stored batches.
+    var medSet = lf.median_bracket || [med];
+    var arvMissing = !(a.arv && a.arv.value != null);
+    // Default open when the floor is the only valuation; once the user toggles, honour their choice.
+    // State lives OUTSIDE the DOM so it survives every panel rebuild (sync re-render, tab switch).
+    var isOpen = (window._landEvidenceOpen === undefined) ? arvMissing : window._landEvidenceOpen;
+    var acres = function(v){ return v==null ? "—" : (Math.round(v*1000)/1000)+" ac"; };
+    var sqft  = function(v){ return v==null ? "—" : v.toLocaleString()+" sf"; };
+    var subjAc = lf.subject_lot_acres,
+        subjSf = subjAc!=null ? Math.round(subjAc*43560) : null;
+
+    var rows = lc.map(function(c){
+      var flags = (c.qualification && c.qualification.arms_length_flags) || [];
+      var media = c.media_urls || [];
+      var isMed = medSet.indexOf(c.close_price) >= 0;
+      // PHOTO — same treatment as an improved comp: first Media hotlink, else an EXPLICIT
+      // "no photo" (never a blank square that reads as "not loaded yet"). You cannot judge a
+      // lot you cannot see, and a photo-less land sale should be visibly weaker evidence.
+      var ph = media.length
+        ? '<img loading="lazy" src="'+media[0]+'" alt="land comp">'
+        : '<div class="acq-ph0">no photo</div>';
+      return '<div class="acq-comp'+(isMed?" acq-comp-on":"")+'">'
+        + '<div class="acq-comp-ph">'+ph+'</div>'
+        + '<div class="acq-comp-b">'
+        + '<div><b>'+(c.address||c.mls_id||"—")+'</b>'
+        + (isMed?' <span class="acq-lbl acq-verified">'+(medSet.length>1?'&#8592; median bracket':'&#8592; median = the floor')+'</span>':'')
+        + '</div>'
+        + '<div class="acq-note">'+acres(c.lot_acres)+' &middot; '+sqft(c.lot_sqft)
+        + ' &middot; closed '+(c.close_date||"—")
+        + (c.match_score!=null ? ' &middot; MS '+c.match_score : '')+'</div>'
+        + '<div>close <b>$'+(c.close_price||0).toLocaleString()+'</b>'
+        + (c.price_per_lot_sqft!=null ? ' &middot; $'+c.price_per_lot_sqft+'/lot sf' : '')
+        // FLAGS IN WORDS, exactly as the ARV workbench prints them — a bare symbol tells an
+        // operator nothing about whether to trust the sale.
+        + (flags.length ? ' <span class="acq-lbl acq-inf">'+flags.join("; ")+'</span>' : '')
+        + '</div></div></div>';
+    }).join("");
+
+    var flagNote = "";
+    if (lf.n_arms_length_flagged) {
+      flagNote = '<div class="acq-note" style="margin-top:6px;line-height:1.5;color:var(--amber)">'
+        + '<b>'+lf.n_arms_length_flagged+' of '+lf.n+' sales carry an arm\'s-length flag, and they ARE '
+        + 'included in the median above.</b> '
+        + (lf.median_excluding_flagged!=null
+            ? 'Median of the '+lf.n_unflagged+' unflagged sale'+(lf.n_unflagged===1?'':'s')+' would be '
+              + '<b>$'+lf.median_excluding_flagged.toLocaleString()+'</b> — shown for sensitivity only; '
+              + 'it does NOT replace the floor. Excluding them is a valuation decision for a human.'
+            : 'No unflagged sales remain, so no comparison median can be formed.')
+        + '</div>';
+    }
+
+    return '<div class="acq-card acq-land"><div class="acq-h">Land comp workbench (§G)'
+      + '<span class="acq-note" style="margin-left:8px">Read-only &middot; the floor is the median of '
+      + 'these closes &middot; photos are MLS hotlinks</span></div>'
+      + (arvMissing ? '<div class="acq-note" style="margin-bottom:6px;color:var(--amber)">'
+          + 'No ARV is available for this subject — <b>this land floor is the only valuation on the '
+          + 'screen</b>, so its evidence is shown expanded.</div>' : '')
+      // SUBJECT ROW — so the operator sees what the set is being compared against.
+      + '<div class="acq-comp" style="background:var(--surface3)"><div class="acq-comp-ph">'
+      + '<div class="acq-ph0">subject</div></div><div class="acq-comp-b">'
+      + '<div><b>SUBJECT</b> <span class="acq-lbl acq-inf">not a sale</span></div>'
+      + '<div class="acq-note">'+acres(subjAc)+' &middot; '+sqft(subjSf)
+      + ' &middot; lot band '+lf.lot_band_acres[0]+'–'+lf.lot_band_acres[1]+' ac'
+      + (lf.recency_months_used ? ' &middot; '+lf.recency_months_used+'mo window' : '')
+      + (lf.recency_widened ? ' (widened — thin band)' : '')+'</div>'
+      + '<div>Land floor <b>$'+lf.land_floor.toLocaleString()+'</b> '
+      + '<span class="acq-lbl acq-est">estimated</span></div></div></div>'
+      + '<details' + (isOpen ? ' open' : '')
+      + ' ontoggle="window._landEvidenceOpen=this.open" style="margin-top:6px">'
+      + '<summary style="cursor:pointer;font-size:11px;color:var(--text3);padding:4px 0">'
+      + (isOpen ? 'Hide' : 'Show') + ' the '+lc.length+' land sale'+(lc.length===1?'':'s')
+      + ' behind this floor &middot; ranked by relevance (MS)</summary>'
+      + rows
+      + '<div class="acq-note" style="margin-top:6px;line-height:1.5">'
+      + 'Range $'+lf.range[0].toLocaleString()+' – $'+lf.range[1].toLocaleString()
+      + ' &middot; <b>median $'+med.toLocaleString()+'</b> = the floor'
+      + (lf.median_price_per_lot_sqft!=null ? ' &middot; median $'+lf.median_price_per_lot_sqft+'/lot sf' : '')
+      + '<br>Close prices are <b>reconstructed</b> (NTREIS omits ClosePrice; ratio &times; lot acres). '
+      + 'The floor is the <b>median of these actual closes</b> — never a per-unit rate extrapolated '
+      + 'across sizes. Display only: it never feeds MAO or the verdict.</div>'
+      + flagNote
+      + '</details></div>';
+  })();
   h += '<div class="acq-note" style="margin-top:6px">Every figure labeled verified / estimated / inferred / unavailable. No offer number rests on DCAD (§5.4).</div>';
   return h;
 }

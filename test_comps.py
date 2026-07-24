@@ -329,8 +329,16 @@ def test_land_evidence_set_is_auditable():
     check("lot_sqft = acres × 43560", one["lot_sqft"] == round(0.15 * comps.SQFT_PER_ACRE), one["lot_sqft"])
     check("$/lot sqft = close ÷ lot sqft",
           one["price_per_lot_sqft"] == round(80000 / (0.15 * comps.SQFT_PER_ACRE), 2), one["price_per_lot_sqft"])
-    check("evidence is ordered by close price (the median reads off the middle)",
-          [c["close_price"] for c in ev] == sorted(c["close_price"] for c in ev))
+    # Ranked by RELEVANCE (like the improved comp workbench), not by price — the most comparable
+    # lot reads first rather than the cheapest. The median is computed from an independently
+    # sorted price list, so display order can NEVER move the floor; both are pinned.
+    check("evidence is ranked by relevance (match_score desc), not by price",
+          [c["match_score"] for c in ev] == sorted((c["match_score"] for c in ev), reverse=True))
+    check("every evidence comp carries a relevance score", all(c.get("match_score") is not None for c in ev))
+    import random as _r
+    shuffled = list(pool); _r.Random(7).shuffle(shuffled)
+    check("display order cannot move the floor (same median from a shuffled pool)",
+          comps.land_floor(LAND_SUBJ, shuffled, AS_OF)["land_floor"] == r["land_floor"])
     # RECONCILIATION — what the UI prints must be checkable against the set on screen.
     closes = [c["close_price"] for c in ev]
     check("median == the floor", r["median"] == r["land_floor"] == 90000)
@@ -345,6 +353,45 @@ def test_land_evidence_set_is_auditable():
           (r["land_floor"], ppsf_extrapolation))
     check("evidence survives the json round-trip that land_json persists",
           len(json.loads(json.dumps(r))["comps"]) == 3)
+
+
+def test_land_relevance_score_and_flag_disclosure():
+    """Workbench standard (§16.9): a land comp carries a RELEVANCE score the way an improved comp
+    carries MatchScore, and the set states whether arm's-length-flagged sales are inside the median."""
+    close = _land(0.166, 90000, days_ago=10)                 # identical lot, very recent
+    far   = _land(0.21, 95000, days_ago=350)                 # edge of band, nearly stale
+    flagged = _land(0.166, 88000, days_ago=10, flags=["distressed/REO/auction language in remarks"])
+    r = comps.land_floor(LAND_SUBJ, [close, far, flagged], AS_OF)
+    by = {c["close_price"]: c for c in r["comps"]}
+    check("an identical, recent lot scores higher than a band-edge, stale one",
+          by[90000]["match_score"] > by[95000]["match_score"],
+          (by[90000]["match_score"], by[95000]["match_score"]))
+    check("an arm's-length flag PENALISES the score (same shape as the improved score)",
+          by[88000]["match_score"] < by[90000]["match_score"])
+    check("scores are bounded 0-100", all(0 <= c["match_score"] <= 100 for c in r["comps"]))
+    # The disclosure the operator needs before trusting the median.
+    check("flagged count reported", r["n_arms_length_flagged"] == 1 and r["n_unflagged"] == 2)
+    check("it states flagged sales ARE in the median", r["flagged_in_median"] is True)
+    check("a sensitivity median EXCLUDING flagged sales is offered",
+          r["median_excluding_flagged"] == comps._median_of([90000, 95000]), r["median_excluding_flagged"])
+    check("...and it does NOT replace the floor", r["land_floor"] == comps._median_of([88000, 90000, 95000]))
+    allf = comps.land_floor(LAND_SUBJ, [flagged], AS_OF)
+    check("no unflagged sales → no comparison median (None, never 0)",
+          allf["median_excluding_flagged"] is None and allf["n_unflagged"] == 0)
+
+
+def test_land_median_bracket_names_the_defining_sales():
+    """The UI marks where the floor sits in the set. On an EVEN n the median is a midpoint no
+    single sale equals, so the engine names the two straddling closes rather than leaving the UI
+    to an equality test that would silently mark nothing."""
+    odd = comps.land_floor(LAND_SUBJ, [_land(0.15, 80000), _land(0.166, 90000), _land(0.18, 103000)], AS_OF)
+    check("odd n → one defining sale, equal to the median",
+          odd["median_bracket"] == [90000] and odd["median"] == 90000)
+    even = comps.land_floor(LAND_SUBJ, [_land(0.15, 80000), _land(0.166, 90000),
+                                        _land(0.17, 92000), _land(0.18, 103000)], AS_OF)
+    check("even n → the two straddling sales", even["median_bracket"] == [90000, 92000])
+    check("...and the median is their midpoint, matched by NO single sale",
+          even["median"] == 91000 and 91000 not in [c["close_price"] for c in even["comps"]])
 
 
 def test_land_evidence_absent_when_no_floor():

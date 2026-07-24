@@ -72,6 +72,10 @@ COMP_CONFIG = {
         "min_comps_before_widen": 6,
         "min_close_price": 5000,
         "max_fetch": 100,
+        # RELEVANCE weights for a land comp — the §G analogue of match_weights. Land has no GLA,
+        # beds/baths, or year, so relevance is LOT-SIZE PROXIMITY + RECENCY, with the same
+        # arm's-length penalty the improved score applies. Named/tunable, never inline.
+        "match_weights": {"lot": 60, "recency": 40, "arms_length_penalty": 8},
         # Teardown netting — a SEPARATE labeled line, NEVER baked into the gross floor. [SIGN-OFF]
         "demolition_cost_per_sqft": 8,
         "demolition_minimum": 8000,
@@ -347,6 +351,38 @@ def qualify_land(subject: dict, comp: dict, as_of: Optional[datetime.date] = Non
             "arms_length_flags": comp.get("arms_length_flags", []), "reasons": reasons}
 
 
+def _median_of(vals: list):
+    """Median of a numeric list, or None when empty (never 0 — an absent median must not read as
+    a real figure; standing falsy-conflation rule)."""
+    v = sorted(x for x in vals if x is not None)
+    if not v:
+        return None
+    n = len(v)
+    return v[n // 2] if n % 2 else round((v[n // 2 - 1] + v[n // 2]) / 2)
+
+
+def land_match_score(subject: dict, comp: dict, q: dict) -> int:
+    """Relevance of a LAND comp to the subject, 0–100 — the §G analogue of match_score(), shown the
+    way MatchScore is on improved comps so the two workbenches read to one standard. Land has no
+    GLA/beds/baths/year, so the signals are LOT-SIZE PROXIMITY and RECENCY, with the same
+    arm's-length penalty. This RANKS the evidence; it never prices it (the floor stays the median
+    of actual closes)."""
+    w = COMP_CONFIG["land"]["match_weights"]
+    cfg = COMP_CONFIG["land"]
+    score = 0.0
+    sa, ca = subject.get("lot_acres"), comp.get("lot_acres")
+    if sa and ca:
+        # 1.0 at an identical lot, decaying to 0 at the edge of the ±band.
+        score += w["lot"] * max(0.0, 1 - abs(ca - sa) / (sa * cfg["lot_size_band_pct"]))
+    days = q.get("recency_days")
+    if days is not None:
+        window = cfg["recency_months"] * 31
+        score += w["recency"] * max(0.0, 1 - days / window) if window else 0
+    if q.get("arms_length_flags"):
+        score -= w["arms_length_penalty"]
+    return max(0, round(score))
+
+
 def land_floor(subject: dict, land_comps: list, as_of: Optional[datetime.date] = None) -> dict:
     """§G LAND FLOOR = MEDIAN of the qualified, lot-size-banded comps' RECONSTRUCTED CLOSES.
     Deliberately NOT a $/acre extrapolation — that understated by 67% on the Kemrock check because
@@ -376,7 +412,11 @@ def land_floor(subject: dict, land_comps: list, as_of: Optional[datetime.date] =
         c["lot_sqft"] = round(acres * SQFT_PER_ACRE) if acres else None
         c["price_per_lot_sqft"] = (round(c["close_price"] / (acres * SQFT_PER_ACRE), 2)
                                    if acres and c.get("close_price") else None)
-    q.sort(key=lambda c: c.get("close_price") or 0)   # ascending — the median reads off the middle
+        c["match_score"] = land_match_score(subject, c, c["qualification"])
+    # Ranked by RELEVANCE, like the improved comp workbench — the most comparable lot reads first,
+    # rather than the cheapest. The median is computed from an independently sorted price list, so
+    # display order can never move the floor.
+    q.sort(key=lambda c: (c.get("match_score") or 0), reverse=True)
     closes = sorted(c["close_price"] for c in q)
     n = len(closes)
     med = closes[n // 2] if n % 2 else round((closes[n // 2 - 1] + closes[n // 2]) / 2)
@@ -387,9 +427,22 @@ def land_floor(subject: dict, land_comps: list, as_of: Optional[datetime.date] =
         "range": [closes[0], closes[-1]], "spread": closes[-1] - closes[0],
         "subject_lot_acres": sa, "lot_band_acres": band,
         "median": med,                                                    # explicit: the floor IS the median
+        # WHICH sales define the median — one close on an odd n, the two straddling closes on an
+        # even n (where the median is a midpoint no single sale equals). The UI marks these so the
+        # operator can SEE where the floor sits in the set instead of taking the number on faith.
+        "median_bracket": ([closes[n // 2]] if n % 2 else [closes[n // 2 - 1], closes[n // 2]]),
         "median_price_per_acre": (ppa[len(ppa) // 2] if ppa else None),   # SECONDARY display only
         "median_price_per_lot_sqft": (ppsf[len(ppsf) // 2] if ppsf else None),   # SECONDARY display only
         "n_arms_length_flagged": sum(1 for c in q if c["qualification"]["arms_length_flags"]),
+        # ARE FLAGGED SALES IN THE NUMBER? State it rather than leave it inferable. qualify_land()
+        # does NOT exclude them (there is no land confirm step yet), so they ARE in the median —
+        # and on a distressed-heavy set that materially moves the floor. `median_excluding_flagged`
+        # is a DISPLAY-ONLY sensitivity figure so an operator can see the swing; it never replaces
+        # the floor. Whether to exclude them is a valuation decision for a human, not a silent one.
+        "flagged_in_median": True,
+        "median_excluding_flagged": _median_of(
+            [c["close_price"] for c in q if not c["qualification"]["arms_length_flags"]]),
+        "n_unflagged": sum(1 for c in q if not c["qualification"]["arms_length_flags"]),
         # Self-describing defaults so every caller (including a direct land_floor() call) carries
         # provenance; land_floor_for_subject() overrides these when it widens the window.
         "recency_months_used": COMP_CONFIG["land"]["recency_months"],
