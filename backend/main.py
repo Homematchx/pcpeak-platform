@@ -113,7 +113,7 @@ def account_status_of(acct):
 # legitimate INSERT (logging) and UPDATE (reconcile). Installed on EVERY connection, so the tables
 # are protected the instant they exist — before they ever hold real data.
 PROD_OWNED_TABLES = ("prediction_ledger", "rep_actions", "case_snapshots",
-                     "comps", "comp_confirmations", "acquisition_analysis")
+                     "comps", "comp_confirmations", "acquisition_analysis", "comp_batches")
 
 def _restore_guard_authorizer(action, arg1, arg2, db_name, trigger_name):
     if action in (sqlite3.SQLITE_DELETE, sqlite3.SQLITE_DROP_TABLE) and arg1 in PROD_OWNED_TABLES:
@@ -458,6 +458,28 @@ def init_db():
             analysis_json   TEXT                    -- full analyze() output at this version
         );
         CREATE INDEX IF NOT EXISTS ledger.idx_aa_case ON acquisition_analysis(case_number, updated_at);
+
+        -- comp_batches: append-only record of EVERY propose, INCLUDING one that qualifies 0 comps
+        -- (design §16.6). Without this an empty propose stores no comps rows, so the UI cannot tell
+        -- "never proposed" from "proposed, 0 qualified" — the batch row is what makes it legible, and
+        -- it carries the funnel numbers + the named zeroing stage + the §G land floor.
+        CREATE TABLE IF NOT EXISTS ledger.comp_batches (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_number       TEXT NOT NULL,
+            fetch_batch       TEXT NOT NULL,
+            fetched_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            locality_used     TEXT,        -- 'zip 75241' | 'city Dallas'
+            gla_band          TEXT,        -- '[387,580]'
+            n_raw             INTEGER,     -- candidates the closed query returned
+            n_stored_closed   INTEGER,
+            n_stored_pending  INTEGER,
+            n_qualified       INTEGER,
+            zero_reason       TEXT,        -- named stage when 0 qualified (the funnel diagnosis)
+            land_floor        INTEGER,     -- §G gross land floor (display only; never feeds MAO)
+            land_n            INTEGER,
+            land_json         TEXT
+        );
+        CREATE INDEX IF NOT EXISTS ledger.idx_cb_case ON comp_batches(case_number, fetched_at);
         """)
     
     # Seed known benchmarks
@@ -1290,6 +1312,8 @@ async def get_case_snapshots(case_number: str):
 # Test seam: when set, propose() draws candidates from this instead of the live NTREIS feed. It takes
 # the subject dict and returns {"closed":[...], "pending":[...]} of normalized comps.
 _COMP_SOURCE = None
+# Test seam for the §G land floor: takes the subject, returns normalized land comps.
+_LAND_SOURCE = None
 
 
 class CompDecision(BaseModel):
@@ -1380,6 +1404,11 @@ def _build_acquisition(case_number: str) -> dict:
             proposed = [dict(r) for r in db.execute(
                 "SELECT * FROM ledger.comps WHERE case_number=? AND fetch_batch=? ORDER BY match_score DESC",
                 [case_number, batch["fetch_batch"]]).fetchall()]
+        # Latest propose record — exists even when that propose qualified 0 comps (design §16.6),
+        # which is what lets the UI distinguish "never proposed" from "proposed, 0 qualified".
+        bat = db.execute("SELECT * FROM ledger.comp_batches WHERE case_number=? ORDER BY id DESC LIMIT 1",
+                         [case_number]).fetchone()
+        latest_batch = dict(bat) if bat else None
 
     pi = _parse_pi(case)
     ci = _case_input(case, pi)
@@ -1405,12 +1434,21 @@ def _build_acquisition(case_number: str) -> dict:
     else:
         acq = acquisition.AcquisitionInputs(arv=arv, arv_label=arv_label)
 
-    analysis = acquisition.analyze(ci, acq)
+    # §G land floor from the latest propose batch — DISPLAY ONLY, passed through analyze() untouched.
+    land = None
+    if latest_batch and latest_batch.get("land_json"):
+        try:
+            land = json.loads(latest_batch["land_json"])
+        except Exception:
+            land = None
+    analysis = acquisition.analyze(ci, acq, land_floor=land)
     for c in proposed:
         c["confirmation"] = confirmations.get(c["mls_id"], {}).get("decision")
     return {
         "case_number": case_number,
         "analysis": analysis,
+        "latest_batch": latest_batch,
+        "land_floor": land,
         "valuation_state": analysis["valuation_state"],
         "decision": analysis["decision"],
         "confirmed_arv": conf_arv,
@@ -1475,10 +1513,68 @@ async def propose_comps(case_number: str, body: ProposeIn = ProposeIn(),
         rows_out = [dict(r) for r in db.execute(
             "SELECT * FROM ledger.comps WHERE case_number=? AND fetch_batch=? ORDER BY match_score DESC",
             [case_number, batch]).fetchall()]
+
+    # ── §G land floor — COMPUTED ALWAYS (design §16.5), not only when comps come back empty ──
+    land = _land_floor_for(subject)
+
+    # ── batch record — written ALWAYS, including at 0 comps (design §16.6). Without this an empty
+    # propose is indistinguishable from never-proposed. When 0 qualified, name the zeroing stage.
+    n_raw, n_qual = len(cand.get("closed", [])), len(ranked.get("comps_ranked", []))
+    gla, band_pct = subject.get("gla"), comps.COMP_CONFIG["qualification"]["gla_band_pct"]
+    gla_band = f"[{int(gla*(1-band_pct))},{int(gla*(1+band_pct))}]" if gla else None
+    locality = f"zip {subject['postal_code']}" if subject.get("postal_code") else f"city {subject.get('city')}"
+    zero_reason = None
+    if n_qual == 0:
+        zero_reason = _zero_reason(subject, n_raw, gla_band, locality)
+    with get_db() as db:
+        db.execute("INSERT INTO ledger.comp_batches (case_number, fetch_batch, locality_used, gla_band, "
+                   "n_raw, n_stored_closed, n_stored_pending, n_qualified, zero_reason, land_floor, "
+                   "land_n, land_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                   [case_number, batch, locality, gla_band, n_raw,
+                    sum(1 for r in rows_out if r["listing_status"] == "closed"),
+                    sum(1 for r in rows_out if r["listing_status"] == "pending"), n_qual, zero_reason,
+                    (land or {}).get("land_floor"), (land or {}).get("n"),
+                    json.dumps(land) if land else None])
     return {"case_number": case_number, "fetch_batch": batch,
             "provisional_arv": ranked.get("provisional_arv"),
             "n_closed": len(cand.get("closed", [])), "n_pending": len(cand.get("pending", [])),
+            "n_qualified": n_qual, "zero_reason": zero_reason, "land_floor": land,
             "comps": rows_out}
+
+
+def _land_floor_for(subject: dict) -> Optional[dict]:
+    """§G land floor for a subject — computed on every propose when a lot size exists (design §16.5).
+    Never raises: a land-floor failure must not fail the propose."""
+    if _LAND_SOURCE is not None:
+        return comps.land_floor(subject, _LAND_SOURCE(subject))
+    if not subject.get("lot_acres") or not comps.BridgeClient().configured():
+        return None
+    try:
+        return comps.land_floor_for_subject(subject)
+    except Exception:
+        return None
+
+
+def _zero_reason(subject: dict, n_raw: int, gla_band: Optional[str], locality: str) -> str:
+    """Name the stage that zeroed a propose. When the closed query itself returned nothing, run ONE
+    diagnostic (locality+recency, no GLA band) so the batch can say WHY — e.g. Kemrock: subject 484 sf
+    vs a local range of 870–3,550. Only runs in the zero case, so it costs nothing normally."""
+    if n_raw > 0:
+        return (f"{n_raw} candidates in {locality} GLA band {gla_band}, but 0 passed qualification "
+                f"(recency / price / distance)")
+    base = f"no closed sale in {locality} within GLA band {gla_band}"
+    if _COMP_SOURCE is not None or not comps.BridgeClient().configured():
+        return base   # stubbed/unconfigured — skip the live diagnostic query
+    try:
+        since = (date.today().replace(year=date.today().year - 1)).isoformat()
+        p = comps.BridgeClient().gla_profile(postal_code=subject.get("postal_code"),
+                                             city=subject.get("city"), since=since)
+        if p.get("n"):
+            return (f"{base} — {p['n']} recent sales there run {p['min']}–{p['max']} sqft "
+                    f"(median {p['median']}); subject is {subject.get('gla')} sqft")
+    except Exception:
+        pass
+    return base
 
 
 @app.post("/api/cases/{case_number}/comps/{mls_id}/confirm")

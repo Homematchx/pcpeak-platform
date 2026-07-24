@@ -240,6 +240,77 @@ def test_fetch_candidates_uses_city_when_no_zip():
     check("no locality → no query, empty result", res2["closed"] == [] and fc2.calls == [])
 
 
+# ── §G LAND FLOOR (design §16) ────────────────────────────────────────────────────────────────────
+LAND_SUBJ = dict(lot_acres=0.166, gla=484, postal_code="75241", city="Dallas")
+
+
+def _land(acres, close, days_ago=60, flags=None):
+    return {"lot_acres": acres, "close_price": close, "arms_length_flags": flags or [],
+            "close_date": (AS_OF - datetime.timedelta(days=days_ago)).isoformat()}
+
+
+def test_land_recency_default_and_widen_config():
+    cfg = comps.COMP_CONFIG["land"]
+    check("land recency default 12mo (not 24 — stale prices understate in a rising market)",
+          cfg["recency_months"] == 12)
+    check("widen target 24mo, only when thin", cfg["widen_recency_months"] == 24 and cfg["min_comps_before_widen"] > 0)
+    check("land_since honors an explicit window",
+          comps.land_since(datetime.date(2026, 7, 23), 12) == "2025-07-23")
+    check("land_since widened window", comps.land_since(datetime.date(2026, 7, 23), 24) == "2024-07-23")
+
+
+def test_qualify_land_bands_by_lot_not_gla():
+    q = comps.qualify_land(LAND_SUBJ, _land(0.17, 90000), AS_OF)
+    check("in-band lot qualifies", q["qualified"] is True and q["lot_in_band"] is True)
+    q2 = comps.qualify_land(LAND_SUBJ, _land(0.90, 400000), AS_OF)
+    check("out-of-band lot fails", q2["qualified"] is False and q2["lot_in_band"] is False)
+    check("stale land comp fails", comps.qualify_land(LAND_SUBJ, _land(0.17, 90000, days_ago=1000), AS_OF)["qualified"] is False)
+    check("low price fails", comps.qualify_land(LAND_SUBJ, _land(0.17, 100), AS_OF)["qualified"] is False)
+    # THE GUARD: land has no GLA — a comp with no GLA must still qualify (the improved band must not apply)
+    check("no GLA on a land comp is NOT a disqualifier",
+          comps.qualify_land(LAND_SUBJ, _land(0.17, 90000), AS_OF)["qualified"] is True)
+
+
+def test_land_floor_is_median_of_reconstructed_closes():
+    pool = [_land(0.15, 80000), _land(0.18, 103000), _land(0.166, 90000), _land(0.90, 400000)]
+    r = comps.land_floor(LAND_SUBJ, pool, AS_OF)
+    check("floor = median of banded closes (90000)", r["land_floor"] == 90000, r["land_floor"])
+    check("out-of-band comp excluded from n", r["n"] == 3, r["n"])
+    check("labeled estimated", r["label"] == "estimated")
+    check("range + spread reported", r["range"] == [80000, 103000] and r["spread"] == 23000)
+    check("$/acre reported as a separate SECONDARY field", r["median_price_per_acre"] is not None)
+
+
+def test_land_floor_uses_median_close_not_price_per_acre():
+    """The method is median-of-reconstructed-CLOSES, not a $/acre extrapolation (design §16.2 — the
+    naive $/acre understated Kemrock by 67%). Inside a tight band the two nearly coincide (that's why
+    banding works); this pool is built so they DIVERGE, pinning which one the engine actually uses."""
+    pool = [_land(0.13, 60000), _land(0.20, 120000), _land(0.166, 70000)]
+    r = comps.land_floor(LAND_SUBJ, pool, AS_OF)
+    ppa_extrapolation = round(r["median_price_per_acre"] * LAND_SUBJ["lot_acres"])
+    check("floor == median of closes (70000)", r["land_floor"] == 70000, r["land_floor"])
+    check("floor != the $/acre extrapolation on a size-spread set",
+          r["land_floor"] != ppa_extrapolation, (r["land_floor"], ppa_extrapolation))
+
+
+def test_land_floor_unavailable_without_lot_size():
+    r = comps.land_floor({"lot_acres": None}, [_land(0.15, 80000)], AS_OF)
+    check("no subject lot size → unavailable", r["land_floor"] is None and r["label"] == "unavailable")
+    r2 = comps.land_floor(LAND_SUBJ, [_land(0.90, 400000)], AS_OF)
+    check("no in-band comps → unavailable", r2["land_floor"] is None and r2["n"] == 0)
+
+
+def test_net_of_demolition_is_a_separate_line():
+    r = comps.land_floor(LAND_SUBJ, [_land(0.15, 80000), _land(0.18, 103000), _land(0.166, 90000)], AS_OF)
+    cfg = comps.COMP_CONFIG["land"]
+    demo = max(cfg["demolition_minimum"], round(LAND_SUBJ["gla"] * cfg["demolition_cost_per_sqft"]))
+    check("gross floor is NOT reduced by demolition", r["land_floor"] == 90000)
+    check("net-of-demo reported separately", r["net_of_demolition"] == 90000 - demo, r["net_of_demolition"])
+    check("demolition cost surfaced", r["demolition_cost"] == demo)
+    vac = comps.land_floor({**LAND_SUBJ, "gla": None}, [_land(0.15, 80000)], AS_OF)
+    check("vacant lot → no demo deduction", vac["net_of_demolition"] is None and "no structure" in vac["demolition_note"])
+
+
 if __name__ == "__main__":
     for name, fn in sorted((k, v) for k, v in globals().items() if k.startswith("test_") and callable(v)):
         fn()

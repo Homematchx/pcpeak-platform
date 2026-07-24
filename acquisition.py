@@ -447,9 +447,15 @@ def mission_score(components: dict) -> dict:
 
 
 # ── orchestrator ─────────────────────────────────────────────────────────────────────────────────
-def analyze(case: CaseInput, acq: AcquisitionInputs, as_of: Optional[datetime.date] = None) -> dict:
+def analyze(case: CaseInput, acq: AcquisitionInputs, as_of: Optional[datetime.date] = None,
+            land_floor: Optional[dict] = None) -> dict:
     """Full Stage-1 analysis. ARV comes from `acq` (Stage 1). Returns a structured, fully-labeled
-    dict. Where ARV/agreed-price/liens are absent, the relevant outputs are UNAVAILABLE, never faked."""
+    dict. Where ARV/agreed-price/liens are absent, the relevant outputs are UNAVAILABLE, never faked.
+
+    `land_floor` (design §16) is a §G valuation FLOOR computed by comps.py. It is a PURE PASSTHROUGH
+    for display: it is placed in the output and read by NOTHING in this function — not the MAO ladder,
+    not the itemized MAO, not the gates, not the Mission Score, not the decision. That is the hard rule
+    of §16.4.3 ("the floor never feeds MAO"), enforced structurally here and test-pinned."""
     cond = condition_estimate(case)
     cond_class = cond["condition_class"]["value"]
     payoff = tax_payoff(case, as_of)          # {amount, label, basis, note} — ACT live balance as-is
@@ -536,4 +542,7 @@ def analyze(case: CaseInput, acq: AcquisitionInputs, as_of: Optional[datetime.da
         "mission_score": ms,
         "decision": decision,
         "valuation_state": "confirmed" if acq.arv_label == VERIFIED else "provisional",
+        # §G land floor — DISPLAY ONLY (design §16.4.3/§16.5). Passed straight through; nothing above
+        # this line reads it. A floor is not an ARV and never feeds MAO, gates, or the verdict.
+        "land_floor": land_floor,
     }

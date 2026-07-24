@@ -27,6 +27,8 @@ import urllib.parse
 import urllib.request
 from typing import Optional
 
+UNAVAILABLE_LABEL = "unavailable"   # matches acquisition.UNAVAILABLE (kept literal to avoid a cycle)
+
 # ── tunable comp config (Dallas defaults) — every magnitude named, never inline. [SIGN-OFF] ───────
 # These are appraisal knobs; the defaults are reasonable-but-uncalibrated placeholders (same standard
 # as ACQ_CONFIG / CITY_DATA). Changing one is a signed-off action once real Dallas calibration exists.
@@ -54,6 +56,26 @@ COMP_CONFIG = {
         "prefer_same_subdivision": True,            # the subject's own subdivision is the best comp set
         "min_same_subdivision": 1,                  # ≥ this many same-subdivision comps → use them
     },
+    # §G LAND FLOOR (design §16). Land is priced from PropertyType='Land' closed sales, banded by LOT
+    # SIZE (never a $/acre extrapolation — $/acre is strongly size-dependent; see design §16.2), using
+    # the SAME reconstruction path as improved comps. [SIGN-OFF on the defaults.]
+    "land": {
+        "property_type": "Land",
+        "lot_size_band_pct": 0.30,      # subject acreage ±30%
+        # Recency: 12mo DEFAULT, widened to 24 ONLY when the band is too thin (and labeled when it is).
+        # Measured why: a 24mo window imports stale prices in an appreciating market — Kemrock's median
+        # fell $85.5k (12mo, n=14) → $70k (24mo, n=33) purely from 2024 sales at ~half 2026 levels.
+        # Widening is a last resort until the Stage-3 market-conditions time adjustment exists.
+        "recency_months": 12,
+        "widen_recency_months": 24,
+        "min_comps_before_widen": 6,
+        "min_close_price": 5000,
+        "max_fetch": 100,
+        # Teardown netting — a SEPARATE labeled line, NEVER baked into the gross floor. [SIGN-OFF]
+        "demolition_cost_per_sqft": 8,
+        "demolition_minimum": 8000,
+    },
+
     "arv_reconstruction_field": "NTREIS2_RATIO_ClosePrice_By_LotSizeAcres",
     "select_fields": [
         "ListingId", "ListingKey", "PropertyType", "PropertySubType", "StandardStatus", "MlsStatus",
@@ -203,6 +225,39 @@ class BridgeClient:
         }
         return self.query("Property", params).get("value", [])
 
+    def land_sales(self, postal_code: Optional[str] = None, city: Optional[str] = None,
+                   acres_min: Optional[float] = None, acres_max: Optional[float] = None,
+                   since: Optional[str] = None, top: Optional[int] = None) -> list:
+        """Closed LAND sales (§G basis) — `PropertyType='Land'` ONLY (teardown-intent improved sales are
+        a Stage-3 refinement, design §16.4). Banded by LOT SIZE, never by GLA (land has no GLA)."""
+        cfg = COMP_CONFIG["land"]
+        clauses = [f"PropertyType eq '{cfg['property_type']}'", "StandardStatus eq 'Closed'",
+                   _locality_clause(postal_code, city)]
+        if acres_min:
+            clauses.append(f"LotSizeAcres ge {acres_min}")
+        if acres_max:
+            clauses.append(f"LotSizeAcres le {acres_max}")
+        if since:
+            clauses.append(f"CloseDate ge {since}")
+        params = {"$filter": " and ".join(clauses), "$select": ",".join(COMP_CONFIG["select_fields"]),
+                  "$orderby": "CloseDate desc", "$top": str(top or cfg["max_fetch"])}
+        return self.query("Property", params).get("value", [])
+
+    def gla_profile(self, postal_code: Optional[str] = None, city: Optional[str] = None,
+                    since: Optional[str] = None, top: int = 200) -> dict:
+        """DIAGNOSTIC (only run when a propose returns 0): what GLA sizes actually sell in this locality,
+        so an empty batch can name WHY — e.g. 'subject 484 sf vs local range 870–3,550'."""
+        clauses = ["PropertyType eq 'Residential'", "StandardStatus eq 'Closed'",
+                   _locality_clause(postal_code, city)]
+        if since:
+            clauses.append(f"CloseDate ge {since}")
+        rows = self.query("Property", {"$filter": " and ".join(clauses), "$select": "LivingArea",
+                                       "$orderby": "CloseDate desc", "$top": str(top)}).get("value", [])
+        g = sorted(r["LivingArea"] for r in rows if r.get("LivingArea"))
+        if not g:
+            return {"n": 0}
+        return {"n": len(g), "min": g[0], "max": g[-1], "median": g[len(g) // 2]}
+
     def pending_listings(self, postal_code: Optional[str] = None, city: Optional[str] = None,
                          gla_min: Optional[float] = None, gla_max: Optional[float] = None,
                          top: int = 40) -> list:
@@ -242,6 +297,108 @@ def fetch_candidates(subject: dict, client: Optional["BridgeClient"] = None, sin
             n["list_price_directional"] = r.get("ListPrice")
             pending.append(n)
     return {"closed": closed, "pending": pending}
+
+
+# ── §G LAND FLOOR (design §16) ────────────────────────────────────────────────────────────────────
+def land_since(as_of: Optional[datetime.date] = None, months: Optional[int] = None) -> str:
+    """Recency floor for land comps. Default 12mo; the caller widens only when the band is thin."""
+    as_of = as_of or datetime.date.today()
+    months = months if months is not None else COMP_CONFIG["land"]["recency_months"]
+    y, m = as_of.year - months // 12, as_of.month - months % 12
+    if m <= 0:
+        m += 12
+        y -= 1
+    return datetime.date(y, m, min(as_of.day, 28)).isoformat()
+
+
+def qualify_land(subject: dict, comp: dict, as_of: Optional[datetime.date] = None) -> dict:
+    """Land qualification: LOT-SIZE band + recency + min price. **NO GLA band** — land has no GLA, and
+    applying the improved-comp band would zero the set (design §16.3, explicit guard)."""
+    as_of = as_of or datetime.date.today()
+    cfg = COMP_CONFIG["land"]
+    reasons, ok = [], True
+    cp = comp.get("close_price")
+    if not cp or cp < cfg["min_close_price"]:
+        ok = False
+        reasons.append("no/low reconstructed close price")
+    sa, ca = subject.get("lot_acres"), comp.get("lot_acres")
+    in_band = None
+    if sa and ca:
+        b = cfg["lot_size_band_pct"]
+        lo, hi = sa * (1 - b), sa * (1 + b)
+        in_band = lo <= ca <= hi
+        if not in_band:
+            ok = False
+            reasons.append(f"lot {ca}ac outside ±{int(b*100)}% of {sa}ac")
+    elif not ca:
+        ok = False
+        reasons.append("comp lot size missing")
+    days = None
+    if comp.get("close_date"):
+        try:
+            days = (as_of - datetime.date.fromisoformat(comp["close_date"])).days
+        except ValueError:
+            days = None
+    if days is not None and days > cfg["recency_months"] * 31:
+        ok = False
+        reasons.append(f"closed {days}d ago beyond {cfg['recency_months']}mo")
+    return {"qualified": ok, "lot_in_band": in_band, "recency_days": days,
+            "arms_length_flags": comp.get("arms_length_flags", []), "reasons": reasons}
+
+
+def land_floor(subject: dict, land_comps: list, as_of: Optional[datetime.date] = None) -> dict:
+    """§G LAND FLOOR = MEDIAN of the qualified, lot-size-banded comps' RECONSTRUCTED CLOSES.
+    Deliberately NOT a $/acre extrapolation — that understated by 67% on the Kemrock check because
+    $/acre is strongly size-dependent (design §16.2). $/acre is returned for SECONDARY display only.
+    Labeled `estimated`. It is a FLOOR, never an ARV, and must NEVER feed MAO (design §16.4.3)."""
+    as_of = as_of or datetime.date.today()
+    sa = subject.get("lot_acres")
+    if not sa:
+        return {"land_floor": None, "label": UNAVAILABLE_LABEL, "n": 0,
+                "note": "subject lot size unknown — no land floor"}
+    b = COMP_CONFIG["land"]["lot_size_band_pct"]
+    band = [round(sa * (1 - b), 4), round(sa * (1 + b), 4)]
+    q = []
+    for c in land_comps:
+        r = qualify_land(subject, c, as_of)
+        if r["qualified"]:
+            q.append({**c, "qualification": r})
+    if not q:
+        return {"land_floor": None, "label": UNAVAILABLE_LABEL, "n": 0, "subject_lot_acres": sa,
+                "lot_band_acres": band, "note": "no qualified land comps in the lot-size band"}
+    closes = sorted(c["close_price"] for c in q)
+    n = len(closes)
+    med = closes[n // 2] if n % 2 else round((closes[n // 2 - 1] + closes[n // 2]) / 2)
+    ppa = sorted(round(c["close_price"] / c["lot_acres"]) for c in q if c.get("lot_acres"))
+    return {
+        "land_floor": med, "label": "estimated", "n": n,
+        "range": [closes[0], closes[-1]], "spread": closes[-1] - closes[0],
+        "subject_lot_acres": sa, "lot_band_acres": band,
+        "median_price_per_acre": (ppa[len(ppa) // 2] if ppa else None),   # SECONDARY display only
+        "n_arms_length_flagged": sum(1 for c in q if c["qualification"]["arms_length_flags"]),
+        # Self-describing defaults so every caller (including a direct land_floor() call) carries
+        # provenance; land_floor_for_subject() overrides these when it widens the window.
+        "recency_months_used": COMP_CONFIG["land"]["recency_months"],
+        "recency_widened": False,
+        **_net_of_demolition(subject, med),
+        "comps": q,
+        "note": f"median of {n} closed land sales in lot band {band[0]}–{band[1]} ac "
+                f"(FLOOR only — never an ARV, never feeds MAO)",
+    }
+
+
+def fetch_land_candidates(subject: dict, client: Optional["BridgeClient"] = None,
+                          as_of: Optional[datetime.date] = None, months: Optional[int] = None) -> list:
+    """Live-fetch normalized closed LAND comps for the subject's locality + lot-size band."""
+    client = client or BridgeClient()
+    sa = subject.get("lot_acres")
+    pc, city = subject.get("postal_code"), subject.get("city")
+    if not sa or not (pc or city):
+        return []
+    b = COMP_CONFIG["land"]["lot_size_band_pct"]
+    rows = client.land_sales(postal_code=pc, city=city, acres_min=round(sa * (1 - b), 4),
+                             acres_max=round(sa * (1 + b), 4), since=land_since(as_of, months))
+    return [dict(normalize(r), listing_status="land_closed") for r in rows]
 
 
 # ── subdivision parsing (DCAD legal_description → NTREIS-matchable name) ──────────────────────────
@@ -519,3 +676,40 @@ def provisional_arv(subject: dict, comps: list, as_of: Optional[datetime.date] =
         "comps_ranked": scored,
         "top_comps": top,
     }
+
+
+def _net_of_demolition(subject: dict, gross: int) -> dict:
+    """Teardown netting — a SEPARATE, clearly-labeled line, never baked into the gross floor.
+    Only meaningful when a structure still stands; for a vacant lot gross == net."""
+    cfg = COMP_CONFIG["land"]
+    sqft = subject.get("gla") or 0
+    if not sqft:
+        return {"net_of_demolition": None, "demolition_cost": None,
+                "demolition_note": "no structure on record — gross land value is the net"}
+    demo = max(cfg["demolition_minimum"], round(sqft * cfg["demolition_cost_per_sqft"]))
+    return {"net_of_demolition": gross - demo, "demolition_cost": demo,
+            "demolition_note": f"teardown: gross land − demolition ({sqft} sqft @ "
+                               f"${cfg['demolition_cost_per_sqft']}/sqft, min ${cfg['demolition_minimum']:,}) "
+                               f"— ESTIMATED, shown separately; the floor itself stays gross"}
+
+
+def land_floor_for_subject(subject: dict, client: Optional["BridgeClient"] = None,
+                           as_of: Optional[datetime.date] = None) -> dict:
+    """Fetch + price the §G land floor. Uses the 12mo default and widens to 24mo ONLY when the band is
+    too thin — labeled when widened, because a wide window imports stale prices in a rising market."""
+    cfg = COMP_CONFIG["land"]
+    client = client or BridgeClient()
+    months = cfg["recency_months"]
+    fl = land_floor(subject, fetch_land_candidates(subject, client, as_of, months), as_of)
+    widened = False
+    if fl.get("n", 0) < cfg["min_comps_before_widen"]:
+        wm = cfg["widen_recency_months"]
+        w = land_floor(subject, fetch_land_candidates(subject, client, as_of, wm), as_of)
+        if w.get("n", 0) > fl.get("n", 0):
+            fl, months, widened = w, wm, True
+    fl["recency_months_used"] = months
+    fl["recency_widened"] = widened
+    if widened:
+        fl["note"] = (fl.get("note", "") + f" · recency WIDENED to {months}mo (band was thin) — "
+                      f"older comps may understate in a rising market")
+    return fl

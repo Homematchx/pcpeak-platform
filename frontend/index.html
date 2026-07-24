@@ -2071,6 +2071,21 @@ function _acqHtml(cn, data) {
     + '<div class="acq-row"><span>DCAD market (sanity only)</span><span>'+_lbl(a.market_value)+'</span></div>'
     + '<div class="acq-row"><span>Condition</span><span>'+_lbl(cond.condition_class)+'</span></div>'
     + '<div class="acq-row"><span>Rehab (exterior est.)</span><span>'+_lbl(cond.rehab_low)+' – '+_lbl(cond.rehab_high)+'</span></div>'
+    + (function(){
+        // §G LAND FLOOR — a standing floor line. Display only: it never feeds MAO or the verdict.
+        var lf = data.land_floor;
+        if (!lf || !lf.land_floor) return '<div class="acq-row"><span>Land floor (§G)</span><span>'
+          + '<span class="acq-lbl acq-unavail">unavailable</span></span></div>';
+        var s = '<div class="acq-row"><span>Land floor (§G)</span><span>$'+lf.land_floor.toLocaleString()
+          + ' <span class="acq-lbl acq-est">estimated</span></span></div>'
+          + '<div class="acq-row"><span style="padding-left:10px">&#8627; from</span><span class="acq-note">'
+          + 'n='+lf.n+' land sales · lot band '+lf.lot_band_acres[0]+'–'+lf.lot_band_acres[1]+' ac'
+          + (lf.recency_months_used ? ' · '+lf.recency_months_used+'mo' : '')
+          + (lf.recency_widened?' (widened — thin band)':'')+'</span></div>';
+        if (lf.net_of_demolition) s += '<div class="acq-row"><span style="padding-left:10px">&#8627; net of demolition</span>'
+          + '<span>$'+lf.net_of_demolition.toLocaleString()+' <span class="acq-lbl acq-est">estimated</span></span></div>';
+        return s;
+      })()
     + '</div>';
   h += '<div class="acq-card"><div class="acq-h">MAO ladder (ceiling — taxes/liens NOT deducted)</div>'
     + (mao ? Object.keys(mao).map(function(k){return '<div class="acq-row"><span>'+k+'%</span><span>$'+mao[k].toLocaleString()+'</span></div>';}).join("")
@@ -2093,7 +2108,17 @@ function _acqHtml(cn, data) {
   h += '<div class="acq-card"><div class="acq-h">Comp workbench '
     + '<button class="acq-btn" onclick="acqPropose(\''+cn+'\')">Propose comps (NTREIS)</button>'
     + '<span class="acq-note" style="margin-left:8px">Confirmed comps only drive ARV ('+data.n_confirmed_comps+' confirmed). Photos are MLS hotlinks.</span></div>';
-  if (!closed.length) h += '<div class="acq-note">No comps proposed yet.</div>';
+  if (!closed.length) {
+    // An empty propose must NOT read like "never proposed" — show the batch result + the zeroing stage.
+    var lb = data.latest_batch;
+    h += lb
+      ? '<div class="acq-note"><b>Proposed '+String(lb.fetched_at||'').slice(0,16)+' — '+lb.n_qualified
+        + ' of '+(lb.n_raw||0)+' candidates qualified.</b><br>'+(lb.locality_used||'')
+        + (lb.gla_band ? ' · GLA band '+lb.gla_band : '')
+        + (lb.zero_reason ? '<br><span style="color:var(--red)">'+lb.zero_reason+'</span>' : '')
+        + '</div>'
+      : '<div class="acq-note">Not yet proposed.</div>';
+  }
   closed.forEach(function(c){
     var conf = c.confirmation;
     var media = (function(){ try { return JSON.parse(c.media_urls||"[]"); } catch(e){ return []; } })();

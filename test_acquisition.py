@@ -348,6 +348,35 @@ def test_pin_provisional_alone_stays_hold():
           r2["decision"] == "GO-WITH-CONDITIONS", r2["decision"])
 
 
+def test_land_floor_never_feeds_mao_or_verdict():
+    """HARD PIN (design §16.4.3), the §G analogue of the DCAD lock: the land floor is DISPLAY ONLY.
+    Passing one must not move a single calculated output."""
+    acq = AcquisitionInputs(arv=210000, arv_label=A.VERIFIED, agreed_price=95000, lien_status="verified")
+    without = A.analyze(TRYON, acq, AS_OF)
+    land = {"land_floor": 85500, "label": "estimated", "n": 14, "net_of_demolition": 77500}
+    with_lf = A.analyze(TRYON, acq, AS_OF, land_floor=land)
+    check("land floor does not move the MAO ladder", with_lf["mao_ladder"] == without["mao_ladder"])
+    check("land floor does not move the itemized MAO", with_lf["mao_itemized"] == without["mao_itemized"])
+    check("land floor does not move the decision", with_lf["decision"] == without["decision"])
+    check("land floor does not move the Mission Score", with_lf["mission_score"] == without["mission_score"])
+    check("land floor does not move the gates", with_lf["gates"] == without["gates"])
+    check("land floor does not move the seller net sheet", with_lf["seller_net_sheet"] == without["seller_net_sheet"])
+    check("land floor IS surfaced for display", with_lf["land_floor"] == land)
+    check("absent land floor → None", without["land_floor"] is None)
+    # and it must never become the ARV
+    check("land floor never becomes the ARV", with_lf["arv"]["value"] == 210000)
+
+
+def test_land_floor_does_not_lift_hold():
+    """A land floor is information, not a verdict — it must not lift a case out of HOLD (§16.5)."""
+    clean = CaseInput("TX-99-CLEAN", market_value=200000, owed=30000, total_due_filing=30000,
+                      living_area_sqft=1500, depreciation_pct=20, year_built=2000, property_type="real",
+                      owner_of_record="SMITH JOHN", defendant="John Smith")
+    land = {"land_floor": 85500, "label": "estimated", "n": 14}
+    r = A.analyze(clean, AcquisitionInputs(lien_status="unavailable"), AS_OF, land_floor=land)
+    check("land floor alone does NOT lift out of HOLD", r["decision"] == "HOLD", r["decision"])
+
+
 def _print_pin_verdicts():
     print("\n" + "═" * 82)
     print("GOLDEN-PIN ACCEPTANCE VERDICTS (as_of 2026-07-19)")

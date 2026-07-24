@@ -65,6 +65,17 @@ def _stub_source(subject):
     return {"closed": [], "pending": []}
 
 
+def _land_stub(subject):
+    """§G land comps around the subject's own lot size (in-band by construction)."""
+    sa = subject.get("lot_acres")
+    if not sa:
+        return []
+    d = lambda days: (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
+    return [{"lot_acres": round(sa * 0.95, 4), "close_price": 80000, "close_date": d(60), "arms_length_flags": []},
+            {"lot_acres": round(sa * 1.05, 4), "close_price": 103000, "close_date": d(90), "arms_length_flags": []},
+            {"lot_acres": sa, "close_price": 90000, "close_date": d(120), "arms_length_flags": []}]
+
+
 def _pi(**kw):
     base = dict(distress={"level": "high", "signals": [{"type": "no_homestead"}]}, no_homestead=True)
     base.update(kw)
@@ -99,6 +110,14 @@ def seed():
             bathrooms="2/0", year_built=1980, depreciation_pct=35, actual_age=46, lot_area_sqft=6000, is_absentee=True,
             legal_description="1: SUNSET SUMMIT 2: BLK G/3483 LOT 16 3:",
             owners=[{"name": "BACA NORMA ESTELA ET AL &"}])})   # owner ≠ defendant → substantive heir mismatch
+    # Kemrock-shaped: valid locality + GLA + lot size, but the comp stub returns ZERO comps.
+    c.post("/api/cases", json={"case_number": "TX-99-ZERO", "defendant": "Zero Comp",
+        "property_address": "6406 Kemrock Dr., Dallas, TX 75241", "property_type": "real",
+        "total_due_filing": 9000,
+        "property_intel": _pi(market_value=120340, current_tax_balance=9500, living_area_sqft=484,
+            bedrooms=2, year_built=1935, depreciation_pct=50, lot_area_sqft=7233, land_value=70000,
+            improvement_value=50340, legal_description="1: CARVER HEIGHTS 2: BLK 1 LOT 1 3:",
+            owners=[{"name": "ZERO COMP"}])})
     # A case with NO locality AND no enrichment → must still fail closed (422).
     c.post("/api/cases", json={"case_number": "TX-23-01997", "property_address": "",
         "total_due_filing": 5000, "property_type": "real", "property_intel": _pi(market_value=None)})
@@ -108,6 +127,7 @@ def seed():
 def run():
     main.init_db()
     main._COMP_SOURCE = _stub_source
+    main._LAND_SOURCE = _land_stub
     c = seed()
 
     # ── fail-closed auth ──
@@ -185,6 +205,29 @@ def run():
     r1997 = c.post("/api/cases/TX-23-01997/comps/propose", headers=TOK)
     check("no locality + no GLA → 422 (fails closed)", r1997.status_code == 422)
 
+    # ── §16.6 BATCH LEGIBILITY: an empty propose must be distinguishable from never-proposed ──
+    pre_zero = c.get("/api/cases/TX-99-ZERO/acquisition", headers=TOK).json()
+    check("never-proposed → no batch record", pre_zero["latest_batch"] is None)
+    rz = c.post("/api/cases/TX-99-ZERO/comps/propose", headers=TOK)
+    check("zero-comp propose still succeeds (200, not 422)", rz.status_code == 200)
+    check("zero-comp propose reports 0 qualified", rz.json()["n_qualified"] == 0)
+    check("zero-comp propose names the zeroing stage", bool(rz.json()["zero_reason"]))
+    az = c.get("/api/cases/TX-99-ZERO/acquisition", headers=TOK).json()
+    lb = az["latest_batch"]
+    check("batch row written even at 0 comps", lb is not None and lb["n_qualified"] == 0)
+    check("batch carries locality + GLA band", "75241" in (lb["locality_used"] or "") and lb["gla_band"] == "[387,580]")
+    check("batch carries the zero_reason", "GLA band" in (lb["zero_reason"] or ""))
+
+    # ── §G LAND FLOOR: computed always, surfaced, and NEVER feeds MAO ──
+    check("land floor computed despite 0 improved comps", az["land_floor"] and az["land_floor"]["land_floor"] == 90000)
+    check("land floor labeled estimated", az["land_floor"]["label"] == "estimated")
+    check("land floor surfaced in the analysis (display only)", az["analysis"]["land_floor"] is not None)
+    check("net-of-demolition is a separate line", az["land_floor"]["net_of_demolition"] is not None)
+    check("land floor did NOT create an ARV", az["analysis"]["arv"]["value"] is None)
+    check("land floor did NOT create a MAO ladder", az["analysis"]["mao_ladder"] is None)
+    check("land floor alone does not lift out of HOLD", az["decision"] == "HOLD", )
+    check("batch stored the land floor", lb["land_floor"] == 90000)
+
     # ── confirmed comps are FROZEN: a later re-propose with a changed price does not move a confirmed ARV ──
     def _cheaper(subject):
         return {"closed": [_comp("G1", 1055, 150000, "Mountain Lakeview", 3, 2, 1971)], "pending": []}
@@ -194,6 +237,7 @@ def run():
     check("confirmed ARV unchanged after re-propose (comp frozen at confirmation)",
           g2["confirmed_arv"] == g["confirmed_arv"])
     main._COMP_SOURCE = _stub_source
+    main._LAND_SOURCE = _land_stub
 
     # ── restore guard: DELETE on a prod-owned acquisition table is denied at the engine ──
     denied = False
