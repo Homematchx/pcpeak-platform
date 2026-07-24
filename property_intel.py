@@ -373,7 +373,14 @@ async def scrape_dcad(account_number: str, browser) -> dict:
         result["living_area_sqft"] = find(r'Living Area[:\s]+([\d,]+)\s*sqft', cast=int)
         result["total_area_sqft"] = find(r'Total Area[:\s]+([\d,]+)\s*sqft', cast=int)
         result["bedrooms"] = find(r'#\s*Bedrooms[:\s]+(\d+)', cast=int)
-        result["bathrooms"] = find(r'#\s*Baths[^\d]*(\d+/\d+)', "")
+        # BATHS: DCAD renders "# Baths (Full/Half)\t1/ 1" — note the SPACE after the slash. The old
+        # pattern (\d+/\d+) required the digits to be adjacent to it, so it NEVER matched and every
+        # case stored "" (measured: 0 of 247 enriched cases had baths, while 164 had bedrooms —
+        # the label parsed, the value didn't). Baths feed the comp MatchScore (beds_baths weight),
+        # so this silently degraded every ARV match. Tolerate whitespace and normalize to "F/H",
+        # which is what comps._parse_baths already expects ("1/1" → 1.5).
+        _b = re.search(r'#\s*Baths[^\d]*(\d+)\s*/\s*(\d+)', text)
+        result["bathrooms"] = f"{_b.group(1)}/{_b.group(2)}" if _b else ""
         result["stories"] = find(r'#\s*Stories[:\s]+([A-Z\s]+?)(?:\n|Depreciation)', "")
         dep = find(r'Depreciation[:\s]+(\d+)%', cast=int)
         result["depreciation_pct"] = dep
@@ -445,6 +452,22 @@ async def scrape_dcad(account_number: str, browser) -> dict:
         rate_rows = re.findall(r'(DALLAS[A-Z\s]*|PARKLAND[A-Z\s]*|UNASSIGNED)\s+\$([\d,\.]+)', text)
         for entity, amount in rate_rows[:6]:
             result["tax_rates"].append({"entity": entity.strip(), "estimated_tax": float(amount.replace(",",""))})
+
+        # SILENT-FAILURE GUARD. Everything above only records an error when an EXCEPTION is raised.
+        # A DCAD page that loads but renders nothing parsable (render timeout, session hiccup, a
+        # retired/merged account) therefore returned all-empty fields with error=None — which is
+        # indistinguishable from "this property genuinely has no data". That is exactly the
+        # conflation the project standard forbids: an unknown must never look like a real answer.
+        # Measured on TX-26-00777 (5807 Morningside Ave — a VALID 17-digit account whose DCAD page
+        # DOES carry 1,180 sqft / 3 bed / 1-1 bath): every DCAD field empty, errors.dcad = None, so
+        # the case looked enriched and propose 422'd for "no living area" with no way to tell a
+        # scrape failure from a real data gap. If NO core signal parsed, say so.
+        if not result.get("error") and not any(result.get(k) for k in
+                                               ("market_value", "living_area_sqft", "owners",
+                                                "land_value", "legal_description")):
+            result["error"] = (f"DCAD returned no parsable data for account {account_number} "
+                               f"(page loaded, {len(text or '')} chars) — re-scrape needed; "
+                               f"NOT evidence that the property has no data")
 
     except Exception as e:
         result["error"] = str(e)
