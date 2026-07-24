@@ -5,6 +5,78 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-07-23 (§G land floor + batch legibility — SESSION DONE)
+
+**Platform LIVE at `9c4a389`** (feature/main/production all FF, no force). Served artifacts:
+`acquisition.py` `1ef778ff`, `comps.py` `d73aeeaf`, `backend/main.py` `dd752b37`,
+`frontend/index.html` `bdfcf1fa`. Suites: `test_acquisition` 126/126, `test_comps` 84/84,
+`backend/test_acquisition_api` 46/46, `test_restore_guard` 39/39, all regressions green.
+
+**SHIPPED — §G land floor + propose-batch legibility** (design
+[`docs/acquisition-intelligence-design.md`](docs/acquisition-intelligence-design.md) §16).
+Triggered by a live finding on **TX-26-01190** (6406 Kemrock, 75241): propose returned 0 comps. Funnel:
+1,529 Residential+Closed in zip → 282 after recency → **0 at the GLA band**, because the subject is
+**484 sqft** against a local market floor of **870** — a sub-minimum structure on a land-dominant parcel
+(DCAD improvement $50,340 vs land $70,000). The band was correct; the subject was outside the improved
+market. **Zero qualified comps must never mean zero valuation information.**
+- **`comps.py` §G engine:** `land_sales()` (`PropertyType='Land'` ONLY — teardown-intent is Stage 3),
+  `qualify_land()` (LOT-SIZE band, **explicit NO-GLA-band guard**), `land_floor()` (**median of
+  RECONSTRUCTED CLOSES**, never a $/acre extrapolation), `land_floor_for_subject()` (12mo default,
+  widens to 24mo only when thin and says so), plus a **separate net-of-demolition line** (the gross
+  floor is never reduced). All magnitudes tunable in `COMP_CONFIG['land']`.
+- **HARD RULE — the floor NEVER feeds MAO.** `analyze()` takes it as a pure display passthrough read by
+  nothing; tests pin that the MAO ladder, itemized MAO, decision, Mission Score, gates and seller-net
+  sheet are byte-identical with and without it, that it never becomes the ARV, and that it never lifts
+  a case out of HOLD.
+- **Batch legibility:** new append-only `ledger.comp_batches` (restore-guarded) records EVERY propose
+  including 0-comp ones — funnel counts, locality, GLA band, the **named zeroing stage**, and the land
+  floor. Previously an empty propose stored no rows and was indistinguishable from never-proposed. The
+  workbench now shows the batch result + Land floor with provenance instead of a dead end.
+- **Acceptance:** Kemrock **$85,500 gross** (n=14, 12mo) — reproduced exactly. **Ruby's pin RESTATED**
+  in §16.8: $42.5K → **gross ≈ $72,500 / net ≈ $63,900**. The original $42.5K was a single-comp $/sqft
+  extrapolation from a ~36%-larger lot — the same size-dependence error §16.2 guards against; the engine
+  caught a human land comp the way it caught naive $/acre. **Ruby's verdict is untouched** (it never
+  rested on the floor); the deal reads stronger.
+
+**STANDING RULE recorded (it bit twice in one increment):** *never extrapolate a per-unit rate
+($/acre, $/sqft) across dissimilar sizes — band first, then take the median of actual closes.* Applies
+to the GLA band (improved comps) and the lot band (land comps). Measured: naive $/acre understated
+Kemrock by 67% ($51,130 vs $85,500); a 24-month window understated it again ($70,000) by importing 2024
+sales at ~half 2026 levels — hence the 12mo default with widen-only-if-thin.
+
+**QUEUED FOR THE NEXT INCREMENT (logged, do NOT start until raised):**
+1. **Land comp display — evidence behind the floor.** Persist and render the banded land-sale set behind
+   every floor (address, lot size, close date, reconstructed price) as a **collapsible section** in the
+   workbench. Read-only until the land/teardown *exit mode* adds its confirm step. The floor currently
+   shows a **conclusion without its evidence** — same **audit-not-trust** principle as the per-comp
+   adjustment grid.
+2. **Fleet-wide standing floors.** Batch-compute land floors across **all** cases that have a lot size,
+   not only on propose — so the floor is genuinely standing rather than propose-triggered.
+
+**QUEUED NEXT INITIATIVE — CASE DISPOSITION SYSTEM (fresh session, DESIGN-FIRST).** Same discipline as
+the ledger / scrape-trigger / acquisition builds: no code until the design is approved.
+- **Step one is a TRACE, not a design:** establish what the existing **Remove** button actually does
+  today (frontend detail-card header → which endpoint/local path; note `DELETE /api/cases/{cn}` is the
+  BPP-only guarded delete, so Remove may be doing something else entirely). Do not assume.
+- Then design **archive-never-delete**: a disposition taxonomy, **auto-flag / human-decide** (the engine
+  proposes a disposition, a human commits it — same propose→confirm shape), and **rep comments**.
+
+**ALSO PENDING (unchanged, gated on the user raising them):**
+- **60-no-GLA measurement report** — running in its OWN session; fold its result in when it lands. Carry
+  the Kemrock framing: the land-routing bucket must catch **sub-minimum structures on land-dominant
+  parcels**, not just vacant lots (cluster on land-dominance OR sub-minimum GLA, not improvement≈0).
+- **Stage 3** — the confirmed-output-as-an-appraisal-report reframe (tiered pool, reconciled 3–6 comp
+  set with range/spread/median, bracketing + can't-bracket flag, adjustment grid at confirm), plus exit
+  matrix, sensitivity, the reweighted Mission Score, and the two logged Stage-3 candidates
+  (provisionally-unclosable advisory flag; owner-of-record coverage backfill).
+- **August Tryon closing — fee verification** (TX-23-00423): capture the title company's ACTUAL payoff
+  demands; if the real §33.48 attorney fee is materially off the 20% estimate, recalibrate
+  `tax_suit_atty_fee_rate` and RE-RUN Grant St's fee-sensitive NO-GO.
+- **Branch:** all work on `claude/remove-analyze-with-ai-0vu5i9`; feature == main == production at
+  `9c4a389`.
+
+**SESSION DONE (2026-07-23).** Nothing mid-flight here; every remaining item is logged and gated.
+
 ## SESSION HANDOFF — 2026-07-21 (continued — post-Stage-2 hardening + fleet static-fire)
 
 Everything here is AFTER the Stage-2-close handoff (immediately below, which covers the full
