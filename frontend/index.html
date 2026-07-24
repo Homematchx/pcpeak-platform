@@ -2184,7 +2184,16 @@ function _acqHtml(cn, data) {
               + (c.price_per_lot_sqft!=null ? "$"+c.price_per_lot_sqft : "—")+'</td>'
               + '</tr>';
           }).join("");
-          s += '<details style="margin:6px 0 2px"><summary style="cursor:pointer;font-size:11px;color:var(--text3);padding:4px 0">'
+          // OPEN-STATE LIVES OUTSIDE THE DOM. The panel is rebuilt by any re-render —
+          // renderAcquisition on a tab switch or retry, and the sync-time renderDetail that
+          // repopulates materialized property_intel — and each rebuild creates a NEW <details>,
+          // which defaults to closed. That silently shut the drill-down under a reviewer and read
+          // as "clicking the summary does nothing" (the element was fine; it was being replaced).
+          // Holding the flag in a variable makes the state survive every rebuild path by
+          // construction; `ontoggle` keeps it in sync with what the user actually did.
+          s += '<details' + (window._landEvidenceOpen ? ' open' : '')
+            + ' ontoggle="window._landEvidenceOpen=this.open" style="margin:6px 0 2px">'
+            + '<summary style="cursor:pointer;font-size:11px;color:var(--text3);padding:4px 0">'
             + 'Show the '+lc.length+' land sale'+(lc.length===1?"":"s")+' behind this floor</summary>'
             + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">'
             + '<thead><tr style="color:var(--text3);text-align:left;border-bottom:1px solid var(--border2)">'

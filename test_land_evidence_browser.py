@@ -108,10 +108,25 @@ with sync_playwright() as p:
     check("the acquisition panel exists once a case is open",
           pg.evaluate("() => !!document.getElementById('acq-panel')"))
 
+    # Open the Acquisition TAB the way a user does. This is NOT optional set-up: #acq-panel sits
+    # inside <div class="tp" id="tp-acq">, which is display:none until the tab carries class 'on'.
+    # The first version of this test injected markup into that HIDDEN panel and asserted strings —
+    # so it passed against a control no user could reach. Activate the tab, THEN render (swTab
+    # itself calls renderAcquisition, which would overwrite whatever we injected first).
+    pg.evaluate("""() => { const b = Array.from(document.querySelectorAll('#cdet .tb'))
+                             .find(x => (x.getAttribute('onclick')||'').indexOf("'acq'") >= 0);
+                           swTab({target: b}, 'acq'); }""")
+    pg.wait_for_timeout(250)
+    check("the Acquisition tab panel is actually VISIBLE (not a hidden tab)",
+          pg.evaluate("() => document.getElementById('tp-acq').classList.contains('on')"))
+
     # Render the acquisition panel from the pure function with our Kemrock-shaped payload.
     pg.evaluate("(d) => { document.getElementById('acq-panel').innerHTML = _acqHtml('TX-26-01190', d); }",
                 DATA)
     pg.wait_for_timeout(150)
+    check("the evidence section is visible to a user (non-zero box on screen)",
+          pg.evaluate("""() => { const d = document.querySelector('#acq-panel details');
+                                 return !!d && d.getBoundingClientRect().height > 0; }"""))
 
     panel = pg.evaluate("() => document.getElementById('acq-panel').innerText")
     html = pg.evaluate("() => document.getElementById('acq-panel').innerHTML")
@@ -130,9 +145,69 @@ with sync_playwright() as p:
     check("it is COLLAPSED by default (evidence on demand, not noise)",
           pg.evaluate("() => !document.querySelector('#acq-panel details').open"))
 
-    # Open it — this is the operator's drill-down.
-    pg.evaluate("() => { document.querySelector('#acq-panel details').open = true; }")
-    pg.wait_for_timeout(100)
+    # ══════════════════════════════════════════════════════════════════════════════
+    # A REAL USER CLICK must toggle it open. The first version of this test forced
+    # `.open = true` and asserted the markup — which passes even when the summary is
+    # unclickable, and that is exactly the class of bug that shipped. Assert the
+    # BEHAVIOUR: click the summary, then assert open === true.
+    # ══════════════════════════════════════════════════════════════════════════════
+    # First audit every mechanism that can swallow the toggle, so a failure NAMES the cause
+    # instead of just saying "still closed".
+    audit = pg.evaluate("""() => {
+      const s = document.querySelector('#acq-panel details summary');
+      // Scroll it into view before probing: elementFromPoint is viewport-relative and returns null
+      // for a point below the fold, which would make the overlay check meaningless (Playwright's
+      // own click auto-scrolls, so without this the probe and the click disagree).
+      s.scrollIntoView({block: 'center'});
+      const r = s.getBoundingClientRect();
+      const cx = r.left + Math.min(40, r.width / 2), cy = r.top + r.height / 2;
+      const top = document.elementFromPoint(cx, cy);
+      const cs = getComputedStyle(s);
+      // Walk ancestors for inline handlers / pointer-events / overflow traps.
+      const anc = [];
+      for (let e = s.parentElement; e && e !== document.body; e = e.parentElement) {
+        const ecs = getComputedStyle(e);
+        if (e.getAttribute && e.getAttribute('onclick')) anc.push((e.id||e.tagName)+'[onclick]');
+        if (ecs.pointerEvents === 'none') anc.push((e.id||e.tagName)+'[pointer-events:none]');
+      }
+      return {
+        hitIsSummary: !!(top && (top === s || s.contains(top))),
+        hitEl: top ? (top.tagName + (top.className ? '.' + String(top.className).split(' ')[0] : '')) : null,
+        display: cs.display, pointerEvents: cs.pointerEvents, visibility: cs.visibility,
+        summaryIsFirstChild: s.parentElement.firstElementChild === s,
+        ancestorsWithHandlers: anc,
+        zeroSize: r.width === 0 || r.height === 0
+      };
+    }""")
+    check("summary is the element at its own click point (nothing overlays it)",
+          audit["hitIsSummary"] is True)
+    check("summary has a non-zero hit area", audit["zeroSize"] is False)
+    check("summary pointer-events is not disabled", audit["pointerEvents"] != "none")
+    check("summary is visible", audit["visibility"] == "visible")
+    check("summary is the FIRST child of <details> (required for the native toggle)",
+          audit["summaryIsFirstChild"] is True)
+    check("no ancestor carries an inline click handler or pointer-events:none",
+          audit["ancestorsWithHandlers"] == [])
+    if not audit["hitIsSummary"]:
+        print("     ! click point actually hits: " + str(audit["hitEl"]))
+
+    # THE PIN: a real click, not a forced property set.
+    pg.click("#acq-panel details summary")
+    pg.wait_for_timeout(200)
+    check("*** a REAL USER CLICK on the summary toggles it OPEN ***",
+          pg.evaluate("() => document.querySelector('#acq-panel details').open") is True)
+    check("the table is actually visible after that click",
+          pg.evaluate("""() => { const t = document.querySelector('#acq-panel details table');
+                                 return !!t && t.getBoundingClientRect().height > 0; }""") is True)
+    # And clicking again closes it (the control is a real toggle, not one-way).
+    pg.click("#acq-panel details summary")
+    pg.wait_for_timeout(200)
+    check("clicking again CLOSES it (a real toggle)",
+          pg.evaluate("() => document.querySelector('#acq-panel details').open") is False)
+
+    # Re-open for the content assertions below.
+    pg.click("#acq-panel details summary")
+    pg.wait_for_timeout(150)
     tbl = pg.evaluate("() => { const t=document.querySelector('#acq-panel details table'); return t?t.innerText:''; }")
 
     check("every banded land sale is listed (4 rows)",
@@ -167,6 +242,37 @@ with sync_playwright() as p:
     pg.wait_for_timeout(100)
     check("no comps ⇒ no evidence section rendered (never claims a set it lacks)",
           pg.evaluate("() => !document.querySelector('#acq-panel details')"))
+
+    # ══════════════════════════════════════════════════════════════════════════════
+    # THE SHIPPED BUG: a background re-render closed the drill-down under a reviewer.
+    # Any rebuild of #acq-panel (renderAcquisition on a tab switch/retry, or the sync-time
+    # renderDetail that repopulates materialized property_intel) creates a NEW <details>,
+    # which defaults to closed — so an open evidence table silently collapsed and it read
+    # as "clicking the summary does nothing". The open state must survive a rebuild.
+    # ══════════════════════════════════════════════════════════════════════════════
+    pg.evaluate("() => { window._landEvidenceOpen = false; }")
+    pg.evaluate("(d) => { document.getElementById('acq-panel').innerHTML = _acqHtml('TX-26-01190', d); }", DATA)
+    pg.wait_for_timeout(100)
+    pg.click("#acq-panel details summary")
+    pg.wait_for_timeout(150)
+    check("user opens the evidence → open", pg.evaluate("() => document.querySelector('#acq-panel details').open") is True)
+    check("...and the intent is recorded outside the DOM (survives a rebuild by construction)",
+          pg.evaluate("() => window._landEvidenceOpen") is True)
+    # Rebuild the panel exactly as a background sync / tab switch does.
+    pg.evaluate("(d) => { document.getElementById('acq-panel').innerHTML = _acqHtml('TX-26-01190', d); }", DATA)
+    pg.wait_for_timeout(150)
+    check("*** the drill-down STAYS OPEN across a panel rebuild (no silent collapse) ***",
+          pg.evaluate("() => document.querySelector('#acq-panel details').open") is True)
+    check("...and the table is still on screen after the rebuild",
+          pg.evaluate("""() => { const t = document.querySelector('#acq-panel details table');
+                                 return !!t && t.getBoundingClientRect().height > 0; }""") is True)
+    # Closing it must also stick across a rebuild (the flag tracks the user, not one direction).
+    pg.click("#acq-panel details summary")
+    pg.wait_for_timeout(150)
+    pg.evaluate("(d) => { document.getElementById('acq-panel').innerHTML = _acqHtml('TX-26-01190', d); }", DATA)
+    pg.wait_for_timeout(150)
+    check("a CLOSED drill-down also stays closed across a rebuild",
+          pg.evaluate("() => document.querySelector('#acq-panel details').open") is False)
 
     check("ZERO page errors", not errors)
     if errors:
