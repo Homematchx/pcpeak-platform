@@ -612,14 +612,29 @@ above a threshold) **OR sub-minimum GLA** (below the local market's smallest rec
 improvement≈0 alone. The 60-no-GLA session should fold **"route to land valuation"** in as a
 first-class outcome, not merely backfill-vs-legit.
 
-### 16.8 Acceptance (pin when built)
-- **TX-26-01190 (Kemrock)** — 0 improved comps qualify; **land floor ≈ $85.5K**; DCAD $70,000 shown
-  **sanity-only**.
-- **TX-26-01379 (Ruby)** — **land floor ≈ $42.5K** (matches the human analysis); DCAD land line excluded
-  per the hierarchy.
-- **HARD PIN:** the land floor appears in **no** MAO rung and **no** verdict input (the §5.4-style lock).
-- **Batch legibility:** a 0-comp propose writes a `comp_batches` row and renders "0 of N qualified" with
-  the zeroing stage named.
+### 16.8 Acceptance — MEASURED (built + live-verified 2026-07-23)
+- **TX-26-01190 (Kemrock)** — 0 improved comps qualify (GLA band); **gross land floor $85,500**
+  (n=14, 12mo, no widening), net-of-demolition $77,500. DCAD $70,000 shown **sanity-only**.
+  Reproduces the pinned target exactly. ✓
+- **TX-26-01379 (Ruby) — PIN RESTATED to the market figure.** **Gross land floor ≈ $72,500** (n=12,
+  12mo), **net-of-demolition ≈ $63,900** at the config demo rate. DCAD $70,000 sanity-only.
+  **Why the original $42.5K was superseded:** it was a **single-comp $/sqft extrapolation from a lot
+  ~36% larger than the subject** — the *same size-dependence error* §16.2 was written to guard against.
+  The banded market set (n=12, $45K–$125K) and the DCAD land line ($70K) independently agree at ~$70K.
+  The engine caught a human land comp the same way it caught the naive $/acre method. **Ruby's verdict
+  is untouched** — GO-WITH-CONDITIONS never rested on the floor (§16.4.3: the floor feeds nothing);
+  the deal simply reads stronger with more land under it.
+- **HARD PIN (enforced + tested):** the land floor appears in **no** MAO rung and **no** verdict input.
+  `analyze()` takes it as a pure passthrough; tests assert the MAO ladder, itemized MAO, decision,
+  Mission Score, gates and seller-net sheet are byte-identical with and without it, that it never
+  becomes the ARV, and that it never lifts a case out of HOLD.
+- **Batch legibility:** a 0-comp propose writes a `comp_batches` row and renders
+  "N of M candidates qualified" with the zeroing stage named (Kemrock: "no closed sale in zip 75241
+  within GLA band [387,580] — recent sales run 870–3,550 sqft; subject is 484 sqft").
+
+**Lesson recorded:** two independent valuation errors in this increment shared one root cause —
+extrapolating a per-unit rate ($/acre, $/sqft) across dissimilar sizes. Band first, then take the
+median of actual closes. That rule now applies to improved comps (GLA band) and land comps (lot band).
 
 **Build sequencing:** design committed → build (config + land engine + `comp_batches` + backend + UI +
 acceptance pins) → deploy through its own gate, same staged rhythm.
