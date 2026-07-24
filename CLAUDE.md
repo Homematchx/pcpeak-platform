@@ -50,6 +50,17 @@ ARVs (incl. $533k @ n=1); city-fallback broad = 20 (9%).
   `living_area_sqft` so still 422 on propose after the city fallback. Measure-then-decide: failed
   enrichment (guarded re-scrape backfill, `payment_backfill.py`/`resolve_backlog.py` pattern) vs
   legit no-GLA land/teardown (→ §G land valuation). Fold that session's result in when it lands.
+  **⚠ FRAMING TO CARRY IN (from the TX-26-01190 Kemrock finding, 2026-07-23):** Kemrock is the
+  BOUNDARY CASE that measurement is clustering on — a **484 sqft improvement** valued at $50,340
+  against **$70,000 of land** is exactly the "near-zero improvement value" bucket, EXCEPT the structure
+  is not zero and the parcel is not vacant land. It proves the **land-routing bucket must catch
+  SUB-MINIMUM STRUCTURES on land-dominant parcels, not just vacant lots.** A cluster rule that only
+  tests `improvement_value ≈ 0` will misfile these as "has an improvement → failed enrichment" when the
+  correct routing is land valuation. Recommended cluster test: **land-dominant**
+  (`land_value / market_value` over a threshold) **OR sub-minimum GLA** (below the local market's
+  smallest recent sale — Kemrock 484 sf vs a 75241 floor of 870 sf), not improvement≈0 alone. Route to
+  land valuation should be a FIRST-CLASS outcome of that session, not merely backfill-vs-legit. See
+  `docs/acquisition-intelligence-design.md` §16.7.
 - **Stage 3 — UNBUILT, its own cycle when raised.** Reframed around the **CONFIRMED OUTPUT AS AN
   APPRAISAL REPORT** (supersedes the four appraiser-grade items): (1) tiered/capped propose pool by
   MatchScore (weak collapsed) = selection not a dump; (2) reconciled 3–6 comp set → range/spread/median

@@ -512,3 +512,114 @@ separate with the lien-stack fatal gate as the primary closability test; and it 
 first-class NTREIS layer with human-confirmed valuation. **The two decisions that most shape the build
 are [OPEN #1] (lien-stack source) and [OPEN #5] (does NTREIS actually return sold data).** Both should
 be resolved before Phase 1/Phase 2 respectively. No code until you approve.
+
+---
+
+## 16. §G LAND FLOOR + propose-batch legibility (approved 2026-07-23 — build authorized)
+
+**Why.** Live finding on **TX-26-01190** (6406 Kemrock Dr, Dallas 75241): propose returns 200 with a
+valid batch and **0 closed + 0 pending**, while comparable cases return 20+. The funnel:
+
+| Stage | Survivors |
+|---|---:|
+| `PropertyType='Residential' and StandardStatus='Closed'` + zip 75241 | 1,529 |
+| + recency (`CloseDate ge` 1yr) | 282 |
+| **+ GLA band [387, 580]** | **0**  ← the stage that zeroes it |
+
+The subject is **484 sqft GLA** (built 1935); recent closed sales in 75241 run **870 – 3,550 (median
+1,527)** — the subject is *below the market's smallest recent sale*, so nothing can fall in a ±20% band.
+The band is behaving correctly (an appraiser would not comp 484 sf against 1,527 sf). The subject is a
+**sub-minimum structure on a land-dominant parcel**: DCAD $120,340 = improvement $50,340 + **land
+$70,000** (58% land). **Zero qualified comps must never mean zero valuation information — there is
+always land under the house.**
+
+### 16.1 Data availability — VERIFIED live (Phase-0 discipline, 2026-07-23)
+- `PropertyType eq 'Land'` closed: **60,400** records. Zip 75241: **30** closed land sales in the last
+  year (vs 0 improved in-band). Neighbors: 75216 → 30, 75215 → 53. Depth is there.
+- **30/30 carry BOTH `LotSizeAcres` and `NTREIS2_RATIO_ClosePrice_By_LotSizeAcres`** — the Phase-0
+  verified reconstruction works identically for land. **ONE reconstruction path serves improved + land**,
+  exactly as specified (§6.1 / `comps.land_value_from_comp`).
+
+### 16.2 METHOD — lot-size band, NOT a $/acre extrapolation (measured, not assumed)
+
+| Method (subject 0.166 ac, 75241) | Land floor |
+|---|---:|
+| Naive: median $/acre across ALL lot sizes × subject acreage | $51,130 |
+| **Lot-size band ±30% (n=14): median reconstructed close** | **$85,500** |
+| DCAD assessor land (sanity band only) | $70,000 |
+
+A **67% understatement** by the naive method — $/acre is strongly size-dependent (small lots carry far
+higher $/acre: 0.141 ac → $780k/acre vs 0.298 ac → $302k/acre). The banded result is **stable** (±30%
+and ±40% both n=14 → $85,500; ±50% → $81,000), so the band is not knife-edge.
+**LOCKED:** band land comps by **LOT SIZE** and take the **median of RECONSTRUCTED CLOSES**. $/acre may
+be displayed as a secondary figure, **never as the basis**. (Same lesson as the GLA band for improved.)
+
+### 16.3 Algorithm
+1. **Subject acreage** — `property_intel.lot_area_sqft / 43560`; fallback NTREIS LotSize fields. No
+   acreage → no land floor (fail closed, labeled `unavailable`).
+2. **Fetch land comps** — `PropertyType eq 'Land' and StandardStatus eq 'Closed'` + locality
+   (`_locality_clause`: PostalCode else City) + `CloseDate ge` recency floor + `LotSizeAcres` in band.
+3. **Reconstruct each close** — `NTREIS2_RATIO_ClosePrice_By_LotSizeAcres × that comp's own LotSizeAcres`.
+4. **Qualify** — recency, arm's-length flags, min price. **NO GLA band** — land has no GLA; applying the
+   improved-comp band would zero the set (explicit guard).
+5. **Land floor = median of the qualified banded comps' reconstructed closes**, labeled `estimated`,
+   carrying `n=`, range and spread (feeds the appraisal-report reconciliation line, §Stage-3).
+6. **Display** as **"Land floor"** in the valuation block; DCAD `land_value` shown beside it as a
+   **sanity band only** (§5.4 — DCAD is never a valuation source).
+
+### 16.4 Approved decisions (2026-07-23)
+1. **Lot-size band ±30% default** — tunable config like every other adjustment.
+2. **Land-comp definition: `PropertyType='Land'` ONLY**, first. Teardown-intent improved sales are a
+   **Stage-3 refinement** — do not blur the set now.
+3. **The land floor NEVER feeds MAO** — hard rule, **test-pinned like the DCAD lock** (§5.4).
+4. **Land recency: tunable config, default 24 months** (land moves slower than improved).
+
+### 16.5 Guardrails (all approved as stated)
+- A **floor, not an ARV** — never silently becomes the ARV or drives MAO (see 16.4.3).
+- **Display + triage only** initially; a rep-selected land/teardown **exit mode** (with its own confirm
+  step) is Stage 3.
+- **A land floor alone never lifts a case out of HOLD** — consistent with the 2026-07-21 decision table
+  (a derived/unconfirmed valuation is information, not a verdict).
+- **COMPUTE ALWAYS** — a standing floor line on **every case that has a lot size**, not only when comps
+  come back empty. One extra query per propose; doubles as a permanent sanity band.
+
+### 16.6 Propose-batch legibility (rides this increment — not a bundle of convenience)
+**Root cause:** an empty propose stores **no comps rows**, so **no batch record exists** — the UI
+literally cannot distinguish "never proposed" from "proposed, 0 qualified." It therefore needs a
+persisted batch record, which is why it is one coherent unit with §G rather than a UI tweak.
+- **Schema:** append-only **`comp_batches`** in `ledger.db` (added to `PROD_OWNED_TABLES`):
+  `case_number, fetch_batch, fetched_at, locality_used, gla_band, n_raw, n_stored_closed,
+  n_stored_pending, n_qualified, zero_reason`.
+- **Backend:** propose **always** writes a batch row (including at 0); `GET /acquisition` returns
+  `latest_batch`.
+- **UI:** replace the ambiguous "No comps proposed yet" with the actual outcome — e.g. *"Proposed
+  2026-07-23 — 0 of 282 candidates qualified · locality zip 75241 · GLA band [387,580] · no closed sale
+  in band (zip GLA range 870–3,550)"* — surfacing the funnel instead of a dead end.
+
+### 16.7 Priority — the land path is load-bearing for THREE populations
+With a land path the propose gate becomes **locality + (GLA OR lot acreage)**: GLA drives the
+improved-comp path, lot acreage drives the land path. That makes §G load-bearing for:
+(a) the **60 no-GLA** cases; (b) **zero-comp pockets** like TX-26-01190; (c) **teardown checks**.
+
+**→ Framing to carry into the pending 60-no-GLA measurement session.** Kemrock is the **boundary case
+that measurement is already clustering on**: a **484 sqft improvement** valued at $50,340 against
+$70,000 of land is exactly the "near-zero improvement value" bucket — except the structure is *not*
+zero, and the case is *not* vacant land. It proves the **land-routing bucket must catch sub-minimum
+structures on land-dominant parcels, not just vacant lots.** A clustering rule that only tests
+`improvement_value ≈ 0` will misfile these as "has an improvement → failed enrichment" when the correct
+routing is land valuation. Recommended cluster test: **land-dominant** (`land_value / market_value`
+above a threshold) **OR sub-minimum GLA** (below the local market's smallest recent sale), not
+improvement≈0 alone. The 60-no-GLA session should fold **"route to land valuation"** in as a
+first-class outcome, not merely backfill-vs-legit.
+
+### 16.8 Acceptance (pin when built)
+- **TX-26-01190 (Kemrock)** — 0 improved comps qualify; **land floor ≈ $85.5K**; DCAD $70,000 shown
+  **sanity-only**.
+- **TX-26-01379 (Ruby)** — **land floor ≈ $42.5K** (matches the human analysis); DCAD land line excluded
+  per the hierarchy.
+- **HARD PIN:** the land floor appears in **no** MAO rung and **no** verdict input (the §5.4-style lock).
+- **Batch legibility:** a 0-comp propose writes a `comp_batches` row and renders "0 of N qualified" with
+  the zeroing stage named.
+
+**Build sequencing:** design committed → build (config + land engine + `comp_batches` + backend + UI +
+acceptance pins) → deploy through its own gate, same staged rhythm.
