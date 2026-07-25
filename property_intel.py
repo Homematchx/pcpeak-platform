@@ -22,6 +22,15 @@ import re
 import json
 from datetime import datetime
 
+# Below this many square feet, a DCAD "living area" is not a real house — it is DCAD's placeholder
+# for a land-dominant / near-vacant parcel (e.g. TX-26-00033: gla=1 against a $700 improvement on a
+# $95,700 property; TX-23-00768: gla=0). Storing that as a real GLA is the worst failure class —
+# a fabricated-PLAUSIBLE value: it produces a nonsensical [~1] comp band instead of routing the
+# subject to the §G land floor, and it reads as a real answer. The project standard forbids a field
+# silently becoming 0/1 and displaying as real; below this floor GLA is recorded as None (UNKNOWN),
+# so the subject fails closed to land valuation. No real single-family house is anywhere near this.
+MIN_PLAUSIBLE_GLA_SQFT = 200
+
 
 # ── DCAD ACCOUNT RESOLUTION ───────────────────────────────────
 # When the petition's account is missing/garbled, resolve the real 17-digit
@@ -380,6 +389,12 @@ async def scrape_dcad(account_number: str, browser) -> dict:
         result["exterior_wall"] = find(r'Ext\.? Wall Material[:\s]+([A-Z\s]+?)(?:\n|Basement|Heating)', "")
         result["living_area_sqft"] = find(r'Living Area[:\s]+([\d,]+)\s*sqft', cast=int)
         result["total_area_sqft"] = find(r'Total Area[:\s]+([\d,]+)\s*sqft', cast=int)
+        # PLAUSIBILITY GUARD (see MIN_PLAUSIBLE_GLA_SQFT). A sub-minimum living area is DCAD's
+        # placeholder for a land-dominant parcel, not a real house — record it as UNKNOWN so the
+        # subject routes to the §G land floor instead of a garbage [~1] comp band. Applied to the
+        # displayed GLA only; total_area (used elsewhere) is left as scraped.
+        if result["living_area_sqft"] is not None and result["living_area_sqft"] < MIN_PLAUSIBLE_GLA_SQFT:
+            result["living_area_sqft"] = None
         result["bedrooms"] = find(r'#\s*Bedrooms[:\s]+(\d+)', cast=int)
         # BATHS: DCAD renders "# Baths (Full/Half)\t1/ 1" — note the SPACE after the slash. The old
         # pattern (\d+/\d+) required the digits to be adjacent to it, so it NEVER matched and every

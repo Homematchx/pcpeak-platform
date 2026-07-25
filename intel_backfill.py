@@ -125,6 +125,46 @@ def merge(pi, dcad):
     return pi, changed
 
 
+def normalize_gla(only, dry):
+    """Deterministic, no-network: apply the sub-minimum-GLA plausibility guard to STORED data.
+    A living_area_sqft below the threshold is DCAD's land-dominant placeholder, not a real house
+    (TX-26-00033 gla=1, TX-23-00768 gla=0); storing it produces a garbage [~1] comp band. The
+    scrape-time guard only catches this on a fresh scrape, and intel_backfill's additive merge
+    deliberately never overwrites with None — so existing rows need this correction before a push.
+    Reads the ONE threshold definition from property_intel (no drift)."""
+    from property_intel import MIN_PLAUSIBLE_GLA_SQFT
+    conn = sqlite3.connect(str(DB)); conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT case_number, property_intel FROM cases "
+                        "WHERE property_intel IS NOT NULL").fetchall()
+    hits = []
+    for r in rows:
+        if only and r["case_number"] not in only:
+            continue
+        try:
+            pi = json.loads(r["property_intel"])
+        except Exception:
+            continue
+        gla = pi.get("living_area_sqft")
+        if isinstance(gla, (int, float)) and gla < MIN_PLAUSIBLE_GLA_SQFT:
+            hits.append((r["case_number"], gla, pi))
+
+    print(f"normalize-gla: {len(hits)} case(s) with living_area_sqft < {MIN_PLAUSIBLE_GLA_SQFT} "
+          f"(land-dominant placeholder, not a real house)")
+    for cn, gla, _pi in hits:
+        print(f"  {cn}: gla={gla} → None")
+    if dry:
+        print("\n--dry-run: nothing written.")
+        return
+    for cn, _gla, pi in hits:
+        pi["living_area_sqft"] = None
+        conn.execute("UPDATE cases SET property_intel=? WHERE case_number=?",
+                     [json.dumps(pi), cn])
+    conn.commit(); conn.close()
+    if hits:
+        print(f"\nnormalized {len(hits)} case(s). Push with: python3 sync_to_prod.py "
+              f"--update-existing --only \"{','.join(cn for cn, _, _ in hits)}\"")
+
+
 async def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -134,9 +174,18 @@ async def main():
     ap.add_argument("--only", help="comma-separated case numbers")
     ap.add_argument("--dry-run", action="store_true", help="show targets, scrape nothing")
     ap.add_argument("--limit", type=int, help="cap how many cases are re-scraped")
+    ap.add_argument("--normalize-gla", action="store_true", dest="normalize_gla",
+                    help="NO NETWORK: retroactively apply the sub-minimum-GLA guard to STORED "
+                         "property_intel (living_area_sqft < MIN_PLAUSIBLE_GLA_SQFT → None). The "
+                         "scrape guard only fires on a re-scrape, and the additive merge won't "
+                         "blank a stored gla=1, so existing nonsense needs this deterministic pass.")
     args = ap.parse_args()
 
     only = {s.strip() for s in args.only.split(",") if s.strip()} if args.only else None
+
+    if args.normalize_gla:
+        return normalize_gla(only, args.dry_run)
+
     mode = "baths" if args.baths else "retry_errors" if args.retry_errors else "silent"
 
     conn = sqlite3.connect(str(DB)); conn.row_factory = sqlite3.Row

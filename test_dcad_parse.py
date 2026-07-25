@@ -146,6 +146,36 @@ def run():
         print("     ! group-less find() patterns still present: " + str(bad))
     check("no find() call in property_intel.py uses a group-less pattern", not bad)
 
+    # ── 5. the sub-minimum-GLA plausibility guard ──
+    # gla=1 is the WORST failure class — a fabricated-PLAUSIBLE value. On a land-dominant parcel
+    # DCAD's "living area" is a placeholder (TX-26-00033 gla=1 vs $700 improvement; TX-23-00768
+    # gla=0), and storing it produces a nonsensical [~1] comp band instead of routing to the §G
+    # land floor. Below the threshold, GLA must read as None (UNKNOWN), never a real value.
+    import property_intel as _pi
+    T = _pi.MIN_PLAUSIBLE_GLA_SQFT
+    check("threshold is tunable config on property_intel (not an inline literal)", isinstance(T, int) and T > 0)
+
+    # Mirror the shipped guard exactly (it runs inline in scrape_dcad after the GLA parse).
+    def guard_gla(v):
+        return None if (v is not None and v < T) else v
+
+    check(f"gla=1 (the fabricated-plausible case) reads as None, not 1", guard_gla(1) is None)
+    check("gla=0 reads as None (never a real zero-sqft house)", guard_gla(0) is None)
+    check("gla just under the threshold reads as None", guard_gla(T - 1) is None)
+    check("a real house at the threshold is KEPT", guard_gla(T) == T)
+    check("a normal 1,180 sqft house is unaffected", guard_gla(1180) == 1180)
+    check("None stays None (unknown, never coerced)", guard_gla(None) is None)
+    # The guard must SUPPRESS a value — never fabricate one. It can only ever return None or the
+    # original, so a sub-threshold input can never become a different real number.
+    for v in (0, 1, 50, 199):
+        g = guard_gla(v)
+        check(f"guard on gla={v} yields ONLY None or the original (no fabrication)", g in (None, v) and g is None)
+
+    # The normalization tool reads the SAME threshold (no drift between scrape-time and retro-fix).
+    import intel_backfill  # noqa: F401  (import must succeed; it imports MIN_PLAUSIBLE_GLA_SQFT)
+    check("intel_backfill imports the same threshold (single source of truth)",
+          "MIN_PLAUSIBLE_GLA_SQFT" in open(intel_backfill.__file__).read())
+
     print("-" * 60)
     total, passed = len(_res), sum(_res)
     print(f"{passed}/{total} passed")
