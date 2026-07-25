@@ -123,6 +123,15 @@ every case waits out the sync). Fixes #1/#2 mitigate the symptom; they don't mov
 eventual fix is caching the case-list SKELETON and fetching detail ON DEMAND — which also DELETES the
 quota problem entirely. Stage-3-adjacent.
 
+**LOGGED — DEBT-TO-VALUE FILTER, NO ACTION (Stage-3-adjacent, has a hard blocker):** the sidebar
+now filters on AMOUNT OWED (the ACT live balance — the axis a distressed-tax pipeline triages on,
+zero valuation dependency). The *more* useful cut a rep actually wants is **debt-to-value** (payoff
+÷ property value) — "show me deals where the payoff is a small fraction of the property's worth."
+It is NOT built because it is gated on a **reliable per-case value we don't have until ARVs are
+confirmed**, and per §5.4 it must **NEVER** run off DCAD market value (that's a sanity band, never a
+valuation source). So debt-to-value waits on confirmed-ARV coverage; amount-owed ships now as the
+valuation-free proxy. Build the ratio filter only once a confirmed value exists to divide by.
+
 **ALSO PENDING (unchanged, gated on the user raising them):**
 - **Disposition follow-ups (Stage-3-adjacent):** calibration FROM disposition labels (v1 captures
   only); platform AUTHENTICATION as its own named initiative (triggered when reps beyond the owner

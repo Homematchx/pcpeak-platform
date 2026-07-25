@@ -357,6 +357,9 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
           <select id="filter-track" class="lc-sel" onchange="setFilter('track',this.value,this)" title="Dataset track — keeps OOS-timing vs dismissed-owing leads separate">
             <option value="">Track: All</option><option value="oos_timing">OOS timing</option><option value="dismissed_owing">Dismissed &mdash; owing</option><option value="dismissed_paid">Dismissed &mdash; paid</option><option value="judged_pending">Judged &mdash; pending</option><option value="active">Active</option><option value="personal_property">Personal property (BPP)</option>
           </select>
+          <select id="filter-balance" class="lc-sel" onchange="setFilter('balance',this.value,this)" title="Amount owed — the ACT live balance (same figure as the card); the axis a distressed-tax pipeline triages on">
+            <option value="">Owed: All</option><option value="low">&lt; $20K</option><option value="mid">$20K &ndash; $50K</option><option value="high">$50K+</option><option value="zero">Paid ($0)</option><option value="unknown">No balance yet</option>
+          </select>
         </div>
         <div style="display:flex;gap:5px">
           <select id="filter-rep" class="lc-sel" onchange="setFilter('rep',this.value,this)">
@@ -465,6 +468,13 @@ function platformToV3(pc, events) {
     uploadedAt: pc.last_agent_run || pc.updated_at || new Date().toISOString(),
     fileNames: ["[Platform Agent — " + (pc.last_agent_run ? new Date(pc.last_agent_run).toLocaleDateString() : "synced") + "]"],
     property_intel: pc.property_intel || null,
+    // property_type is what caseTrack() needs to return 'personal_property' for a BPP case — without
+    // it, caseTrack derives from oos/judgment and BPP never routes correctly (latent since prod has
+    // no BPP after the purge, but the card/filter/BPP-display guards all depend on it). case_track is
+    // deliberately NOT carried: caseTrack prefers a stored case_track over its own derivation, and
+    // the stored value isn't recomputed on every write, so carrying it would change non-BPP track
+    // routing; property_type alone fixes BPP without touching that.
+    property_type: pc.property_type || "",
     // Disposition state (docs/case-disposition-design.md). Archived cases never reach here —
     // /api/cases excludes them server-side — so `watching` is the only non-active state the
     // list has to compose around.
@@ -1187,6 +1197,36 @@ function fmtC(n) { if(!n&&n!==0) return "—"; return "$"+parseFloat(n).toLocale
 function hasUsableIntel(c) {
   var pi = (c && c.property_intel) ? parseIntel(c.property_intel) : null;
   return !!(pi && (pi.market_value != null || pi.current_tax_balance != null || pi.year_built != null));
+}
+
+// THE ONE reader for the ACT live balance a card/filter uses — the SAME field the Financials tab
+// (calcPayoff's live balance), the Acquisition tab (backend tax_payoff), and the zero-balance
+// disposition auto-flag (backend _live_balance) all read: property_intel.current_tax_balance.
+// Returns a number (incl. a real 0.0) or null for UNKNOWN — the two must never collapse (a real $0
+// is "paid", null is "not enriched yet"). No fallback to filing debt: that is a DIFFERENT number
+// and would reintroduce the fourth, divergent figure this is meant to avoid.
+function caseLiveBalance(c) {
+  var pi = (c && c.property_intel) ? parseIntel(c.property_intel) : null;
+  var b = pi ? pi.current_tax_balance : null;
+  return (typeof b === "number") ? b : null;
+}
+
+// Deal-shape band from the live balance — the filter and any label share this one classifier.
+// null (unknown) is its own band, never lumped with a real number.
+function balanceBand(c) {
+  // BPP has no real-estate payoff shape — it belongs to no deal-shape band, so a payoff filter
+  // never matches it (BPP is filtered via the track filter instead). Mirrors the card, which
+  // shows no balance chip for BPP.
+  if (caseTrack(c) === "personal_property") return "na";
+  var b = caseLiveBalance(c);
+  if (b === null) return "unknown";
+  if (b <= 0) return "zero";                 // paid — represented by the disposition flag, not a $
+  // Bands on the AMOUNT OWED (the ACT live balance) — the axis a distressed-tax pipeline triages
+  // on, with NO valuation dependency. (A debt-to-value filter is the more useful cut but is gated
+  // on a confirmed per-case value we don't have yet — logged, not built. Never DCAD market, §5.4.)
+  if (b < 20000) return "low";               // small payoff — quick-flip playbook (Ruby $11K, Kemrock $15K)
+  if (b < 50000) return "mid";
+  return "high";                             // $50K+ — a larger-capital / equity question
 }
 
 // The detail tab the rep is currently on (by its visible panel), or null. Used to preserve the
@@ -2434,6 +2474,7 @@ function getFilteredCases(){
     if(f.stage && caseStage(ex)!==f.stage) return false;
     if(f.account && caseAccountStatus(c)!==f.account) return false;
     if(f.track && caseTrack(c)!==f.track) return false;
+    if(f.balance && balanceBand(c)!==f.balance) return false;   // deal-shape (payoff band)
     if(f.estate && !caseIsEstate(c)) return false;
     if(f.rep){
       var rep=(c.rep_assigned||"").trim();
@@ -2533,6 +2574,25 @@ function renderList() {
         <div style="font-size:11px;color:var(--text3);margin-top:1px">${ex.defendant||""}</div>
         <div class="cchip-m" style="margin-top:5px">
           <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${acq.bg};color:${acq.color};border:1px solid ${acq.border}">${acq.icon} ${acq.label}</span>
+          ${(function(){
+            // ACT LIVE BALANCE at a glance — the payoff hurdle beside the OPPORTUNITY badge, from
+            // the SAME source as Financials/Acquisition (caseLiveBalance) so no fourth figure.
+            //   > 0    → "owes $X" (verified — it came from ACT)
+            //   == 0   → NOTHING: a real $0 is "paid", and the ⚠ REVIEW: Paid/zero flag below IS
+            //            its representation. The flag reads the same current_tax_balance, so they
+            //            cannot disagree; showing "$0" here would compete with the flag.
+            //   null   → muted "—" when the case is enriched (honest "no balance yet", matching the
+            //            detail card's fmtC), else nothing (un-enriched — the acct badges cover it).
+            if(caseTrack(c)==="personal_property") return "";   // BPP has no real-estate payoff
+            var bal=caseLiveBalance(c);
+            if(bal!==null && bal>0){
+              return `<span title="ACT live balance (as-is) — the payoff hurdle; same figure as the Financials & Acquisition tabs" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:#fdeaea;color:#7a1e1e;border:1px solid #e08080">owes $${Math.round(bal).toLocaleString()} <span style="opacity:.7;font-weight:600">verified</span></span>`;
+            }
+            if(bal===null && hasUsableIntel(c)){
+              return `<span title="No ACT live balance captured yet — not $0" style="font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text3);border:1px solid var(--border2)">balance —</span>`;
+            }
+            return "";   // real $0 → deferred to the disposition flag; un-enriched → no chip
+          })()}
           ${(function(){var et=caseEstateType(c); if(!et) return "";
             var uh=et==="unknown-heirs";
             return `<span title="${uh?'Unknown heirs — deceased owner, heirs unidentifiable; highest-conviction target':'Estate / deceased owner — high-value target'}" style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${uh?'#7a1e7a':'#5b2a86'};color:#fff;border:1px solid ${uh?'#7a1e7a':'#5b2a86'}">&#9906; ${uh?'UNKNOWN HEIRS':'ESTATE'}</span>`;})()}
