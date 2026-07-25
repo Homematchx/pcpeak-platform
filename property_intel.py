@@ -326,7 +326,15 @@ async def scrape_dcad(account_number: str, browser) -> dict:
         def find(pattern, default=None, cast=None):
             m = re.search(pattern, text, re.IGNORECASE)
             if m:
-                val = m.group(1).strip()
+                # ROOT-CAUSE GUARD for the "no such group" crash. find() reads capture group 1, but
+                # a pattern with NO capturing group (e.g. an alternation 'A|B') makes m.group(1)
+                # raise IndexError — which aborted the ENTIRE DCAD parse and stored error='no such
+                # group' on otherwise-valid pages (traced on TX-23-00777 / TX-26-00782, whose
+                # non-standard land-table layout routes to a group-less fallback pattern). A parser
+                # that throws on a valid page format is a capture bug (same class as the baths
+                # whitespace); fall back to the whole match so a group-less pattern degrades to a
+                # miss, never a crash.
+                val = (m.group(1) if m.re.groups >= 1 else m.group(0)).strip()
                 if cast:
                     try: return cast(val.replace(",","").replace("$",""))
                     except: return default
@@ -409,7 +417,10 @@ async def scrape_dcad(account_number: str, browser) -> dict:
             result["adjusted_land_price"] = int(land_row.group(7).replace(",",""))
         else:
             # Fallback
-            result["zoning"] = find(r'DUPLEX DISTRICT|SINGLE FAMILY [\w\s]+', "")
+            # Capture group required — find() reads group 1. (Also robust via the find() guard, but
+            # a real group is what makes this actually capture the zoning string rather than degrade
+            # to the whole match.)
+            result["zoning"] = find(r'(DUPLEX DISTRICT|SINGLE FAMILY [\w\s]+)', "")
             result["lot_frontage_ft"] = find(r'Frontage \(ft\)[\s\t]+(\d+)', cast=int)
             result["lot_depth_ft"] = find(r'Depth \(ft\)[\s\t]+(\d+)', cast=int)
             lot_area = find(r'([\d,]+\.?\d*)\s*SQUARE FEET', cast=float)

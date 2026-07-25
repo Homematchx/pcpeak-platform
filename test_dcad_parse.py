@@ -100,6 +100,52 @@ def run():
                  "land_value": None, "legal_description": "",
                  "current_tax_balance": 4483.61}) is True)
 
+    # ── 4. the "no such group" crash on valid pages ──
+    # scrape_dcad's find() reads capture group 1. A pattern with NO group (an alternation like
+    # 'A|B') made m.group(1) raise IndexError: no such group, which aborted the ENTIRE DCAD parse
+    # and stored error='no such group' on otherwise-valid pages. Traced on TX-23-00777 /
+    # TX-26-00782, whose non-standard land-table layout routes to a group-less fallback pattern.
+    # Mirror the SHIPPED find() exactly (it is a nested closure in scrape_dcad).
+    def find(pattern, text, default=None, cast=None):
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            val = (m.group(1) if m.re.groups >= 1 else m.group(0)).strip()
+            if cast:
+                try: return cast(val.replace(",", "").replace("$", ""))
+                except Exception: return default
+            return val
+        return default
+
+    # A single-line fixture so the greedy [\w\s]+ doesn't run past the token into other fields.
+    ZONING_LAND = "SINGLE FAMILY RESIDENCES\n"
+    # The exact fallback pattern that used to crash — group-less alternation that DOES match.
+    gl = find(r'DUPLEX DISTRICT|SINGLE FAMILY [\w\s]+', ZONING_LAND, "")
+    check("a group-less pattern that matches no longer raises 'no such group'",
+          gl.startswith("SINGLE FAMILY"))
+    check("the FIXED zoning pattern (with a capture group) captures the token",
+          find(r'(DUPLEX DISTRICT|SINGLE FAMILY [\w\s]+)', ZONING_LAND, "").startswith("SINGLE FAMILY"))
+    check("a group-less pattern that does NOT match returns the default (not a crash)",
+          find(r'CONDOMINIUM|TOWNHOME', ZONING_LAND, "") == "")
+    check("a normal single-group pattern is unaffected",
+          find(r'(SINGLE FAMILY RESIDENCES)', ZONING_LAND, "") == "SINGLE FAMILY RESIDENCES")
+    check("cast still works through the guard",
+          find(r'Deed Transfer Date:\s*1/1/(\d{4})', "Deed Transfer Date: 1/1/2020", None, cast=int) == 2020)
+    # The property_intel source must not reintroduce a group-less find() pattern.
+    import property_intel as _pi
+    src = open(_pi.__file__).read()
+    bad = []
+    for m in re.finditer(r'find\(\s*r([\'"])(.*?)\1', src):
+        pat = m.group(2)
+        try:
+            groups = re.compile(pat).groups
+        except re.error:
+            groups = 1   # can't compile in isolation (escape context) — not this check's concern
+        if groups == 0:
+            bad.append(pat[:50])
+    if bad:
+        print("     ! group-less find() patterns still present: " + str(bad))
+    check("no find() call in property_intel.py uses a group-less pattern", not bad)
+
     print("-" * 60)
     total, passed = len(_res), sum(_res)
     print(f"{passed}/{total} passed")

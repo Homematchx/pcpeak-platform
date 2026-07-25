@@ -21,10 +21,18 @@ MERGE IS ADDITIVE AND NON-DESTRUCTIVE: a field is overwritten only when the re-s
 real value. A failed re-scrape can never blank data that is already good — and if the new scrape
 also comes back empty, the explicit error is stored so the failure stays visible.
 
+  --retry-errors       Every case carrying a recorded DCAD error — the pass to run AFTER a parser
+                       fix (e.g. the 'no such group' crash on TX-23-00777 / TX-26-00782, whose
+                       non-standard land-table layout hit a group-less regex). A genuine thin
+                       account just fails again and keeps its error; a case that failed only
+                       because the parser threw recovers; a stale error on a case that already has
+                       data (parsed before the throw) is cleared. The reconciling stats show which.
+
   python3 intel_backfill.py --dry-run          # show what would be re-scraped
-  python3 intel_backfill.py                    # the 14 silent failures
+  python3 intel_backfill.py                    # the silent failures (DCAD empty, no error)
+  python3 intel_backfill.py --retry-errors     # every case with a recorded DCAD error
   python3 intel_backfill.py --baths            # every case missing baths
-  python3 intel_backfill.py --only TX-26-00777 # one case
+  python3 intel_backfill.py --only TX-26-00782 # one case
 """
 import argparse
 import asyncio
@@ -82,6 +90,16 @@ def select_targets(conn, mode, only):
             if pi.get("bathrooms"):
                 continue
             reason = "no baths"
+        elif mode == "retry_errors":
+            # Every case carrying a recorded DCAD error — the right pass to run AFTER a parser fix
+            # (e.g. the 'no such group' crash). A genuine thin account will just fail again and keep
+            # its error; a case that failed only because the parser threw will recover. A stale
+            # error on a case that DID recover data (parsed before the throw) is cleared by the
+            # re-scrape too. Reconciling stats make the split visible.
+            err = (pi.get("errors") or {}).get("dcad")
+            if not err:
+                continue
+            reason = f"recorded DCAD error: {str(err)[:40]}"
         else:
             err = (pi.get("errors") or {}).get("dcad")
             if any(pi.get(k) for k in CORE) or err:
@@ -111,13 +129,15 @@ async def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--baths", action="store_true", help="target cases missing bathrooms")
+    ap.add_argument("--retry-errors", action="store_true", dest="retry_errors",
+                    help="re-scrape every case with a recorded DCAD error (run after a parser fix)")
     ap.add_argument("--only", help="comma-separated case numbers")
     ap.add_argument("--dry-run", action="store_true", help="show targets, scrape nothing")
     ap.add_argument("--limit", type=int, help="cap how many cases are re-scraped")
     args = ap.parse_args()
 
     only = {s.strip() for s in args.only.split(",") if s.strip()} if args.only else None
-    mode = "baths" if args.baths else "silent"
+    mode = "baths" if args.baths else "retry_errors" if args.retry_errors else "silent"
 
     conn = sqlite3.connect(str(DB)); conn.row_factory = sqlite3.Row
     targets = select_targets(conn, mode, only)
