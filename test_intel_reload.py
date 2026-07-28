@@ -27,6 +27,17 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 from browser_env import chrome_path
 
+# SUPERSEDED BY skeleton-cache Phase 3 (detail-on-demand). This suite reproduced the slim-cache boot
+# → "Not Yet Loaded" → sync-populates flow and its 2026-07-23 fix. Phase 3 deletes that class at the
+# ROOT: the list caches only skeletons and a case's intel is fetched FRESH on open, so there is no
+# slim-boot-then-populate scenario left to test — its replacement is test_detail_on_demand.py
+# (skeleton instant → "Loading…" → detail fills; same-number-everywhere; zero events on sync).
+# The slim-cache machinery this test exercised is scheduled for deletion in Phase 4, at which point
+# this file is retired. Skipped (not failed) until then to keep the suite honest and green.
+print("SKIP: superseded by Phase 3 detail-on-demand — covered by test_detail_on_demand.py; "
+      "retired with the slim-cache machinery in Phase 4.")
+sys.exit(0)
+
 HTML = Path("frontend/index.html").resolve()
 
 _res = []

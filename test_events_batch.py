@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Events-batching regression pin — syncFromPlatform makes ONE bulk events call, not N. No network.
+"""Events regression pin — syncFromPlatform fetches ZERO events (Phase 3: detail-on-open). No network.
+
+Updated for skeleton-cache Phase 3: the interim "one bulk /api/events call" is superseded — the
+sync now fetches no events at all (events ride the /api/cases/{cn} detail fetch on open). This is
+the stronger form of the same guarantee: the third-strike per-case events storm can never return.
 
 The third-strike root cause: syncFromPlatform did 1 GET /api/cases + ~244 SEQUENTIAL
 GET /api/events/{cn}. That loop was behind the 502 bursts, the mid-sync navigation race, and the
-stale-intel-panel window. Fixed by fetching all events in one GET /api/events (grouped by
-case_number) and joining locally. This pins the fix so the loop can't quietly return:
+stale-intel-panel window. Phase 3 removed events from the sync entirely. This pins that:
 
-  * the sync fires the BULK /api/events exactly once,
-  * it fires ZERO per-case /api/events/{cn} requests (regardless of case count),
-  * events are still correctly joined onto each case (the Timeline is populated),
-  * a bulk-events failure degrades gracefully (cases still render).
+  * the sync fires ZERO events requests — no bulk /api/events, no per-case /api/events/{cn};
+  * repeated syncs still fetch zero events;
+  * the case list is intact across syncs.
 
 Run: python3 test_events_batch.py   (exit 0 = all green)
 """
@@ -68,38 +70,23 @@ with sync_playwright() as p:
     pg.goto("file://" + str(HTML))
     pg.wait_for_timeout(900)   # initial auto-sync runs
 
+    # Phase 3 SUPERSEDES the interim batching: the sync now fetches NO events at all (detail —
+    # including events — is fetched on OPEN via /api/cases/{cn}; see test_detail_on_demand). This
+    # is a STRONGER guarantee than "one bulk call" — a dedicated regression pin so the third-strike
+    # events storm (N sequential per-case GETs on every sync) can never return in any form.
     calls = pg.evaluate("() => window.__calls")
-    check("the sync fetched the BULK /api/events exactly once", calls["bulk"] == 1)
-    check("*** ZERO per-case /api/events/{cn} requests (the N-fetch loop is gone) ***",
-          calls["percase"] == 0)
+    check("*** the sync fetches ZERO events — no bulk, no per-case (the storm is gone) ***",
+          calls["bulk"] == 0 and calls["percase"] == 0)
     check("6 cases loaded from one /api/cases call",
           pg.evaluate("() => cases.length") == 6 and calls["cases"] == 1)
 
-    # The join still works — the case with a bulk event carries it into its timeline.
-    joined = pg.evaluate("""() => {
-        const c = cases.find(x => x.extracted.caseNumber === 'TX-26-00001');
-        return c && c.extracted.keyDocketEvents ? c.extracted.keyDocketEvents.length : 0;
-    }""")
-    check("events are joined locally onto the right case (Timeline populated)", joined == 1)
-    check("a case with no events joins to an empty list (no crash)",
-          pg.evaluate("""() => { const c = cases.find(x=>x.extracted.caseNumber==='TX-26-00002');
-                                 return Array.isArray(c.extracted.keyDocketEvents) && c.extracted.keyDocketEvents.length===0; }"""))
-
-    # Do a second manual sync — still one bulk call per sync, never per-case.
+    # Repeated syncs never fetch events.
     pg.evaluate("() => syncFromPlatform()")
     pg.wait_for_timeout(500)
     calls2 = pg.evaluate("() => window.__calls")
-    check("a second sync adds exactly one more bulk call, still zero per-case",
-          calls2["bulk"] == 2 and calls2["percase"] == 0)
-
-    # Graceful degradation: bulk events fails → cases still render (timeline just waits for next sync).
-    pg.evaluate("() => { window.__failBulk = true; }")
-    pg.evaluate("() => syncFromPlatform()")
-    pg.wait_for_timeout(500)
-    check("a bulk-events failure does NOT break the sync (cases still present)",
-          pg.evaluate("() => cases.length") == 6)
-    check("...and still fires no per-case fallback requests",
-          pg.evaluate("() => window.__calls.percase") == 0)
+    check("a second sync still fetches ZERO events (no per-case, no bulk)",
+          calls2["bulk"] == 0 and calls2["percase"] == 0)
+    check("...and the case list is intact after repeated syncs", pg.evaluate("() => cases.length") == 6)
 
     check("ZERO page errors", not errors)
     if errors:

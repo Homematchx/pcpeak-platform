@@ -459,9 +459,44 @@ function parseIntel(val) {
   try { return JSON.parse(val) || {}; } catch(e) { return {}; }
 }
 
-function platformToV3(pc, events) {
+// ── DETAIL-ON-DEMAND (skeleton-cache Phase 3) ────────────────────────────────────────────────
+// The list caches lightweight SKELETONS; a case's heavy detail (property_intel + events + memo) is
+// fetched on open and held in a session-only LRU (~20). NEVER written to localStorage — that bloat
+// is exactly what this deletes. Keyed by case_number and VERSIONED by the skeleton's updated_at, so
+// a re-scrape (which bumps updated_at) forces a re-fetch instead of serving stale detail. That keeps
+// same-number-everywhere intact: the card balance is the promoted column; the Financials/Acquisition
+// detail is never staler than the last sync of that case.
+var _detail = {};          // cn -> { full: <full v3 object>, ver: <updated_at at fetch> }
+var _detailOrder = [];     // LRU recency order of case numbers
+var DETAIL_LRU = 20;
+
+function _detailFresh(c) {
+  var cn = c && c.extracted && c.extracted.caseNumber;
+  var d = cn && _detail[cn];
+  return !!(d && d.ver === (c.updated_at || ""));
+}
+function _rememberDetail(cn, full, ver) {
+  _detail[cn] = { full: full, ver: ver };
+  _detailOrder = _detailOrder.filter(function(x){ return x !== cn; });
+  _detailOrder.push(cn);
+  while (_detailOrder.length > DETAIL_LRU) {
+    var ev = _detailOrder.shift();
+    if (ev !== cn) delete _detail[ev];
+  }
+}
+function fetchCaseDetail(cn) {
+  return fetch(PLATFORM_API + "/cases/" + encodeURIComponent(cn))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .catch(function(){ return null; });
+}
+
+function platformToV3(pc, events, loaded) {
   return {
     id: pc.case_number + "_platform",
+    // true only for the full detail fetch (or a local draft) — the list skeletons are false, which
+    // is how renderPropertyIntel tells "Loading detail…" apart from "genuinely not enriched".
+    _detailLoaded: !!loaded,
+    updated_at: pc.updated_at || "",
     city: pc.city || "dallas",
     rep_assigned: pc.rep_assigned || "",
     memo: pc.ai_memo || "",
@@ -592,22 +627,19 @@ async function syncFromPlatform() {
   const status = document.getElementById("platform-status");
   if (btn) { btn.textContent = "Syncing..."; btn.disabled = true; }
   try {
-    // ONE bulk events fetch alongside cases/stats/reps — replaces ~244 SEQUENTIAL per-case GETs
-    // (the third-strike root cause: 502 bursts, the mid-sync navigation race, and the stale-intel
-    // window all traced to that loop). Four parallel requests now, not 3 + N.
-    const [cr, sr, rr, er] = await Promise.all([
+    // The sync fetches only the SKELETON list (+ stats + reps) — NO events, NO property_intel
+    // (skeleton-cache Phase 3). Detail (property_intel + events) is fetched on open via
+    // /api/cases/{cn} and held in the session LRU. This is what deletes the 6.66MB quota ceiling
+    // and retires the bulk /api/events call — three parallel requests, tiny payload.
+    const [cr, sr, rr] = await Promise.all([
       fetch(PLATFORM_API + "/cases"),
       fetch(PLATFORM_API + "/stats"),
       fetch(PLATFORM_API + "/reps").catch(function(){return {ok:false};}),
-      fetch(PLATFORM_API + "/events").catch(function(){return {ok:false};}),
     ]);
     if (!cr.ok) throw new Error("API offline");
     const platformCases = await cr.json();
     const stats = await sr.json();
     window._repRoster = (rr && rr.ok) ? await rr.json() : (window._repRoster || []);
-    // Events grouped by case_number. On failure, an empty map → cases still render (timeline just
-    // refreshes on the next sync) — same graceful degradation the old per-case .catch had.
-    const eventsByCase = (er && er.ok) ? await er.json() : {};
 
     // Update portfolio stats
     const set = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val!==undefined?val:"—"; };
@@ -629,8 +661,8 @@ async function syncFromPlatform() {
     // Build exactly ONE v3 object per platform case (authoritative — carries the platform's rep_assigned).
     const platformV3 = [];
     for (const pc of platformCases) {
-      // Local join into the one bulk payload — no per-case network round-trip.
-      platformV3.push(platformToV3(pc, eventsByCase[pc.case_number] || []));
+      // Skeleton object — no events, detail not loaded. Detail is fetched on open.
+      platformV3.push(platformToV3(pc, [], false));
     }
 
     // HEAL local→prod reps. If a case has a rep locally but prod returns NONE, an earlier assignment
@@ -1270,15 +1302,43 @@ function selectCase(id) {
   const c = cases.find(x => x.id===id);
   if (!c) return;
   document.getElementById("empstate").style.display = "none";
-  const det = document.getElementById("cdet");
-  det.style.display = "flex";
-  renderDetail(c);
+  document.getElementById("cdet").style.display = "flex";
   document.querySelectorAll(".cchip").forEach(el => el.classList.toggle("on", el.dataset.id===id));
+
+  var cn = c.extracted && c.extracted.caseNumber;
+  // Anything carrying property_intel inline is already "loaded" — a local draft, or an object from
+  // a pre-Phase-3 localStorage cache. Render directly, no fetch.
+  if (c._detailLoaded || c.property_intel) {
+    c._detailLoaded = true; renderDetail(c); return;
+  }
+  // Detail already fetched this session AND not stale (skeleton updated_at unchanged) → instant full.
+  if (cn && _detailFresh(c)) { renderDetail(_detail[cn].full); return; }
+  // Otherwise: render the SKELETON now (header/overview instant; detail tabs show "Loading…"),
+  // fetch the detail, and fill on land — only if the user is still on this case.
+  renderDetail(c);
+  if (!cn) return;
+  fetchCaseDetail(cn).then(function(pc){
+    if (!pc) return;                                  // fetch failed — leave the skeleton render
+    var full = platformToV3(pc, pc.events || [], true);
+    // The skeleton is authoritative for the live/local-owned fields — overlay them so the detail
+    // object never drifts from the list (rep heal, disposition, and the promoted balance column
+    // that keeps the card == Financials == Acquisition).
+    full.id = c.id; full.rep_assigned = c.rep_assigned; full.updated_at = c.updated_at;
+    full.disposition_state = c.disposition_state; full.disposition_code = c.disposition_code;
+    full.disposition_at = c.disposition_at; full.pending_review = c.pending_review;
+    full.pending_review_code = c.pending_review_code;
+    full.current_tax_balance = c.current_tax_balance; full.market_value = c.market_value;
+    _rememberDetail(cn, full, c.updated_at || "");
+    if (activeId === id) renderDetail(full);          // fill the tabs (only if still open)
+  });
 }
 
 function renderDetail(c) {
   window._currentRawCase = c;
   var merged = Object.assign({}, c.extracted || {}, {property_intel: c.property_intel, accountNumber: c.account_number || (c.extracted && c.extracted.accountNumber)});
+  // Carry the detail-loaded flag so the panels can show "Loading…" (fetch in flight) rather than
+  // "Not Yet Loaded" (genuinely unenriched) — skeleton-cache Phase 3.
+  merged._detailLoaded = !!c._detailLoaded;
   window._currentCase = merged;
   // Also attach property_intel directly for platform cases
   if (!window._currentCase.property_intel && c.property_intel) {
@@ -1706,6 +1766,14 @@ function renderDetail(c) {
 function renderPropertyIntel(ex) {
   var el = document.getElementById("prop-intel-panel");
   if (!el) return;
+  // Detail fetch in flight (skeleton-cache Phase 3): show a Loading state, NOT "Not Yet Loaded".
+  // The latter means genuinely unenriched (detail loaded, no intel) and offers the manual DCAD
+  // links — showing it mid-fetch was the stale-panel flash this phase deletes at the root.
+  if (!ex._detailLoaded) {
+    el.innerHTML = "<div style='padding:40px;text-align:center;color:var(--text3)'>"
+      + "<div style='font-size:24px;margin-bottom:10px'>&#8987;</div>Loading property intel…</div>";
+    return;
+  }
   var intel = (ex.property_intel ? parseIntel(ex.property_intel) : null);
   var acct = (intel && intel.account_number) || ex.accountNumber || ex.account_number || "";
   var ls2 = "padding:8px 16px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;text-decoration:none;font-size:12px;color:var(--text2)";

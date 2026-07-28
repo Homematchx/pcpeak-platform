@@ -1496,9 +1496,16 @@ async def root():
 async def favicon():
     return HTMLResponse("")
 
+# Heavy per-case fields the sidebar LIST never reads — dropped from /api/cases (the skeleton) and
+# fetched on demand via /api/cases/{cn} when a case is opened (docs/skeleton-cache-design.md, Phase
+# 3). property_intel is the 15KB dominant blob; the rest are detail-tab data. current_tax_balance /
+# market_value stay (promoted columns) so the card + amount-owed filter render without the blob.
+SKELETON_DROP = ("property_intel", "ai_memo", "tax_breakdown", "delinquency_years", "prior_suits")
+
+
 @app.get("/api/cases")
 async def get_cases(status: str = None, stage: str = None, city: str = None,
-                    state: str = None, include_archived: int = 0):
+                    state: str = None, include_archived: int = 0, full: int = 0):
     """DEFAULT EXCLUDES ARCHIVED CASES (design §8). `watching` cases DO ship — carrying their
     disposition_state — because a warm lead is still a real lead and belongs in fleet analyses;
     keeping it out of the working queue is a frontend queue-composition rule, not a data rule.
@@ -1526,6 +1533,11 @@ async def get_cases(status: str = None, stage: str = None, city: str = None,
                 if c.get(field):
                     try: c[field] = json.loads(c[field])
                     except: pass
+            # Skeleton by default: drop the heavy detail-only blobs (fetched on open). `?full=1`
+            # returns everything for any consumer that wants the whole payload.
+            if not full:
+                for k in SKELETON_DROP:
+                    c.pop(k, None)
             cases.append(c)
         return cases
 
