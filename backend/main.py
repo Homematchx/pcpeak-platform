@@ -578,6 +578,15 @@ def init_db():
             # Review-flagging is ORTHOGONAL to state (design §3.1): a flag marks that a human
             # should look and never changes what the case IS, so a watching/archived case can
             # carry an open flag (an invalidation, §6) without changing state.
+            # Skeleton-cache fields (docs/skeleton-cache-design.md, Phase 1). The ACT live balance
+            # and DCAD market value PROMOTED from property_intel to first-class columns, so the
+            # sidebar list + the amount-owed filter can render WITHOUT the 15KB property_intel blob
+            # once the client caches only a skeleton. These are the SAME values as
+            # property_intel.current_tax_balance / .market_value — promoted, never re-derived — so
+            # the card/filter figure stays identical to what the Financials and Acquisition tabs
+            # show. Kept in lockstep: create_case rewrites them from property_intel on every write.
+            ("current_tax_balance", "REAL"),
+            ("market_value", "REAL"),
             ("disposition_state", "TEXT DEFAULT 'active'"),   # active | watching | archived
             ("disposition_code", "TEXT"),
             ("disposition_at", "TEXT"),
@@ -624,6 +633,15 @@ def init_db():
         db.execute("UPDATE cases SET disposition_state='active' "
                    "WHERE disposition_state IS NULL OR TRIM(disposition_state)=''")
         db.execute("UPDATE cases SET pending_review=0 WHERE pending_review IS NULL")
+        # Backfill the promoted balance/market_value columns from property_intel for existing rows
+        # (Phase 1). Same extraction (_pi_subvalues) create_case uses on every write, so the column
+        # is exactly property_intel.current_tax_balance — one figure, everywhere.
+        for cn, pij in db.execute("SELECT case_number, property_intel FROM cases "
+                                  "WHERE property_intel IS NOT NULL "
+                                  "AND (current_tax_balance IS NULL AND market_value IS NULL)").fetchall():
+            mv, bal, _h = _pi_subvalues(pij)
+            db.execute("UPDATE cases SET current_tax_balance=?, market_value=? WHERE case_number=?",
+                       [bal, mv, cn])
         # One-time case_snapshots BASELINE: every case already live at migration time gets a genesis
         # snapshot of its current field values (source='baseline', old=NULL), so history doesn't start
         # blank for the existing book — new changes then diff against a real baseline instead of a void.
@@ -1555,6 +1573,12 @@ async def create_case(data: dict):
         merged = dict(existing) if existing else {}
         merged.update({k: v for k, v in data.items() if k in valid_cols})
         merged.update(compute_projection(merged))
+        # Keep the promoted skeleton columns in lockstep with property_intel — the SAME value the
+        # Financials/Acquisition tabs read, never a re-derivation (Phase 1). Derived from `merged`,
+        # so a partial update with no property_intel keeps the existing row's blob and its balance.
+        _mv, _bal, _h = _pi_subvalues(merged.get("property_intel"))
+        merged["current_tax_balance"] = _bal
+        merged["market_value"] = _mv
 
         write = {k: v for k, v in merged.items() if k in valid_cols and k not in ("case_number", "id")}
         write["updated_at"] = datetime.now().isoformat()
