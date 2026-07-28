@@ -2713,7 +2713,18 @@ async def get_stats():
         # card badge. Count sale_pulled by the DATE field (not just the stage column), since a
         # re-scrape recomputes stage from orderOfSaleIssued and would otherwise revert it to
         # oos_issued (discover.py doesn't yet capture sale-pulled events — see known gaps).
-        _pulled_where = "(stage='sale_pulled' OR (sale_pulled_date IS NOT NULL AND TRIM(sale_pulled_date)!=''))"
+        # DATE-AWARE (TX-23-00569): a pull normally IS the latest event, but a sale can be pulled
+        # and then the Order of Sale RE-ISSUED — pull 2026-05-12, then OOS 2026-07-24. When the OOS
+        # date is AFTER the pull date, the sale is being driven again → oos_issued, NOT pulled. So a
+        # pull counts as the operative stage only when it is at-or-after the OOS (or there is no OOS
+        # date to compare, or only a stale stage flag with no dates). oos_date/sale_pulled_date are
+        # ISO 'YYYY-MM-DD', so a lexical string compare orders them correctly.
+        _pull_latest = ("(oos_date IS NULL OR TRIM(oos_date)='' OR "
+                        "TRIM(oos_date) <= TRIM(sale_pulled_date))")
+        _pulled_where = (
+            "((sale_pulled_date IS NOT NULL AND TRIM(sale_pulled_date)!='' AND " + _pull_latest + ") "
+            "OR (stage='sale_pulled' AND (sale_pulled_date IS NULL OR TRIM(sale_pulled_date)='') "
+            "    AND (oos_date IS NULL OR TRIM(oos_date)='')))")
         oos = db.execute(f"SELECT COUNT(*) FROM cases WHERE oos_issued=1 AND NOT {_pulled_where}{_live}").fetchone()[0]
         pulled = db.execute(f"SELECT COUNT(*) FROM cases WHERE {_pulled_where}{_live}").fetchone()[0]
         last_run = db.execute("SELECT started_at FROM agent_runs ORDER BY id DESC LIMIT 1").fetchone()

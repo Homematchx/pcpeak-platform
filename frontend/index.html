@@ -2387,11 +2387,18 @@ window._page = window._page || 1;
 var LIST_PAGE_SIZE = 15;
 
 function caseStage(ex){
-  // A PULLED sale is the latest event — it supersedes oos_issued (the sale was scheduled after
-  // OOS, then withdrawn). Check it FIRST, or a sale-pulled case reads as 'oos_issued' and the
-  // "Sale Pulled" stat (which counts this stage) disagrees with the badge on the same screen.
-  return (ex.stage === "sale_pulled" || ex.salePulledDate || ex.sale_pulled_date) ? "sale_pulled"
-       : ex.orderOfSaleIssued ? "oos_issued"
+  // A PULLED sale is USUALLY the latest event — it supersedes oos_issued (the sale was scheduled
+  // after OOS, then withdrawn). BUT a sale can be pulled and then the Order of Sale RE-ISSUED —
+  // TX-23-00569: pull 2026-05-12, then OOS 2026-07-24. When both dates are known, the LATEST event
+  // wins: an OOS dated after the pull reads as oos_issued again (the sale is being driven anew).
+  // ISO 'YYYY-MM-DD' dates compare lexically. (For live cases platformToV3 doesn't map the pulled
+  // fields, so `pulled` is false and this returns oos_issued as before — a safe superset.)
+  var oos = ex.orderOfSaleIssued;
+  var oosD = ex.orderOfSaleDate || ex.oos_date || ex.oosDate || "";
+  var pulledD = ex.salePulledDate || ex.sale_pulled_date || "";
+  var pulled = ex.stage === "sale_pulled" || !!pulledD;
+  if (pulled && !(oos && oosD && pulledD && oosD > pulledD)) return "sale_pulled";
+  return oos ? "oos_issued"
        : ex.judgmentDate ? "judgment_entered"
        : "pre_judgment";
 }
