@@ -468,6 +468,12 @@ function platformToV3(pc, events) {
     uploadedAt: pc.last_agent_run || pc.updated_at || new Date().toISOString(),
     fileNames: ["[Platform Agent — " + (pc.last_agent_run ? new Date(pc.last_agent_run).toLocaleDateString() : "synced") + "]"],
     property_intel: pc.property_intel || null,
+    // Promoted skeleton columns (Phase 1): the ACT live balance + DCAD market value as first-class
+    // fields so the list/filter helpers read them WITHOUT parsing property_intel. Same value as the
+    // blob (server keeps them in lockstep). Carried here so Phase 3 can stop shipping property_intel
+    // to the list and the card/filter still render. `== null` guards absent → stays null (unknown).
+    current_tax_balance: (pc.current_tax_balance == null ? null : pc.current_tax_balance),
+    market_value:        (pc.market_value == null ? null : pc.market_value),
     // property_type is what caseTrack() needs to return 'personal_property' for a BPP case — without
     // it, caseTrack derives from oos/judgment and BPP never routes correctly (latent since prod has
     // no BPP after the purge, but the card/filter/BPP-display guards all depend on it). case_track is
@@ -1212,6 +1218,12 @@ function hasUsableIntel(c) {
 // is "paid", null is "not enriched yet"). No fallback to filing debt: that is a DIFFERENT number
 // and would reintroduce the fourth, divergent figure this is meant to avoid.
 function caseLiveBalance(c) {
+  // Read the promoted skeleton COLUMN first (Phase 2); fall back to parsing property_intel while
+  // both exist (a local draft has the blob but no column; Phase 3 will have the column but no blob
+  // in the list). The two are the SAME value — the column is property_intel.current_tax_balance
+  // promoted server-side by the one _pi_subvalues extractor — so this is pure equivalence today
+  // and keeps working once the blob is gone from the list. Same figure as Financials/Acquisition.
+  if (c && typeof c.current_tax_balance === "number") return c.current_tax_balance;
   var pi = (c && c.property_intel) ? parseIntel(c.property_intel) : null;
   var b = pi ? pi.current_tax_balance : null;
   return (typeof b === "number") ? b : null;
@@ -2441,13 +2453,13 @@ function caseAccountStatus(c){
 function caseTrack(c){
   if(c.case_track) return c.case_track;
   var ex=c.extracted||{};
-  var pi=parseIntel(c.property_intel);
   if(c.property_type==="personal") return "personal_property";   // FIRST — BPP never in timing
   var oos=ex.orderOfSaleDate||c.oos_date;
   if(oos && (""+oos).trim()) return "oos_timing";
   var jt=((ex.judgmentType||c.judgment_type||"")+"").toUpperCase();
   if(/DISMISS|NON-?SUIT/.test(jt)){
-    var bal=pi.current_tax_balance;
+    // Balance via the shared reader (column-first, blob fallback) — one source, no second parse.
+    var bal=caseLiveBalance(c);
     if(bal==null) return "dismissed_owing";
     return bal>0 ? "dismissed_owing" : "dismissed_paid";
   }
