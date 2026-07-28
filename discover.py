@@ -112,6 +112,39 @@ def property_type_from_docket(docket_text):
         return "real"
     return None
 
+# ── OPERATIVE ORDER-OF-SALE DATE (deterministic, survives every re-scrape) ──────────────────────
+# A sale can be pulled and the Order of Sale RE-ISSUED — TX-23-00569: OOS 2026-04-20, sale pulled
+# 2026-05-12, then re-issued 2026-07-24 under the combined judgment. The LATEST issuance is the
+# operative order. The Claude extraction returns a single orderOfSaleDate and can reasonably pick the
+# earlier case-specific one (the 7/24 entry reads as "judgment copies for [combined case]"), so we
+# DERIVE the operative date deterministically from the captured docket events instead. Because this
+# runs on every scrape, the right date STICKS — no hand-set value a re-scrape would clobber.
+# ISSUE = the order is actually being issued; NOT_ISSUE = it's merely referenced (an abstract, a
+# request, or "authorized" inside a judgment) — those are not the operative issuance.
+_OOS_ISSUE_RE = re.compile(r"(ISSUE ORDER OF SALE|ORDER OF SALE ISSUED)", re.I)
+_OOS_NOT_ISSUE_RE = re.compile(r"ABSTRACT|REQUEST|AUTHORIZED|\bNOTICE\b", re.I)
+
+
+def operative_oos_date(events):
+    """The operative Order-of-Sale date = the LATEST issuance among the docket events. Returns
+    (date_or_None, [distinct issuance dates ascending]). len>1 means the sale was re-issued (or
+    multiple orders exist) — the caller can surface that. Pure + deterministic (no LLM, no network),
+    so it is fully unit-testable and identical on every re-scrape."""
+    dates = set()
+    for ev in events or []:
+        desc = str(ev.get("event") or ev.get("description") or "")
+        raw = str(ev.get("date") or ev.get("event_date") or "")
+        d = raw[:10]
+        if not (len(d) == 10 and d[4] == "-" and d[7] == "-"):
+            continue                                        # need an ISO YYYY-MM-DD to order by
+        if _OOS_ISSUE_RE.search(desc) and not _OOS_NOT_ISSUE_RE.search(desc):
+            dates.add(d)
+    if not dates:
+        return None, []
+    ordered = sorted(dates)
+    return ordered[-1], ordered
+
+
 def case_track_of(property_type, oos_date, judgment_type, judgment_date, tax_balance):
     """Which dataset/track a case belongs to (mirror of backend.case_track_of — keep in
     sync). personal_property | oos_timing | dismissed_owing | dismissed_paid |
@@ -300,6 +333,13 @@ def save_to_db(extracted, memo, owner):
     if not cn:
         return
     now = datetime.now().isoformat()
+    # Deterministic operative OOS date = latest issuance among the captured docket events (see
+    # operative_oos_date). Computed BEFORE the row so a re-issue-after-pull always wins over Claude's
+    # single pick. Printed when there is more than one issuance, so the choice is never silent.
+    _oos_operative, _oos_all = operative_oos_date(extracted.get("keyDocketEvents", []))
+    if len(_oos_all) > 1:
+        print(f"    OOS: {len(_oos_all)} issuances {_oos_all} — using latest {_oos_operative} "
+              f"(operative order; a re-issue supersedes the original)")
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(DB_PATH)) as db:
         for col in ["owner_type TEXT", "owner_priority TEXT", "property_intel TEXT", "legal_description TEXT", "account_status TEXT", "account_note TEXT", "case_track TEXT", "property_type TEXT"]:
@@ -336,8 +376,11 @@ def save_to_db(extracted, memo, owner):
             "complexity": extracted.get("complexity", "low"),
             "judgment_date": extracted.get("judgmentDate") or None,
             "judgment_type": extracted.get("judgmentType", "none"),
-            "oos_issued": 1 if extracted.get("orderOfSaleIssued") else 0,
-            "oos_date": extracted.get("orderOfSaleDate") or None,
+            # OOS date/issued: prefer the deterministic latest-issuance derived from the captured
+            # events (survives re-scrape); fall back to Claude's single pick only when no issuance
+            # event parsed. A multiple-issuance case is printed so the operator can see the choice.
+            "oos_issued": 1 if (_oos_operative or extracted.get("orderOfSaleIssued")) else 0,
+            "oos_date": _oos_operative or (extracted.get("orderOfSaleDate") or None),
             "sale_scheduled_date": extracted.get("saleScheduledDate") or None,
             "next_hearing_date": extracted.get("nextHearingDate") or None,
             "city": "dallas",
@@ -345,7 +388,7 @@ def save_to_db(extracted, memo, owner):
             "ai_memo": memo,
             "owner_type": owner.get("type", "individual"),
             "owner_priority": owner.get("priority", "high"),
-            "stage": ("oos_issued" if extracted.get("orderOfSaleIssued") else
+            "stage": ("oos_issued" if (_oos_operative or extracted.get("orderOfSaleIssued")) else
                       "judgment_entered" if extracted.get("judgmentDate")
                       else "pre_judgment"),
             "last_agent_run": now,
@@ -1051,7 +1094,11 @@ class Discoverer:
         # personal_property is classified FIRST).
         try:
             _bal = intel.get("current_tax_balance") if intel else None
-            _oos = None if _ptype == "personal" else extracted.get("orderOfSaleDate")
+            # Same deterministic operative OOS date the row will store (latest issuance), so the
+            # track tag agrees with oos_date rather than Claude's single pick.
+            _oos = None if _ptype == "personal" else (
+                operative_oos_date(extracted.get("keyDocketEvents", []))[0]
+                or extracted.get("orderOfSaleDate"))
             _track = case_track_of(_ptype, _oos,
                                    extracted.get("judgmentType"),
                                    extracted.get("judgmentDate"), _bal)
