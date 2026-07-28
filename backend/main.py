@@ -1746,6 +1746,25 @@ async def reassign_cases(r: Reassign):
             db.execute("UPDATE reps SET active=1 WHERE name=? COLLATE NOCASE", [dst])
     return {"status":"ok", "moved": moved, "from": src, "to": dst}
 
+@app.get("/api/events")
+async def get_all_events():
+    """ALL docket events, grouped by case_number, in ONE response. This exists to kill the
+    syncFromPlatform hot path: the client used to GET /api/cases then fire ~244 SEQUENTIAL
+    /api/events/{cn} requests — the single root cause behind the 502 bursts, the mid-sync
+    navigation race, and the stale-intel-panel window (all three symptoms logged, third strike).
+    One query + one payload replaces N round-trips. Same row shape as the per-case endpoint, so the
+    client's platformToV3(pc, events) is unchanged."""
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT * FROM docket_events ORDER BY case_number, event_date DESC, id DESC"
+        ).fetchall()
+    grouped = {}
+    for r in rows:
+        d = dict(r)
+        grouped.setdefault(d["case_number"], []).append(d)
+    return grouped
+
+
 @app.get("/api/events/{case_number}")
 async def get_events(case_number: str):
     with get_db() as db:

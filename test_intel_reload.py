@@ -64,7 +64,7 @@ window.fetch = async function(url, opts){
   const J = (o)=> new Response(JSON.stringify(o), {status:200, headers:{'Content-Type':'application/json'}});
   if (url.endsWith('/api/cases') && opts && opts.method==='POST') return J({status:'ok'});
   if (url.endsWith('/api/cases')) return J(%s);
-  if (url.indexOf('/api/events/')>=0) { while(window.__holdEvents){ await new Promise(r=>setTimeout(r,20)); } return J([]); }
+  if (url.indexOf('/api/events')>=0) { while(window.__holdEvents){ await new Promise(r=>setTimeout(r,20)); } return url.endsWith('/api/events') ? J({}) : J([]); }
   if (url.endsWith('/api/stats')) return J({total_cases:2, active_cases:2, watching_cases:0, archived_cases:0, total_all:2, pending_review:0});
   if (url.endsWith('/api/reps')) return J([]);
   if (url.endsWith('/api/dispositions/codes')) return J({groups:[], codes:[]});

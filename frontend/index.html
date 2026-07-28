@@ -586,15 +586,22 @@ async function syncFromPlatform() {
   const status = document.getElementById("platform-status");
   if (btn) { btn.textContent = "Syncing..."; btn.disabled = true; }
   try {
-    const [cr, sr, rr] = await Promise.all([
+    // ONE bulk events fetch alongside cases/stats/reps — replaces ~244 SEQUENTIAL per-case GETs
+    // (the third-strike root cause: 502 bursts, the mid-sync navigation race, and the stale-intel
+    // window all traced to that loop). Four parallel requests now, not 3 + N.
+    const [cr, sr, rr, er] = await Promise.all([
       fetch(PLATFORM_API + "/cases"),
       fetch(PLATFORM_API + "/stats"),
       fetch(PLATFORM_API + "/reps").catch(function(){return {ok:false};}),
+      fetch(PLATFORM_API + "/events").catch(function(){return {ok:false};}),
     ]);
     if (!cr.ok) throw new Error("API offline");
     const platformCases = await cr.json();
     const stats = await sr.json();
     window._repRoster = (rr && rr.ok) ? await rr.json() : (window._repRoster || []);
+    // Events grouped by case_number. On failure, an empty map → cases still render (timeline just
+    // refreshes on the next sync) — same graceful degradation the old per-case .catch had.
+    const eventsByCase = (er && er.ok) ? await er.json() : {};
 
     // Update portfolio stats
     const set = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val!==undefined?val:"—"; };
@@ -616,9 +623,8 @@ async function syncFromPlatform() {
     // Build exactly ONE v3 object per platform case (authoritative — carries the platform's rep_assigned).
     const platformV3 = [];
     for (const pc of platformCases) {
-      const evResp = await fetch(PLATFORM_API + "/events/" + pc.case_number).catch(()=>({ok:false}));
-      const events = evResp.ok ? await evResp.json() : [];
-      platformV3.push(platformToV3(pc, events));
+      // Local join into the one bulk payload — no per-case network round-trip.
+      platformV3.push(platformToV3(pc, eventsByCase[pc.case_number] || []));
     }
 
     // HEAL local→prod reps. If a case has a rep locally but prod returns NONE, an earlier assignment

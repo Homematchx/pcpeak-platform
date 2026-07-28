@@ -76,11 +76,17 @@ so the panel stayed stale until a manual click. **Pre-existing, NOT caused by th
 run again on this Mac.
 
 **QUEUED FOR NEXT INCREMENT:**
-1. **⬆ EVENTS-BATCHING — TOP OF QUEUE (elevated; THIRD STRIKE).** `syncFromPlatform` does 1
-   `/api/cases` GET + ~244 SEQUENTIAL `/api/events/{cn}` GETs. One root cause, three independent
-   symptoms now: (a) the 502 bursts (2026-07-18), (b) the widened navigation-race window
-   (selection-stability bugs), (c) it determines how long THIS session's stale-intel-panel window
-   lasts. Past "logged optimization." Fix: batch events into the `/api/cases` payload (one response).
+1. **✅ EVENTS-BATCHING — DONE (2026-07-28, the third-strike root cause killed).** `syncFromPlatform`
+   used to do 1 `/api/cases` GET + ~244 SEQUENTIAL `/api/events/{cn}` GETs — the one loop behind the
+   502 bursts, the mid-sync navigation race, and the stale-intel-panel window. Replaced with a bulk
+   `GET /api/events` (all docket events grouped by case_number, one query) that the client fetches
+   ONCE alongside cases/stats/reps and joins locally. Measured on the real 247-case DB: **3,808
+   events in one 121ms call** vs 244 round-trips. Graceful degradation (a bulk-events failure leaves
+   cases rendering, timeline refreshes next sync). Pinned by `test_events_batch.py` 9/9 (exactly one
+   bulk call, ZERO per-case `/api/events/{cn}` — so the loop can't quietly return); `test_intel_reload`
+   updated to hold the bulk endpoint (10/10); all hot-path suites green (selection-stability,
+   rep-dedup, disposition, land, balance). The deferred fleet-wide standing-floors batch job is no
+   longer sequenced behind this.
 2. **Fleet-wide standing land floors** (batch-compute, not propose-triggered). **DEFERRED FROM the
    land-display increment with a MEASUREMENT, not a guess:** 136 of 247 cases carry a
    `lot_area_sqft`, so one fleet pass = **~136 live Bridge/NTREIS `land_sales` fetches, worst case
