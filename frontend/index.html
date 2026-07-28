@@ -174,9 +174,11 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
 .acq-sub{font-size:12px;color:var(--text2);margin-top:2px;}
 .acq-gates{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;}
 .acq-gate{font-size:10px;padding:2px 7px;border-radius:20px;background:var(--surface2);color:var(--text2);}
-.acq-g-fatal{background:rgba(239,68,68,.18);color:#fca5a5;}
-.acq-g-blocking{background:rgba(245,158,11,.18);color:#fcd34d;}
-.acq-g-condition{background:rgba(99,102,241,.16);color:#a5b4fc;}
+/* Severity/semantic labels — DARK readable text on a LIGHT tint (this is a light theme; the old
+   pale-text-on-faint-tint was built for dark mode and rendered ~2:1 on white). All ≥4.5:1 now. */
+.acq-g-fatal{background:var(--red-bg);color:var(--red);}
+.acq-g-blocking{background:var(--amber-bg);color:#b5450b;}
+.acq-g-condition{background:var(--purple-bg);color:var(--purple);}
 .acq-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:12px;}
 .acq-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);padding:12px;}
 .acq-h{font-family:var(--FD);font-size:12px;font-weight:600;margin-bottom:8px;color:var(--text2);}
@@ -184,10 +186,10 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
 .acq-row span:first-child{color:var(--text3);}
 .acq-net{font-weight:700;border-bottom:none;margin-top:2px;}
 .acq-lbl{font-size:9px;text-transform:uppercase;padding:1px 5px;border-radius:4px;letter-spacing:.4px;vertical-align:middle;}
-.acq-verified{background:rgba(34,197,94,.18);color:#86efac;}
-.acq-est{background:rgba(245,158,11,.16);color:#fcd34d;}
-.acq-inf{background:rgba(99,102,241,.16);color:#a5b4fc;}
-.acq-unavail{background:rgba(148,163,184,.18);color:#cbd5e1;}
+.acq-verified{background:var(--green-bg);color:var(--green);}
+.acq-est{background:var(--amber-bg);color:var(--amber);}
+.acq-inf{background:var(--purple-bg);color:var(--purple);}
+.acq-unavail{background:var(--surface3);color:var(--text2);}
 .acq-btn{font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;}
 .acq-btn:hover{background:var(--surface2);}
 .acq-ok{border-color:rgba(34,197,94,.5);} .acq-no{border-color:rgba(239,68,68,.5);}
@@ -1668,8 +1670,8 @@ function renderDetail(c) {
           var _liveBal = (_pi && _pi.current_tax_balance != null) ? _pi.current_tax_balance : null;
           const po = calcPayoff(ex, _liveBal);
           const chip = (l) => l === "verified"
-            ? `<span style="font-size:9px;text-transform:uppercase;letter-spacing:.4px;background:rgba(34,197,94,.18);color:#3d9970;padding:1px 5px;border-radius:4px;margin-left:4px">verified</span>`
-            : `<span style="font-size:9px;text-transform:uppercase;letter-spacing:.4px;background:rgba(245,158,11,.18);color:#a5730f;padding:1px 5px;border-radius:4px;margin-left:4px">estimated</span>`;
+            ? `<span style="font-size:9px;text-transform:uppercase;letter-spacing:.4px;background:rgba(34,197,94,.18);color:var(--green);padding:1px 5px;border-radius:4px;margin-left:4px">verified</span>`
+            : `<span style="font-size:9px;text-transform:uppercase;letter-spacing:.4px;background:rgba(245,158,11,.18);color:var(--amber);padding:1px 5px;border-radius:4px;margin-left:4px">estimated</span>`;
           return `<div class="card">
             <div class="chd">
               <div class="ct">&#128181; Estimated Payoff Calculator</div>
@@ -1785,10 +1787,15 @@ function renderPropertyIntel(ex) {
   var html = "";
   var d = intel.distress || {};
   var dLevel = d.level || "low";
+  // Bright color = ACCENT only (tint background + border, where a saturated hue reads fine).
   var dColor = dLevel==="critical"?"#ef4444":dLevel==="high"?"#f97316":dLevel==="moderate"?"#f59e0b":"#22c55e";
+  // Readable TEXT color — the bright hues fail WCAG AA badly as small text (amber #f59e0b is
+  // 2.15:1 on white). These dark variants (the theme's own --red/--amber/--green, plus a dark
+  // orange for 'high') are all ≥5:1 while keeping the level's semantic color.
+  var dText = dLevel==="critical"?"var(--red)":dLevel==="high"?"#b5450b":dLevel==="moderate"?"var(--amber)":"var(--green)";
   if (d.signals && d.signals.length > 0) {
     html += "<div style='background:"+dColor+"11;border:1px solid "+dColor+"33;border-radius:8px;padding:16px;margin-bottom:16px'>";
-    html += "<div style='font-size:11px;font-weight:700;color:"+dColor+";text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px'>DISTRESS INTELLIGENCE - "+dLevel.toUpperCase()+" (Score: "+(d.score||0)+")</div>";
+    html += "<div style='font-size:11px;font-weight:700;color:"+dText+";text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px'>DISTRESS INTELLIGENCE - "+dLevel.toUpperCase()+" (Score: "+(d.score||0)+")</div>";
     html += "<div style='display:grid;grid-template-columns:1fr 1fr;gap:6px'>";
     (d.signals||[]).forEach(function(s){var icon=s.severity==="critical"?"[!]":s.severity==="warning"?"[~]":"[i]";html+="<div style='font-size:12px'>"+icon+" "+s.label+"</div>";});
     html += "</div></div>";
@@ -1801,7 +1808,7 @@ function renderPropertyIntel(ex) {
   html += vc("Market Value",fmt(intel.market_value),"Total (Impr + Land)");
   html += vc("Improvement Value",fmt(intel.improvement_value),intel.depreciation_pct?intel.depreciation_pct+"% depreciated":"Structure only");
   html += vc("Land Value",fmt(intel.land_value),"Lot value only");
-  html += vc("Live Tax Balance",fmt(intel.current_tax_balance),"As of today","#ef4444");
+  html += vc("Live Tax Balance",fmt(intel.current_tax_balance),"As of today","var(--red)");
   html += "</div><div style='display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px'>";
   html += vc("Taxable Value",fmt(intel.taxable_value||intel.market_value),"Per DCAD");
   html += vc("Current Levy",fmt(intel.current_levy),"2025 tax year");
@@ -1850,7 +1857,7 @@ function renderPropertyIntel(ex) {
     html+="<div style='background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:16px'>";
     html+="<div style='font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px'>Tax Due by Year (penalty acceleration)</div>";
     html+="<table style='width:100%;border-collapse:collapse;font-size:12px'><tr style='color:var(--text3);border-bottom:1px solid var(--border2)'><th style='text-align:left;padding:4px 8px'>Year</th><th style='text-align:right;padding:4px 8px'>Base Tax</th><th style='text-align:right;padding:4px 8px'>Penalty+Interest</th><th style='text-align:right;padding:4px 8px'>Total</th></tr>";
-    intel.tax_by_year.forEach(function(r){var pct=r.base_tax>0?Math.round(r.penalty_interest/r.base_tax*100):0;html+="<tr style='border-bottom:1px solid var(--border2)33'><td style='padding:5px 8px;font-weight:600'>"+r.year+"</td><td style='padding:5px 8px;text-align:right;color:var(--text2)'>$"+Number(r.base_tax).toLocaleString()+"</td><td style='padding:5px 8px;text-align:right;color:#ef444499'>$"+Number(r.penalty_interest).toLocaleString()+" ("+pct+"%)</td><td style='padding:5px 8px;text-align:right;font-weight:600'>$"+Number(r.total).toLocaleString()+"</td></tr>";});
+    intel.tax_by_year.forEach(function(r){var pct=r.base_tax>0?Math.round(r.penalty_interest/r.base_tax*100):0;html+="<tr style='border-bottom:1px solid var(--border2)33'><td style='padding:5px 8px;font-weight:600'>"+r.year+"</td><td style='padding:5px 8px;text-align:right;color:var(--text2)'>$"+Number(r.base_tax).toLocaleString()+"</td><td style='padding:5px 8px;text-align:right;color:var(--red)'>$"+Number(r.penalty_interest).toLocaleString()+" ("+pct+"%)</td><td style='padding:5px 8px;text-align:right;font-weight:600'>$"+Number(r.total).toLocaleString()+"</td></tr>";});
     html+="</table></div>";
   }
   if(acct){
@@ -1880,22 +1887,24 @@ function renderDefendants(ex) {
     if (typeof d === "string") { d = {name:d, address:"", serviceStatus:"unknown", isInRemOnly:false, notes:""}; }
     var isPrimary = !d.isInRemOnly;
     var served = (d.serviceStatus||"").toLowerCase() === "served";
-    var svcColor = served ? "#22c55e" : "#ef4444";
+    var svcColor = served ? "var(--green)" : "var(--red)";
+    var svcBg    = served ? "var(--green-bg)" : "var(--red-bg)";
     var svcLabel = served ? "SERVED" : "UNSERVED";
-    var typeColor = isPrimary ? "#3b82f6" : "#6b7280";
+    var typeColor = isPrimary ? "var(--blue)" : "var(--text2)";
+    var typeBg    = isPrimary ? "var(--blue-bg)" : "var(--surface3)";
     var typeLabel = d.isInRemOnly ? "IN REM ONLY" : "PRIMARY";
     var contactIcon = isPrimary && !served ? "🚪 Door knock — decision maker" :
                       d.isInRemOnly && !served ? "📋 Skip trace / direct mail" :
                       "✅ Served — monitor only";
     var outOfState = d.address && (d.address.indexOf(", TX ") < 0) && d.address.length > 5;
-    var stateNote = outOfState ? " <span style='color:#f59e0b;font-size:10px'>OUT OF STATE</span>" : "";
+    var stateNote = outOfState ? " <span style='color:var(--amber);font-size:10px;font-weight:700'>OUT OF STATE</span>" : "";
     html += "<div style='background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:12px'>";
     html += "<div style='display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px'>";
     html += "<div>";
     html += "<div style='font-weight:700;font-size:14px;color:var(--text)'>" + (d.name||"Unknown") + "</div>";
     html += "<div style='margin-top:4px'>";
-    html += "<span style='background:" + typeColor + "22;color:" + typeColor + ";font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;margin-right:6px'>" + typeLabel + "</span>";
-    html += "<span style='background:" + svcColor + "22;color:" + svcColor + ";font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px'>" + svcLabel + "</span>";
+    html += "<span style='background:" + typeBg + ";color:" + typeColor + ";font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;margin-right:6px'>" + typeLabel + "</span>";
+    html += "<span style='background:" + svcBg + ";color:" + svcColor + ";font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px'>" + svcLabel + "</span>";
     html += "</div></div></div>";
     if (d.address) {
       html += "<div style='font-size:13px;color:var(--text2);margin-bottom:6px'>📍 " + d.address + stateNote + "</div>";
@@ -1906,7 +1915,7 @@ function renderDefendants(ex) {
     if (d.notes) {
       html += "<div style='font-size:11px;color:var(--text3);margin-bottom:6px'>" + d.notes + "</div>";
     }
-    html += "<div style='font-size:12px;color:#f59e0b;font-weight:500;margin-top:8px;padding-top:8px;border-top:1px solid var(--border2)'>" + contactIcon + "</div>";
+    html += "<div style='font-size:12px;color:var(--amber);font-weight:600;margin-top:8px;padding-top:8px;border-top:1px solid var(--border2)'>" + contactIcon + "</div>";
     html += "</div>";
   }
   // Summary bar
