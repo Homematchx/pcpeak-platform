@@ -360,7 +360,7 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
             <option value="">Track: All</option><option value="oos_timing">OOS timing</option><option value="dismissed_owing">Dismissed &mdash; owing</option><option value="dismissed_paid">Dismissed &mdash; paid</option><option value="judged_pending">Judged &mdash; pending</option><option value="active">Active</option><option value="personal_property">Personal property (BPP)</option>
           </select>
           <select id="filter-balance" class="lc-sel" onchange="setFilter('balance',this.value,this)" title="Amount owed — the ACT live balance (same figure as the card); the axis a distressed-tax pipeline triages on">
-            <option value="">Owed: All</option><option value="low">&lt; $20K</option><option value="mid">$20K &ndash; $50K</option><option value="high">$50K+</option><option value="zero">Paid ($0)</option><option value="unknown">No balance yet</option>
+            <option value="">Owed: All</option><option value="low">&lt; $20K</option><option value="mid">$20K &ndash; $50K</option><option value="high">$50K+</option><option value="zero">Paid ($0, dismissed)</option><option value="unknown">Unconfirmed &mdash; needs check</option>
           </select>
         </div>
         <div style="display:flex;gap:5px">
@@ -1263,6 +1263,34 @@ function caseLiveBalance(c) {
   return (typeof b === "number") ? b : null;
 }
 
+// A $0 ACT balance that CONTRADICTS an active collection posture (design §17.4/§17.5).
+//
+// THE DISCRIMINATOR IS THE CONTRADICTION, NOT THE ADDRESS. Geography does not imply the ISD —
+// "Garland" in an address says nothing about which office bills the parcel (parts of the city sit in
+// Richardson and Dallas ISD), and a Dallas case showing the same contradiction is equally suspect.
+// So this tests posture, not place:
+//
+//   a suit was filed for real money  +  the collector we read shows $0  +  collection has not stopped
+//
+// PROVEN CASE — TX-26-01455, 5221 Robin Rd: ACT reads "No taxes due" / $0.00 while the Garland ISD
+// office holds $4,896.59 with `Lawsuit: Yes` and $0.00 ever paid. ACT bills only the four county-side
+// units on that parcel; the ISD bills separately and ACT never sees it.
+//
+// WHAT STILL COUNTS AS PAID: a docket dismissal. That is independent of the balance — the court
+// stopped the case — whereas the balance alone cannot corroborate itself.
+//
+// ⚠ KNOWN RESIDUAL, deliberately not papered over: `case_track === "dismissed_paid"` is itself
+// DERIVED from balance === 0 (backend case_track_of), so for a split-collector parcel it inherits the
+// same blind spot. 6 Garland cases sit in that state today and stay classified paid. Resolving them
+// needs the ACT per-parcel JURISDICTION COVERAGE captured as a fact (§17.6) — not inferable from what
+// we store now. Logged, not guessed at.
+function zeroIsContradicted(c) {
+  if (!c) return false;
+  var filed = c.total_due_filing;
+  if (typeof filed !== "number" || filed <= 0) return false;   // no suit amount ⇒ nothing to contradict
+  return caseTrack(c) !== "dismissed_paid";                    // dismissal = collection stopped
+}
+
 // Deal-shape band from the live balance — the filter and any label share this one classifier.
 // null (unknown) is its own band, never lumped with a real number.
 function balanceBand(c) {
@@ -1272,7 +1300,9 @@ function balanceBand(c) {
   if (caseTrack(c) === "personal_property") return "na";
   var b = caseLiveBalance(c);
   if (b === null) return "unknown";
-  if (b <= 0) return "zero";                 // paid — represented by the disposition flag, not a $
+  // A $0 collector balance is only "paid" if that collector bills EVERY taxing unit on the parcel.
+  // Where it doesn't, $0 means "nothing owed HERE" — not "nothing owed". See zeroIsContradicted().
+  if (b <= 0) return zeroIsContradicted(c) ? "unknown" : "zero";
   // Bands on the AMOUNT OWED (the ACT live balance) — the axis a distressed-tax pipeline triages
   // on, with NO valuation dependency. (A debt-to-value filter is the more useful cut but is gated
   // on a confirmed per-case value we don't have yet — logged, not built. Never DCAD market, §5.4.)
