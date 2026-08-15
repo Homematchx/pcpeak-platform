@@ -64,6 +64,25 @@ localStorage mirror is gone: `/api/cases` returns a SKELETON (no `property_intel
 
 **QUEUED / PENDING (gated on the user):**
 - **Phase 4** (above) — held for explicit go.
+- **LOGGED 2026-08-15 — PER-JURISDICTION PAYOFF LINES (multi-jurisdiction tax collection). NO ACTION;
+  sequenced BELOW the `heir_estate_title` block, after Stage-2 gate work.** Design
+  [`docs/acquisition-intelligence-design.md`](docs/acquisition-intelligence-design.md) §17. Trigger:
+  Garland ISD collects through its OWN portal (`texaspayments.com/057909` — session-based, no API, no
+  stable per-parcel URL). **Schema question answered by tracing, not assumed: the payoff model carries
+  ONE BLENDED BALANCE** — `property_intel.current_tax_balance` (a single ACT/dallasact.com scalar) →
+  `CaseInput.owed` → one `tax_payoff()` line consumed by seller-net, `mao_itemized`, and
+  `structural_unclosability`. (The multi-tract `SUM_FIELDS` sum is across TRACTS, not jurisdictions —
+  different axis, doesn't close this.) **The exposure is a LABEL defect before an arithmetic one:** a
+  live balance is labeled VERIFIED, which asserts *correct* but silently implies *complete* — only the
+  first was ever checked. **NOT YET ESTABLISHED (the pre-build gate, §6.1 discipline): whether ACT's
+  total already INCLUDES GISD.** The screenshot proves GISD runs a portal, not that ACT excludes it —
+  measure one Garland parcel on both sources before designing anything. **Measured exposure if
+  additive: 43 Garland-address cases locally, 22 already carrying an ACT balance as their live payoff;
+  127 non-Dallas-city addresses overall** (~a third of the book). Proposed then: per-jurisdiction lines
+  with INDEPENDENT verified/estimated/unavailable labels (total verified only when every line is),
+  GISD as a labeled ISD-line source, and **an absent ISD balance is `unavailable`, NEVER $0** — which
+  should push closability to INDETERMINATE the way an unquantified lien does, not produce a confident
+  low wrong payoff.
 - **August Tryon closing (TX-23-00423) — REAL-WORLD ground truth.** Capture the title company's actual
   §33.48 fees; if materially off the 20% estimate, recalibrate `tax_suit_atty_fee_rate` + re-run Grant
   St's fee-sensitive NO-GO. Not yet closed (it's a future August event) — resurfaces then.

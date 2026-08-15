@@ -638,3 +638,76 @@ median of actual closes. That rule now applies to improved comps (GLA band) and 
 
 **Build sequencing:** design committed → build (config + land engine + `comp_batches` + backend + UI +
 acceptance pins) → deploy through its own gate, same staged rhythm.
+
+## 17. LOGGED — per-jurisdiction payoff lines (multi-jurisdiction tax collection). NO ACTION YET.
+
+**Filed 2026-08-15. Sequenced AFTER the Stage-2 gate work (below the `heir_estate_title` block).**
+Trigger: the Garland ISD Tax Office runs its **own** payment portal
+(`texaspayments.com/057909` — session-based, search by name / account / address / CAD number, no API,
+no stable per-parcel URL). That is a tax-collection surface the payoff model has never seen.
+
+### 17.1 The schema question comes FIRST — and it is already answered by the code (traced, not assumed)
+
+**The payoff model carries ONE BLENDED TAX BALANCE. There are no per-jurisdiction lines anywhere in
+the payoff path.** Traced end to end:
+
+| Layer | What exists today |
+|---|---|
+| Capture | `property_intel.enrich_property()` → `current_tax_balance = act["total_amount_due"]` — a single scalar scraped from **dallasact.com** (the Dallas County tax office / ACT). |
+| Multi-tract | `current_tax_balance` is in the tract `SUM_FIELDS` — that sums across **TRACTS of one parcel**, NOT across **taxing jurisdictions**. Different axis; it does not close this gap. |
+| Normalize | `CaseInput.owed: Optional[float]` — one number. |
+| Compute | `acquisition.tax_payoff()` → one `{amount, label, basis, note}`. |
+| Consume | `seller_net_sheet()` one `tax_payoff` line · `mao_itemized(tax_payoff_total=…)` · `structural_unclosability()` one `payoff["amount"]`. |
+
+The only per-jurisdiction data in the system today feeds **nothing** in the payoff path:
+`property_intel.tax_rates` is DCAD's **estimated annual tax** by entity (not a delinquent balance),
+and `taxBreakdownSummary` exists only in the hardcoded `KNOWN` benchmark seeds (display-only).
+
+**So the answer is: one blended balance — and the exposure is a LABEL defect before it is an
+arithmetic one.** When a live balance exists, `tax_payoff()` labels it `VERIFIED` with the note
+"ACT current amount due — used as-is". That label asserts *this number is correct*; it silently also
+implies *this number is complete*. Those are different claims, and only the first one was ever
+checked. A blended scalar cannot express "verified for the jurisdictions ACT collects, unknown for
+any that collect separately."
+
+Note the fallback path has the same shape: with no live balance, `tax_payoff()` estimates from
+`total_due_filing` — the petition's Exhibit A, i.e. **the jurisdictions that sued**. A jurisdiction
+collecting separately and not joined to the suit is outside that set too.
+
+### 17.2 What is NOT yet established (do not build on this — measure it first)
+
+The screenshot proves GISD operates its own collection portal. It does **not** prove that ACT's
+`total_amount_due` for a Garland parcel *excludes* GISD. That is the load-bearing question and it is
+unverified. **Pre-build gate (§6.1 discipline — confirm the source before designing around it):**
+take a Garland case with a resolved 17-char DCAD account, pull the ACT balance and the GISD-portal
+balance for the same parcel, and compare.
+- If GISD is **already inside** the ACT total → no gap; close this section and record the finding.
+- If GISD is **additive** → ACT is not fleet-complete, the `VERIFIED` label is wrong for those cases,
+  and §17.3 is authorized.
+
+**Exposure if it is additive (measured against the local 334-case DB, 2026-08-15):**
+**43 cases carry a Garland address; 22 of those already carry an ACT balance that IS their payoff
+today, labeled verified.** The broader multi-jurisdiction surface is **127 non-Dallas-city addresses**
+(Garland, Mesquite, Rowlett, Carrollton, Irving, Lancaster, Duncanville, Wilmer…). This is not one
+odd case — it is roughly a third of the book.
+
+### 17.3 Proposed shape (approved for DESIGN only when §17.2 measures additive)
+
+1. **Payoff schema represents per-jurisdiction LINES**, each carrying its **own independent**
+   `verified | estimated | unavailable` label — not one label over a blended sum. The case-level tax
+   payoff becomes the sum of its lines, and it is only `verified` when **every** line is verified.
+2. **GISD portal as a LABELED ISD-line source** — a named source like ACT and DCAD, never an
+   unattributed number folded into the total.
+3. **On any multi-jurisdiction county, an absent ISD balance is `unavailable` — NEVER assumed $0.**
+   This is the project's standing rule (a field may not silently become `0` and display as a real
+   value) applied to the payoff. Consequence to design deliberately: an `unavailable` line makes the
+   *total* payoff incomplete, which should push closability toward INDETERMINATE the same way an
+   unquantified lien does (§5.3) rather than produce a confident, low, wrong payoff.
+
+**Carry into that design:** the GISD portal is session-based with no API and no stable per-parcel URL,
+so an ISD line is a scraping increment with its own cost — sequence it as its own phase, and do not
+let the absence of a scraper turn into an assumed $0 in the meantime (that is exactly what item 3
+prevents).
+
+**Sequencing:** below the `heir_estate_title` block; after the Stage-2 gate work. No code until
+§17.2 is measured and this section is approved.
