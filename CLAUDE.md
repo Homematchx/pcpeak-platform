@@ -74,11 +74,22 @@ localStorage mirror is gone: `/api/cases` returns a SKELETON (no `property_intel
   `structural_unclosability`. (The multi-tract `SUM_FIELDS` sum is across TRACTS, not jurisdictions —
   different axis, doesn't close this.) **The exposure is a LABEL defect before an arithmetic one:** a
   live balance is labeled VERIFIED, which asserts *correct* but silently implies *complete* — only the
-  first was ever checked. **NOT YET ESTABLISHED (the pre-build gate, §6.1 discipline): whether ACT's
-  total already INCLUDES GISD.** The screenshot proves GISD runs a portal, not that ACT excludes it —
-  measure one Garland parcel on both sources before designing anything. **Measured exposure if
-  additive: 43 Garland-address cases locally, 22 already carrying an ACT balance as their live payoff;
-  127 non-Dallas-city addresses overall** (~a third of the book). Proposed then: per-jurisdiction lines
+  first was ever checked. **MEASURED 2026-08-15 — GISD IS ADDITIVE; the branch is REAL, §17 does not
+  close.** Instrument was better than a total-vs-total diff: ACT publishes a per-parcel unit breakdown
+  (`reports/taxbyyearbyunit.jsp?can=…`). Garland parcel TX-23-02251 (CAD 26238500070260000): ACT
+  $6,847.91 over **DALLAS COLLEGE · DALLAS COUNTY · PARKLAND HOSPITAL · SCHOOL EQUALIZATION — no ISD,
+  no city**; GISD portal holds a **separate account (0000056331)** with an annual levy of **$2,280.09 =
+  1.59× ACT's ENTIRE levy ($1,430.16)**, i.e. **~61% of the annual burden sits outside the "verified"
+  payoff**. (That parcel's ISD balance is $0.00 — parcel-specific, NOT proof the gap is closed.)
+  **Contrast, Dallas parcel TX-23-00569:** ACT collects **CITY OF DALLAS + DALLAS ISD** among its six
+  units. **So `current_tax_balance` means "all units" in Dallas and "county-side only" in Garland —
+  same field, same VERIFIED label, silently different scope.** Exposure: 43 Garland-address cases
+  locally, 22 already carrying an ACT balance as their live payoff; 127 non-Dallas-city addresses
+  (~a third of the book). **The recompute pass has a PREREQUISITE the measurement exposed: we cannot
+  currently identify a parcel's ISD** (ACT omits it; stored DCAD `tax_rates` is malformed/empty — a
+  separate defect), and a Garland mailing address does NOT imply Garland ISD (2nd parcel: 0 GISD
+  matches). Until a jurisdiction-identification step exists, those cases are `unavailable`, never a
+  recomputed number and never $0. Proposed then: per-jurisdiction lines
   with INDEPENDENT verified/estimated/unavailable labels (total verified only when every line is),
   GISD as a labeled ISD-line source, and **an absent ISD balance is `unavailable`, NEVER $0** — which
   should push closability to INDETERMINATE the way an unquantified lien does, not produce a confident

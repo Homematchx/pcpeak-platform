@@ -674,7 +674,56 @@ Note the fallback path has the same shape: with no live balance, `tax_payoff()` 
 `total_due_filing` — the petition's Exhibit A, i.e. **the jurisdictions that sued**. A jurisdiction
 collecting separately and not joined to the suit is outside that set too.
 
-### 17.2 What is NOT yet established (do not build on this — measure it first)
+### 17.2 MEASURED 2026-08-15 — GISD is ADDITIVE. The branch is REAL; §17 does not close.
+
+The one-parcel comparison was run before any build, and it resolved on a better instrument than a
+total-vs-total diff: **ACT publishes its own per-parcel jurisdiction breakdown**
+(`reports/taxbyyearbyunit.jsp?can=<account>`), which enumerates exactly which taxing units ACT
+collects for. That converts the question from inference to enumeration.
+
+**Parcel A — TX-23-02251, 729 Woodcastle Dr, Garland 75040, CAD `26238500070260000`**
+
+| Source | Units collected | Annual levy | Balance due |
+|---|---|---|---|
+| ACT (dallasact.com) | DALLAS COLLEGE · DALLAS COUNTY · PARKLAND HOSPITAL · SCHOOL EQUALIZATION | $1,430.16 | **$6,847.91** (2022–24) |
+| GISD portal (texaspayments.com/057909) | GARLAND ISD — **separate account `0000056331`** | **$2,280.09** | $0.00 (last paid 03/24/2026) |
+
+- **ACT's total does NOT include the ISD.** ACT's own jurisdiction detail names four county-side units
+  and no school district and no city.
+- **The ISD is the LARGER share.** GISD's annual levy ($2,280.09) is **1.59× ACT's entire annual levy**
+  ($1,430.16) on the same parcel — **~61% of the annual tax burden sits outside the number the payoff
+  model calls the verified tax payoff.**
+- On *this* parcel the ISD balance happens to be **$0.00**, so its payoff is not understated. That is
+  parcel-specific (this owner is current on ISD, delinquent county-side) — **it is not evidence the gap
+  is closed.** The structural separation is what generalizes; the dollar amount is per-parcel.
+
+**Contrast — TX-23-00569, 1506 Harbor Rd, Dallas, CAD `00000503698000000`** (same ACT report):
+units = **CITY OF DALLAS · DALLAS COLLEGE · DALLAS COUNTY · DALLAS ISD · PARKLAND HOSPITAL · SCHOOL
+EQUALIZATION**, total $196,930.17. In Dallas, ACT collects the ISD **and** the city.
+
+**This is the finding.** `current_tax_balance` means **"every taxing unit"** on a Dallas parcel and
+**"county-side units only"** on a Garland parcel — and it carries the **same `VERIFIED` label in both
+cases**. The label defect §17.1 predicted is now measured, not hypothesized. The number is not wrong;
+its *scope silently varies by locality* and nothing in the schema records which scope applied.
+
+**Second Garland parcel (TX-26-00774, 4110 Hillsdale Ln, 75042, CAD `26545500120260000`):** ACT total
+$6,864.17, same four county-side units — the ACT pattern replicates. Its CAD returned **0 matches on
+the GISD portal**, which is NOT yet explained: a Garland *mailing address* does not imply Garland ISD
+(parts of the city sit in Richardson ISD and Dallas ISD). Do not read it as "no ISD debt."
+
+**Consequences (both confirmed live, sequencing unchanged — after the Stage-2 gate):**
+1. **Schema per §17.3 (a/b/c)** — authorized as a design.
+2. **Recompute pass on the already-analyzed Garland cases** — but it has a PREREQUISITE that this
+   measurement exposed: **we cannot currently identify which ISD a parcel belongs to.** ACT omits the
+   ISD line entirely for these parcels, and our stored DCAD `tax_rates` does not supply it either — for
+   parcel A it holds a single malformed row (`"DALLAS COUNTY\tDALLAS COLLEGE\tPARKLAND HOSPITAL\t
+   UNASSIGNED\nHOMESTEAD EXEMPTION"`, `estimated_tax: 41539.0`) and for parcels B and C it is empty.
+   So the pass cannot be keyed on "Garland appears in the address" — it needs a
+   **jurisdiction-identification step first**, and the malformed `tax_rates` parse is a separate defect
+   to look at when that step is designed. **Absent that step, the correct state for those cases is
+   `unavailable` (§17.3 item 3), NOT a recomputed number and NOT $0.**
+
+### 17.2.1 Original pre-build gate (superseded by the measurement above, kept for the record)
 
 The screenshot proves GISD operates its own collection portal. It does **not** prove that ACT's
 `total_amount_due` for a Garland parcel *excludes* GISD. That is the load-bearing question and it is
