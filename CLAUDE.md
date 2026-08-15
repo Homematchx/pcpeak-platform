@@ -62,6 +62,42 @@ localStorage mirror is gone: `/api/cases` returns a SKELETON (no `property_intel
 - **Deleted 3 dead one-time scripts** (patch_discover, discover_patch, petition_sample_check). Root
   `main.py` is the LIVE Railway entry point — do NOT delete.
 
+## §18 DEPLOYED + LIVE-VERIFIED 2026-08-15 (`dd085ce`) — gate 1 of 2, run ALONE
+
+`origin/main == origin/production == dd085ce`; feature branch `14dc51a` (ahead by the §17.4 commit
+ONLY, which is gate 2 and must NOT ride along). **Served-artifact fingerprints before → after:**
+`backend/main.py` `45e56ee374ee01cf` → **`86efd144ca6a8f9b`** (changed, +19 lines: full `owners` +
+`all_defendants` threading via `_defendant_names()`); `frontend/index.html` `f3d1899c99b288c3` →
+**`f3d1899c99b288c3` (UNCHANGED — byte-identical, so NO triage change reached reps).**
+
+**Commits were REORDERED before shipping** (nothing had been pushed) so the served-artifact boundary is
+exact: the §17.4 frontend edit sat *between* the §18 engine commits, which would have batched the two
+gates. `dd085ce` is engine-only and green on its own (`test_acquisition` 148/148,
+`test_acquisition_api` 52/52); `14dc51a` carries `frontend/index.html` + the two suites that test it.
+Reorder proven lossless: reordered HEAD tree == pre-reorder tree, byte-identical.
+
+**LIVE VERIFICATION on real prod (258 active cases, full sweep, 0 errors, 46s):**
+- All four fixtures behave exactly as designed: **TX-26-01196 → NO-GO** (`heir_no_conveyance_path`,
+  fatal) · **TX-26-01379 Ruby → GO-WITH-CONDITIONS** (`heir_estate_title`, substantive — held, not
+  escalated) · **TX-23-00553 → GO-WITH-CONDITIONS** (substantive) · **TX-26-01455 → no title gate**.
+- **Substantive 11.2% (29/258) vs 10.8% predicted; fatal 6.2% (16/258) vs 7.5%.** Both inside the §19
+  Q3 envelope. Denominators differ by design (prod excludes archived; local 334 includes archived +
+  local-only held), which accounts for the spread.
+- **44 of 45 prod title verdicts match the local engine case-for-case.**
+
+**⚠ THE ONE DISAGREEMENT IS A PROD DATA DEFECT, NOT A CODE DEFECT — and the new gate is what surfaced
+it. `TX-26-01386` on prod carries `TX-25-01483`'s ENTIRE enrichment record:** same
+`account_number 00000302749000000`, same owners (ULLOA REFUGIO / UYOA CIRILO / CORNEJO JAMIE LIFE
+ESTATE), an `all_defendants` that is EMPTY, and a THIRD address (4921 Sunnyvale St) matching neither
+case. Local is correct (2016 Ben Hur Street, acct `00000899752100000`, owner HUNT JACK D &, 3
+defendants). Given that wrong data the deployed engine reasons correctly — empty roster ⇒ fail-soft to
+the scalar defendant ⇒ fatal — so this is cross-contaminated enrichment on prod, pre-existing and
+unrelated to §18. **Fix is a one-case re-sync from local: `python3 sync_all.py TX-26-01386`. NOT run —
+it is a prod data write and outside "run §18".** Worth checking whether the contamination is isolated.
+
+**GATE 2 — §17.4 (`14dc51a`, frontend triage band) is NOT deployed.** Ships on its own fingerprinted
+gate once §18 is stable; it surfaces 50 previously-hidden cases to reps.
+
 **QUEUED / PENDING (gated on the user):**
 - **Phase 4** (above) — held for explicit go.
 - **⚠ AWAITING ITS OWN FINGERPRINTED FF GATE — §17.4 zero-balance fix (BUILT, NOT DEPLOYED).** Alters
