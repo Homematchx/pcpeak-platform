@@ -95,8 +95,54 @@ the scalar defendant ⇒ fatal — so this is cross-contaminated enrichment on p
 unrelated to §18. **Fix is a one-case re-sync from local: `python3 sync_all.py TX-26-01386`. NOT run —
 it is a prod data write and outside "run §18".** Worth checking whether the contamination is isolated.
 
+## ENRICHMENT CONTAMINATION SWEEP (2026-08-15) — 5/234 (2.1%), BOUNDED, and §17.4 IS UNBLOCKED
+
+Run before §17.4 because §17.4 trusts the same enrichment layer. **Method: reconcile every prod case's
+enrichment account against ACT's own `Property Site Address` for that account** — an independent
+authority, not a self-consistency check. Street NUMBER is the discriminator; differing street *wording*
+(`LYNNACRE`/`Lynna Cre`, `MILLRIDGE`/`Mill Ridge`, `C F HAWN`/`CF Hawn`, `W 16TH`/`West 16th`) is
+formatting, not contamination.
+
+**Result: 234 prod cases carry an enrichment account → 223 reconcile · 6 ACT-unresolvable · 5 WRONG
+PARCEL ENRICHED.**
+
+| case | case says | ACT says (the account's real parcel) | wrong in |
+|---|---|---|---|
+| TX-24-00080 | 2220 Canton St | 2334 PINE ST | local **and** prod |
+| TX-26-00086 | 2017 Sherwood Dr, Lancaster | 1530 E OVERTON RD | local **and** prod |
+| TX-26-00990 | 10130 Shayna Dr | 3523 EDGEWOOD ST | local **and** prod |
+| TX-26-01093 | 3048 Beauchamp Ave | 3116 50TH ST | local **and** prod |
+| TX-26-01386 | 2016 Ben Hur St | *(had 1530 E OVERTON RD)* | **prod only — FIXED** |
+
+**2.1% matches the documented resolver-audit rate EXACTLY** — the 2026-07-11 audit measured "address
+search alone returns a confidently-wrong parcel ~2% of the time" (5 of 92 then, 5 of 234 now). These
+are almost certainly legacy resolutions predating the corroboration guard, **not a new regression**.
+A secondary signal agrees: two accounts were each claimed by multiple cases
+(`00000302749000000` by three, `00000173794000000` by two).
+
+**§17.4 IS UNBLOCKED — the contamination is DISJOINT from its input set.** All five contaminated rows
+carry a NONZERO balance (low/mid band: $5,800 · $13,510 · $20,319 · $22,145), so **none of them reaches
+the zero-balance classifier**; §17.4's 50 surfaced cases contain zero contaminated rows. The failure
+mode here is a *wrong amount* (payoff accuracy — §17 schema territory), not a *vanished case*. Ship
+§17.4 on the normal soak.
+
+**TX-26-01386 FIXED** (`python3 sync_all.py TX-26-01386`, local verified correct against ACT first).
+Prod now reads 2016 Ben Hur Street / acct `00000899752100000` / owner HUNT JACK D & / 3 defendants, and
+**§18's verdict self-corrected NO-GO → GO-WITH-CONDITIONS** (defendant Jack D. Hunt IS the record
+owner, so a conveyance path exists). Corrected prod rates: **fatal 15/258 (5.8%), substantive 30/258
+(11.6%)** — both inside the §19 Q3 envelope.
+
+**⚠ THE OTHER 4 MUST NOT BE RE-SYNCED — local carries the SAME wrong account**, so a push would just
+re-send bad data. They need ACCOUNT RE-RESOLUTION through `property_intel.resolve_account_corroborated`
+(the guard built for exactly this), each verified against ACT's site address, THEN synced. Naive ACT
+address search is not enough — it returned BPP (99-prefix) and unrelated candidates for all four, which
+is the very ~2% failure the guard exists to catch. **Not attempted; it is enrichment-correction work
+with its own gate.** This is the §19 meta-defect at the DATA layer: one parcel's identity written into
+another case's row.
+
 **GATE 2 — §17.4 (`14dc51a`, frontend triage band) is NOT deployed.** Ships on its own fingerprinted
-gate once §18 is stable; it surfaces 50 previously-hidden cases to reps.
+gate once §18 is stable; it surfaces 50 previously-hidden cases to reps. Contamination scope is now
+known and does not block it.
 
 **QUEUED / PENDING (gated on the user):**
 - **Phase 4** (above) — held for explicit go.
