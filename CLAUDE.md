@@ -5,6 +5,78 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-07-28 (skeleton-cache succession + disposition/land/OOS/parser fixes)
+
+**Everything below is DEPLOYED + live-verified. All three origin refs at `e300722`
+(feature==main==production).** Long session; started at "why won't the comps button fire," ended
+at deleting three bug classes at the root. Each item its own design-first, phase-gated, fingerprinted
+deploy.
+
+**⏸ THE ONE OPEN THING — PHASE 4, HELD FOR THE USER'S EXPLICIT GO (do NOT run it unprompted).**
+The SKELETON-CACHE architectural succession (design [`docs/skeleton-cache-design.md`](docs/skeleton-cache-design.md))
+is Phases 1–3 done + live; **Phase 4 (delete the dead slim-cache/stale-intel machinery) is deliberately
+held** while the user soak-tests the skeleton in real daily use. Phase 4 = delete `save()`'s slim-copy
+fallback, `hasUsableIntel`, the absent→present re-render + `openIntelBefore`, and the now-unused bulk
+`GET /api/events` endpoint; retire `test_intel_reload.py` (already SKIP-guarded) + `test_quota_save.py`.
+It is its OWN deploy. The user gives the word "could be later today, could be after a day." The dead
+code is harmless where it sits; its only value now is a trivial Phase-3 rollback. **Watch-list the user
+is checking:** blank/wrong balance chip (skeleton field gap), a case stuck on "Loading…" (detail-fetch
+issue), amount-owed filter miscount (column vs actual balance drift), open case disrupted by a 30s sync
+(anti-tab-reset vs detail-on-demand). Any of those = a real gap to fix BEFORE Phase 4.
+
+**SKELETON CACHE (Phases 1–3, LIVE) — the mirror-everything client cache is deleted.** The 6.66MB
+localStorage mirror is gone: `/api/cases` returns a SKELETON (no `property_intel`/blobs; 650KB vs
+5.96MB, 87% smaller), the client caches skeletons, and a case's detail is fetched ON OPEN via
+`/api/cases/{cn}` into a session LRU (~20), `updated_at`-versioned so a re-scrape re-fetches.
+- **P1:** promoted `current_tax_balance`+`market_value` to real `cases` columns, kept in LOCKSTEP with
+  `property_intel` by the one `_pi_subvalues` extractor (create_case rewrites them every write; init_db
+  backfills). Same-number-everywhere invariant (`backend/test_skeleton_columns.py` 11/11; live 0
+  mismatches).
+- **P2:** `caseLiveBalance`/`caseTrack`/`balanceBand` read the column (blob fallback). PURE EQUIVALENCE,
+  PROVEN byte-identical vs the old blob-parse (`test_skeleton_equivalence.py` 28/28).
+- **P3 THE SWITCH:** skeleton boot/sync + detail-on-demand. Deletes THREE bug classes at root: quota/slim
+  degradation, stale-intel-panel (detail fetched fresh; distinct "Loading…" state ≠ "Not Yet Loaded"),
+  and the events storm (sync fetches ZERO events — events ride the detail fetch; bulk endpoint retired
+  from the client, deleted in P4). `test_detail_on_demand.py` 13/13; all four verification points
+  browser-proven LIVE on real prod.
+- **DEPLOY-WINDOW LESSON (standing):** Railway needs the full restart (~2–3 min) before init_db/the new
+  build is live — WAIT it out before diagnosing. Bit once in P1 (columns read None for ~90s, was just
+  the restart, not a bug).
+
+**EARLIER THIS SESSION (all DONE + live):**
+- **Colored-label readability (`e300722`):** the detail-view labels were dark-theme colors (pale-on-tint,
+  ~2:1) on a LIGHT theme. Fixed at the CSS level to the theme's own readable tokens
+  (`--red/--amber/--green/--purple` dark-on-`-bg`-tint, all ≥4.5:1) — fixes every label everywhere
+  (acq tab, land workbench, intel panel, defendant badges). Measured, not eyeballed.
+- **Operative OOS date (`discover.operative_oos_date`):** a re-issued Order of Sale after a pull is the
+  operative date — derived DETERMINISTICALLY as the LATEST issuance from captured events (survives
+  re-scrape, no hand-set to clobber). Fixed TX-23-00569 (7/24 OOS after 5/12 pull) + the class.
+  `test_oos_extraction.py` 12/12. Also date-aware `sale_pulled` stat (`test_sale_pulled_stat.py` 9/9).
+- **DCAD parser fixes:** baths never captured (whitespace `1/ 1` regex, 0/247) — fixed + `MIN_PLAUSIBLE_GLA_SQFT=200`
+  guard (gla=1 fabricated-plausible → None → routes to §G land); the `'no such group'` crash (group-less
+  `find()` pattern) that had SILENTLY degraded **63/247 cases** (partial parses, missing tail fields).
+  `intel_backfill.py` (--silent/--retry-errors/--baths/--normalize-gla) is the recovery tool.
+  `test_dcad_parse.py` 38/38.
+- **Per-case push tool:** `sync_all.py <CASE>` / double-clickable `sync.command` — push ONE case, see its
+  prod fields after. Shells out to `sync_to_prod.py --only`. NOT bulk (deliberate).
+- **Deleted 3 dead one-time scripts** (patch_discover, discover_patch, petition_sample_check). Root
+  `main.py` is the LIVE Railway entry point — do NOT delete.
+
+**QUEUED / PENDING (gated on the user):**
+- **Phase 4** (above) — held for explicit go.
+- **August Tryon closing (TX-23-00423) — REAL-WORLD ground truth.** Capture the title company's actual
+  §33.48 fees; if materially off the 20% estimate, recalibrate `tax_suit_atty_fee_rate` + re-run Grant
+  St's fee-sensitive NO-GO. Not yet closed (it's a future August event) — resurfaces then.
+- **Fleet-wide standing land floors** (batch job, ~136 live Bridge fetches) — unblocked now events-batching
+  is resolved by P3; still its own design (scheduling/rate-limit/storage).
+- **Debt-to-value filter** — gated on confirmed-ARV coverage; NEVER off DCAD market (§5.4). Amount-owed
+  filter ships as the valuation-free proxy.
+- 2 pre-existing `test_petition_link` failures on HEAD (memory `petition-link-browser-failures`).
+
+**DEPLOY DISCIPLINE (standing rules, still in force — see the Deploy gate section below):** commit on the
+FEATURE branch first (branch-check every commit), FF chain feature→main→production no-force, fingerprint
+both served artifacts before+after, END on the feature branch. Every phase = its own gate.
+
 ## SESSION HANDOFF — 2026-07-23 (case disposition system + stale-intel-panel fix — SESSION DONE)
 
 **Two initiatives shipped this session, both deployed + fingerprint-verified + live-verified.**
