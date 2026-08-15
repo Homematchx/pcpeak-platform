@@ -64,6 +64,54 @@ localStorage mirror is gone: `/api/cases` returns a SKELETON (no `property_intel
 
 **QUEUED / PENDING (gated on the user):**
 - **Phase 4** (above) — held for explicit go.
+- **⚠ AWAITING ITS OWN FINGERPRINTED FF GATE — §17.4 zero-balance fix (BUILT, NOT DEPLOYED).** Alters
+  live triage on a live book, so it does NOT ride along with anything else. `frontend/index.html` is a
+  served artifact. Built 2026-08-15, design §17.6: `balanceBand` no longer calls a $0 collector balance
+  PAID when it contradicts an active collection posture. **Discriminator is the CONTRADICTION, not the
+  address** (`total_due_filing > 0` + balance ≤ 0 + `case_track != dismissed_paid` → `"unknown"`);
+  geography never enters it — a Dallas case with the same facts flags too. **Measured: 50 of 88 zeros
+  flip to UNCONFIRMED (9 Garland, 41 other — active 35 / judged_pending 12 / oos_timing 3); 38 stay
+  PAID (37 dismissed_paid + 1 with no suit amount). No blanket zero→unknown.** Rejected a levy-ratio
+  test (separates cleanly — Garland median 0.518% vs 2.079% elsewhere — but it's an INFERENCE driving
+  triage; §5.4 standard). `test_zero_balance_band.py` **18/18** (real functions in Chromium).
+  **KNOWN RESIDUAL — BLOCKED ON DATA, not deferred by choice** (user-confirmed 2026-08-15 as correct
+  as-is): `dismissed_paid` is itself derived from balance==0 (`case_track_of`), so 6 Garland cases stay
+  classified paid, and the same derivation feeds the disposition auto-flag's ARCHIVE proposal
+  (`main.py` ~1369). Both correctly untouched. **It cannot be fixed with data we hold** — it needs ACT
+  per-parcel JURISDICTION COVERAGE as a captured fact, and the obvious source fails: `taxbyyearbyunit.jsp`
+  renders "No taxes due." with NO unit list exactly when the balance is $0, and the per-unit levy is
+  PDF-only. Named and bounded is the accepted state; the requirement is only that it never be silent.
+- **STANDING RULE (design §19) — a LOCAL truth applied FLEET-WIDE. FIVE instances now:** comma-joined
+  DCAD account · `owners[0]` · lead defendant (§18.2) · `zero→PAID` (§17.5) · and
+  `owner_defendant_mismatch` still reading `owners[0]` — **caught by §18's own counter-check, in the
+  function immediately beside the one just fixed for the identical reason.** The shape survives a fix
+  to its neighbour. Before a fact becomes a classification: (1) **is this a set?** — accounts, owners,
+  defendants, jurisdictions, tracts are all plural, and a `[0]` or a scalar means you already answered
+  no; (2) **whose truth is it?** — Dallas ≠ Dallas County; (3) **measure the blast radius on the real
+  book before shipping** (13 false fatals of 38; 50 of 88 zeros; substantive 28→56) — the count exposes
+  an over-fire, never the reasoning; (4) **absence is `unknown`, never a value.**
+  **§19 IS ENFORCED, NOT DOCUMENTED — `test_set_invariance.py` 26/26 is the STAGE-1 EXIT CRITERION**
+  (design §20), not the five fixes, which are only its first five applications. Q1 = POSITION
+  INVARIANCE (the truth walked through every slot; all 36 orderings of a 3×3 case give one verdict;
+  index 0 made actively misleading to prove index 1 is read; **AST** guard that no plural input is
+  indexed at `[0]` — parsed not grepped, since the docstrings discuss `owners[0]` and a text scan
+  fires on the documentation written to prevent it). Q2 = no locality hardcoded in a classifier.
+  Q3 = gate rates inside a DECLARED envelope on the real book (fatal 4–12%, substantive 6–18%).
+  Q4 = six unverifiable-input shapes never fatal; empty payoff is UNAVAILABLE never $0.
+- **SPOT-CHECK OF THE VERDICT CHANGE — FAILED FIRST, then passed after a THIRD REFINEMENT (§18.6).**
+  Containment matching raised false title flags on cases that were **the same party written two ways**
+  (middle names, ANA/Anna, hyphens concatenated in DCAD, a/k/a lists, a DCAD typo, combined couple
+  records, two-letter surnames LE/WU dropped as tokens, single-part entity names, and a lead whose
+  a/k/a lives in the roster not the scalar column). `_same_party()` now requires **TWO significant
+  name parts in common** — one is a FAMILY relationship, which is `no_conveyance_path`'s question, not
+  this one. A double-counting bug caught in the same pass had briefly made HERNANDEZ NORMA "the same
+  party" as Pauline Hernandez. **Substantive 56 → 36 (16.8% → 10.8%) — now BELOW the graduated gate's
+  original 15%, which was itself inflated by these artifacts.** Second spot-check: **18 of 19 genuine**
+  (Ruby-shape lead≠owner-but-owner-is-co-defendant, and real estate/life-estate title questions).
+  **⚠ ONE RESIDUAL FLAGGED FOR SIGN-OFF, NOT FIXED — TX-26-00875** (`PATTERSON BEN C & DIANE` vs
+  `Bennie Charles Patterson`): a NICKNAME, not a formatting artifact. Deliberately not chased —
+  matching 3-char parts would merge ANN into SUSANNA and turn a visible false flag into an invisible
+  missed title question. The gate is ADVISORY, so the error direction is the safe one.
 - **DONE 2026-08-15 — THIRD TITLE STATE: fatal `heir_no_conveyance_path`** (design §18). Revised
   Stage-1 exit criterion MET: the owner-mismatch branch blocks, estate/absentee stays graduated,
   both suites green (`test_acquisition` **146/146**, `backend/test_acquisition_api` **52/52**).

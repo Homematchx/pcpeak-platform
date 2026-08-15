@@ -334,6 +334,17 @@ def test_no_conveyance_path_predicate():
     check("00553: co-owner HERNANDEZ NORMA shares the defendant's name → path exists",
           A.no_conveyance_path(TX_00553) is False)
     check("Tryon: owner IS the defendant → path exists", A.no_conveyance_path(TRYON) is False)
+    # REAL-WORLD counter-check (title verified live 2026-08-15 against DCAD/ACT): TX-26-01455,
+    # 5221 Robin Rd. BOTH record owners are BOTH defendants — the cleanest possible no-fire case.
+    # Sits alongside Anderson (fatal) and Brown (substantive) as the third real fixture.
+    gelista = CaseInput("TX-26-01455", defendant="HERLINDA M. GELISTA",
+                        owner_of_record="VILLANUEVA LUIS A C &",
+                        owners=[{"name": "VILLANUEVA LUIS A C &"}, {"name": "GELISTA HERLINDA M"}],
+                        all_defendants=["HERLINDA M. GELISTA", "LUIS A. COJULUN-VILLANUEVA"])
+    check("TX-26-01455: both owners are both defendants → clean, no fire",
+          A.no_conveyance_path(gelista) is False)
+    check("TX-26-01455: not even the soft mismatch gate (owners == defendants)",
+          A.owner_defendant_mismatch(gelista) is False)
     # The Williams/Motley shape: 10 defendants, owner MOTLEY MRS JAMES A, lead defendant a Williams.
     # Matching on the LEAD alone would have wrongly killed this heir case.
     wm = CaseInput("TX-23-00042", defendant="WILLIAMS, RUBY J.",

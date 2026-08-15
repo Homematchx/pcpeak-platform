@@ -364,25 +364,98 @@ def seller_net_sheet(case: CaseInput, acq: AcquisitionInputs, tax_pay: dict) -> 
 #                 NO owner-mismatch, unconfirmed property type). Does NOT by itself lift out of HOLD;
 #                 with a CONFIRMED valuation it becomes a listed condition (GO-WITH-CONDITIONS).
 _NAME_NOISE = {"ET", "AL", "ETAL", "ESTATE", "EST", "OF", "HEIRS", "HEIR", "DEVISEE", "DECEASED", "THE",
-               "AND", "LIFE", "JR", "SR", "III", "LLC", "INC", "TRUST", "TRUSTEE", "AKA", "DBA"}
+               "AND", "LIFE", "JR", "SR", "II", "III", "IV", "MR", "MRS", "MS", "LLC", "INC", "CO",
+               "LP", "LTD", "TRUST", "TRUSTEE", "AKA", "FKA", "DBA", "INDIVIDUALLY", "EXECUTOR",
+               "EXECUTRIX", "SUCCESSORS", "ASSIGNS", "SHAREHOLDERS", "UNKNOWN", "AS", "AN", "AA"}
 
 
 def _name_tokens(name: Optional[str]) -> set:
+    """Significant name parts. The floor is TWO characters, not three: real surnames on this book are
+    two letters (LE KEVIN vs KEVIN LE, WU QINGNONG vs QINGNONG WU) and dropping them left those
+    parties looking like strangers to each other. Single letters (middle initials, "S.A.") are still
+    dropped by the regex, and the noise set absorbs the honorifics/suffixes/entity boilerplate that a
+    two-character floor would otherwise let in."""
     if not name:
         return set()
-    return {t for t in re.findall(r"[A-Za-z]{2,}", name.upper()) if t not in _NAME_NOISE and len(t) >= 3}
+    return {t for t in re.findall(r"[A-Za-z]{2,}", name.upper()) if t not in _NAME_NOISE}
+
+
+def _same_party(a: Optional[str], b: Optional[str]) -> bool:
+    """Is this the SAME person/entity written two ways? (design §18.6, added after a spot-check.)
+
+    Neither exact match nor token containment survives real county data. DCAD and the petition write
+    the same party differently, and every one of these is a live pair from the book:
+
+        TREVINO JUAN F & SANJUANA        vs  Juan Francisco Trevino     (middle name)
+        MOLINA FLORES ANA GABRIELA       vs  Anna Gabriela Molina Flores (ANA/Anna)
+        DABNEYCLARK TERESA               vs  TERESA DABNEY-CLARK        (hyphen concatenated)
+        GALLEGOSLARA MARIA LEONOR        vs  Maria Leonor Gallegos-Lara (hyphen concatenated)
+        KIRKWALLS PATRICIA A             vs  Patricia Kirk Walls a/k/a … (concatenation + a/k/a list)
+        LALANI ASSET MANGEMENT LLC       vs  LALANI ASSET MANAGEMENT LLC (DCAD typo)
+        MONROY VELMA AND ERASTO          vs  Velma Jean Cantu Monroy    (combined couple record)
+
+    TWO SIGNIFICANT NAME PARTS IN COMMON = the same party. One is not enough — a shared surname is a
+    family relationship, which is the FAMILY question `no_conveyance_path` asks, not this one
+    (TX-23-00553: HERNANDEZ NORMA shares exactly one part with Pauline Hernandez and is a different
+    person). Parts are matched either as whole tokens or as substrings of the other side's
+    separator-stripped form, which is what absorbs the concatenation and a/k/a cases."""
+    ta, tb = _name_tokens(a), _name_tokens(b)
+    if not ta or not tb:
+        return False
+    shared = ta & tb
+    # A one-part NAME is one party: an entity like "IKAZ S A" has a single distinctive part, so
+    # demanding two parts could never recognise it in "THE UNKNOWN SHAREHOLDERS … OF IKAZ, S.A.".
+    # Only applies when a side genuinely has one part — it cannot loosen a two-part personal name,
+    # so HERNANDEZ NORMA / Pauline Hernandez is untouched.
+    if min(len(ta), len(tb)) == 1 and shared and len(next(iter(shared))) >= 4:
+        return True
+    # Count DISTINCT matched parts. Scoring each direction separately would count one shared token
+    # twice and call "HERNANDEZ NORMA" the same party as "Pauline Hernandez" — the exact family-vs-
+    # identity collapse this function exists to prevent.
+    ja, jb = "".join(sorted(ta)), "".join(sorted(tb))
+    extra = {t for t in tb - shared if len(t) >= 4 and t in ja}
+    extra |= {t for t in ta - shared if len(t) >= 4 and t in jb}
+    return len(shared) + len(extra) >= 2
 
 
 def owner_defendant_mismatch(case: CaseInput) -> bool:
     """SUBSTANTIVE title question (the graduated heir gate): the DCAD owner-of-record is a DIFFERENT
     named party than the sued defendant — an identified counterpart to convey / quiet-title through
     (Ruby: TAYLOR FELICIA D ≠ Ruby Faye Brown; TX-23-00553: BACA NORMA ESTELA ≠ Pauline Hernandez).
-    True only when BOTH are named and share NO significant name token; a shared token = same party.
-    Absentee/estate language WITHOUT such a mismatch is a generic soft signal, not this."""
-    o, d = _name_tokens(case.owner_of_record), _name_tokens(case.defendant)
-    if not o or not d:
+    Absentee/estate language WITHOUT such a mismatch is a generic soft signal, not this.
+
+    IDENTITY vs FAMILY — the two title branches ask DIFFERENT questions and must not share one
+    comparison. This one is IDENTITY: is the sued party themselves an owner of record? A shared
+    surname is NOT identity (TX-23-00553: defendant Pauline Hernandez is deceased; co-owner HERNANDEZ
+    NORMA is a different person), so this requires the defendant's whole significant name to be
+    contained in an owner's. `no_conveyance_path` asks the FAMILY question (any related party on
+    title at all) and correctly uses loose token overlap.
+
+    Checked against EVERY owner, not owners[0] — TX-26-01455's owners are VILLANUEVA LUIS A C &
+    GELISTA HERLINDA M and the defendant IS the second one, so this must NOT fire on it."""
+    d = _name_tokens(case.defendant)
+    if not d:
         return False
-    return o.isdisjoint(d)
+    owner_names = [o.get("name") for o in (case.owners or []) if isinstance(o, dict) and o.get("name")]
+    if not owner_names and case.owner_of_record:
+        owner_names = [case.owner_of_record]
+    owner_token_sets = [t for t in (_name_tokens(n) for n in owner_names) if t]
+    if not owner_token_sets:
+        return False
+    # The defendant is an owner when `_same_party` recognises them in ANY owner record — see §18.6:
+    # containment alone raised false title flags on eight live cases that were the same party written
+    # differently (middle names, hyphens, concatenated surnames, DCAD typos, a/k/a lists).
+    # Compare against the lead defendant AS FULLY RECORDED. The scalar `defendant` column is often a
+    # truncated docket form — TX-23-02230 stores "GARCIA, V, IDALIA" while the roster carries
+    # "Idalia Garcia, V, a/k/a Idalia Ortega", and the a/k/a is exactly the name on title. So expand
+    # the lead to any roster entry that is the SAME PARTY as it. This never widens to a DIFFERENT
+    # defendant: Ruby's co-defendant Taylor is not the same party as Ruby, so Ruby still flags.
+    variants = [case.defendant]
+    variants += [n for n in (case.all_defendants or []) if n and _same_party(n, case.defendant)]
+    for name in owner_names:
+        if any(_same_party(name, v) for v in variants):
+            return False
+    return True
 
 
 def no_conveyance_path(case: CaseInput) -> bool:

@@ -884,3 +884,151 @@ classifier rather than only to the payoff line.
 **NOT CHANGED — sequencing is the user's call.** `balanceBand` is a deployed served artifact and this
 would alter live triage for 88 cases. Recommended as the first increment of §17 (ahead of the payoff
 schema), but not started.
+
+### 17.6 BUILT 2026-08-15 — the contradiction rule (frontend `balanceBand`)
+
+**The discriminator is the CONTRADICTION, not the address.** Geography does not imply the ISD — parts
+of Garland sit in Richardson and Dallas ISD — and a Dallas case with the same contradiction is equally
+suspect. The rule tests posture:
+
+```
+a suit was filed for real money  +  the collector we read shows $0  +  collection has not stopped
+        (total_due_filing > 0)          (live balance <= 0)            (case_track != dismissed_paid)
+                                    ⇒ band = "unknown", never "zero"
+```
+
+`zeroIsContradicted()` in `frontend/index.html`; `balanceBand` returns `"unknown"` instead of `"zero"`
+when it holds. The filter option is relabelled *"Paid ($0, dismissed)"* / *"Unconfirmed — needs check"*
+so the UI stops asserting that a bare $0 means paid.
+
+**Measured effect on the local 334-case book — NO blanket zero→unknown:**
+
+| | count | Garland | other |
+|---|---|---|---|
+| was PAID → now **UNCONFIRMED** | **50** | 9 | 41 |
+| stays **PAID** | 38 | 6 | 32 |
+
+The 50 flipped are `active` (35), `judged_pending` (12), `oos_timing` (3) — cases still being
+prosecuted, where a $0 collector balance contradicts the docket. 41 are non-Garland, which is the rule
+working as specified: **a Dallas case with the same contradiction is equally suspect.** The 38 kept are
+37 `dismissed_paid` plus one with no suit amount (no contradiction evidence to act on).
+
+**WHY NOT A LEVY-RATIO TEST.** ACT's collected levy as a share of market value separates cleanly on the
+live book (Garland median 0.518%, max 0.727%; elsewhere median 2.079%) because ACT bills only the
+county-side units on a split parcel. It was rejected anyway: it is an *inference* driving triage
+classification, exemptions confound the denominator, and the boundary is fuzzy. Same standard as §5.4 —
+a derived number is not evidence.
+
+**⚠ KNOWN RESIDUAL, recorded not papered over.** `case_track == "dismissed_paid"` is itself derived
+from `tax_balance == 0` (`backend/main.py case_track_of`), so on a split-collector parcel it inherits
+the same blind spot. **6 Garland cases sit in that state and remain classified paid.** The same
+derivation also feeds the disposition auto-flag (`main.py` ~1369 proposes an ARCHIVE for
+`dismissed_paid`), so the blind spot has a second, more permanent stage — proposal only, a human still
+commits, but the premise is unverified. **Neither is touched here.**
+
+**What actually resolves the residual — capture, not inference:** ACT's per-parcel **jurisdiction
+coverage** as a stored fact ("which taxing units does ACT bill for this account?"). Note the obvious
+source does NOT work: `taxbyyearbyunit.jsp` renders *"No taxes due."* with no unit list precisely when
+the balance is $0 — empty exactly when needed. The Summary/Current Tax Statement carries the per-unit
+levy but is served as a **PDF**, so this is a real capture increment, not a one-line scrape. Its own
+design.
+
+**Tests:** `test_zero_balance_band.py` **18/18** — runs the real `balanceBand`/`zeroIsContradicted` out
+of the served artifact in Chromium. Pins the proven case, a Dallas case flagging on identical facts
+(not geography-gated), a Garland case NOT flagging because its docket dismissed it (not address-gated
+either), every other band unchanged, and zero pageerror.
+
+## 19. STANDING RULE — the recurring meta-defect: a local truth applied fleet-wide
+
+Four instances now, one shape. Each was a fact that is true **in a subset** — one account, one owner,
+one defendant, one county's collection arrangement — encoded as if it held for **every** case:
+
+| # | Instance | The local truth | Applied fleet-wide as |
+|---|---|---|---|
+| 1 | Comma-joined DCAD account | one parcel = one account | every account string is one ID |
+| 2 | `owners[0]` ownership parse | one owner per parcel | the first owner is *the* owner |
+| 3 | Lead defendant (§18.2) | one defendant per suit | `defendant` is *the* defendant |
+| 4 | `zero → PAID` (§17.5) | ACT bills every unit *in Dallas* | ACT $0 means paid *everywhere* |
+
+**A fifth was caught while writing §18's own counter-check** and is the reason this section exists:
+`owner_defendant_mismatch` still compared `owners[0]` against the lead defendant, so TX-26-01455 —
+where *both* record owners are *both* defendants — raised a false substantive title flag on a clean
+case. The gate immediately below it had just been fixed for the identical reason. **The shape survives
+a fix to its neighbour.**
+
+**THE RULE.** Before a fact becomes a classification:
+1. **Is this a set?** Accounts, owners, defendants, jurisdictions, tracts are all plural. If the code
+   reads `[0]` or a scalar, the answer is already no.
+2. **Whose truth is it?** A fact verified in one county/city/parcel class is scoped to it until
+   measured elsewhere. Dallas ≠ Dallas County.
+3. **Measure the blast radius before shipping.** Every instance above was quantified on the real book
+   first (13 false fatals of 38; 50 of 88 zeros; 28→56 substantive) — the count is what exposes an
+   over-fire, never the reasoning.
+4. **Absence is `unknown`, never a value.** `0`, `""`, `owners[0]`, "the defendant" are all silent
+   substitutes for a set you did not fully read.
+
+Rule 1 alone would have caught instances 1, 2, 3 and 5. Rule 2 would have caught 4.
+
+### 18.6 THIRD REFINEMENT — `_same_party()` (spot-check FAILED first, 2026-08-15)
+
+Sign-off was conditioned on spot-checking the newly-substantive cases. **The first spot-check failed.**
+Token-containment matching produced false title flags on cases that were **the same party written two
+ways** — not owner-adjacent situations at all:
+
+| DCAD owner | Petition defendant | Artifact |
+|---|---|---|
+| TREVINO JUAN F & SANJUANA | Juan Francisco Trevino | middle name |
+| MOLINA FLORES ANA GABRIELA | Anna Gabriela Molina Flores | ANA / Anna |
+| BECERRA MARIA DELOURDES SALCEDO | Maria De Lourdes Salcedo Becerra | DELOURDES / De Lourdes |
+| DABNEYCLARK TERESA | TERESA DABNEY-CLARK | hyphen concatenated |
+| GALLEGOSLARA MARIA LEONOR | Maria Leonor Gallegos-Lara | hyphen concatenated |
+| KIRKWALLS PATRICIA A | Patricia Kirk Walls a/k/a … | concatenation + a/k/a |
+| LALANI ASSET MANGEMENT LLC | LALANI ASSET MANAGEMENT LLC | DCAD typo |
+| MONROY VELMA AND ERASTO | Velma Jean Cantu Monroy | combined couple record |
+| LE KEVIN · WU QINGNONG | KEVIN LE · QINGNONG WU | two-letter surname dropped as a token |
+| IKAZ S A | THE UNKNOWN SHAREHOLDERS … OF IKAZ, S.A. | single-part entity name |
+| ORTEGA IDALIA | *(scalar column says "GARCIA, V, IDALIA")* | lead's a/k/a lives in the roster |
+
+`_same_party()` replaces containment: **two significant name parts in common = the same party**,
+matched as whole tokens or as substrings of the other side's separator-stripped form. One part is not
+enough — a shared surname is a FAMILY relationship, which is the question `no_conveyance_path` asks,
+not this one. Supporting fixes: the token floor dropped 3→2 characters (real surnames here are two
+letters) with the noise set widened to absorb honorifics/suffixes/entity boilerplate; a single-part
+name matches on that one part alone; and the lead defendant is expanded to its fuller roster form so
+an a/k/a on title is seen. **A scoring bug was caught in the same pass** — counting each direction
+separately double-counted one shared token and briefly made HERNANDEZ NORMA "the same party" as
+Pauline Hernandez, collapsing exactly the family/identity distinction the function exists to keep.
+
+**Result: substantive 56 → 36 (16.8% → 10.8%), newly-substantive 36 → 19.** Note it now lands *below*
+the graduated gate's original 15% — that 15% was itself inflated by these artifacts.
+
+**Second spot-check: 18 of 19 genuine.** Two real shapes — (a) the Ruby shape, where the lead defendant
+is not the owner but the owner is a co-defendant (TX-26-01371 Quinlan, TX-25-00499 Waheed, TX-26-01398
+Lalani, TX-26-01482 Hodges) — the advisory "confirm who conveys" is correct; and (b) genuine
+estate/heir title questions (TX-23-00569 WILLIAMS CHESTER F EST OF, TX-25-02268 JOHNSON DORIS EST OF,
+TX-25-02238 BAKER LILA LIFE ESTATE, TX-26-00034 where only Thomas Sloan is sued but Victoria Sloan and
+Ivory Harris hold title).
+
+**⚠ ONE RESIDUAL, NOT FIXED — TX-26-00875.** DCAD `PATTERSON BEN C & DIANE` vs lead
+`Bennie Charles Patterson`: a **nickname**, not a formatting artifact. BEN is three characters and
+substring matching requires four. **Deliberately not chased:** lowering to three characters would match
+ANN inside SUSANNA and merge genuinely different parties, converting a visible false flag into an
+invisible missed title question. The error direction matters — this gate is ADVISORY
+(GO-WITH-CONDITIONS, "confirm who can convey"), so a false positive costs one verification click while
+a false negative hides a real question. **Flagged for the sign-off decision; not resolved unilaterally.**
+
+## 20. §19 IS ENFORCED, NOT DOCUMENTED — `test_set_invariance.py` (Stage-1 exit criterion)
+
+Prose did not stop instance five; it appeared in the function *beside* the one just fixed. The four
+questions are therefore assertions, and the Stage-1 exit criterion is **this file passing** — not the
+five fixes, which are only its first five applications.
+
+| Q | Executable form |
+|---|---|
+| **Q1 is this a set?** | **POSITION INVARIANCE** — the truth is walked through every slot of the owner list and the defendant roster and the verdict may not change; a 3×3 case is swept through all **36 orderings** and must yield ONE verdict; index 0 is made actively misleading to prove index 1 is read (and removing it must flip the verdict, so the test has teeth); plus an **AST** guard that no plural input is indexed at `[0]` — parsed, not grepped, because the docstrings deliberately discuss `owners[0]` and a text scan fires on the documentation written to prevent it. |
+| **Q2 whose truth is it?** | classifiers may not hardcode a locality — asserted against the source of `zeroIsContradicted()` and `no_conveyance_path()`. |
+| **Q3 blast radius measured?** | gate rates must sit inside a **declared** envelope on the real book (fatal 4–12%, substantive 6–18%; currently 7.5% / 10.8%, n=334). A change that moves a rate outside must be re-measured and re-signed-off — which is the point. |
+| **Q4 absence is `unknown`** | six unverifiable-input shapes must never produce a fatal verdict; no facts → HOLD never GO; an empty tax payoff is `UNAVAILABLE`, never `$0`. |
+
+**26/26.** Position invariance is the general form: every one of the five instances fails it, so a
+sixth of the same shape is caught by a test nobody has to remember to write.
