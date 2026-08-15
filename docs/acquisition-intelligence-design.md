@@ -834,3 +834,53 @@ separation, Ruby held at GO-WITH-CONDITIONS, 00553 held substantive) · `backend
 **52/52** (fatal branch end-to-end on TX-26-01196; Ruby and 00553 pinned non-fatal through the real
 endpoint, which is what guards the backend against reverting to `owners[0]` / lead-defendant).
 Regressions green: `test_comps` 111/111, `test_skeleton_equivalence` 28/28, `test_balance_card` 47/47.
+
+### 17.4 CONFIRMED LIVE — a Garland case where ACT reads **$0.00** while the debt is real (2026-08-15)
+
+**TX-26-01455 · HERLINDA M. GELISTA · 5221 Robin Road, Garland 75043 · CAD `26380500080060000`**
+(resolved from ACT's address search; the case row itself is unenriched — `account_status=needs_lookup`,
+no account, no balance).
+
+| Source | Reads |
+|---|---|
+| **ACT** (dallasact.com) | **Total Amount Due $0.00** · jurisdiction detail: **"No taxes due."** · MV $292,850 |
+| **GISD portal** (account `0000103464`) | **`Lawsuit: Yes`** · 2025 Amount Due **$4,896.59** = tax $3,428.98 + P&I $651.51 + **attorney fees $816.10** · Total Paid $0.00 |
+| The suit itself | `total_due_filing` **$11,306.35** |
+
+This is the predicted case in its strongest form: for this parcel ACT is not *partially* short, it is
+**entirely empty of the debt**. A live tax foreclosure with attorney fees already accruing reads as
+zero at the source the payoff model calls VERIFIED.
+
+**Note the petition does not reconcile to GISD either** ($11,306.35 vs $4,896.59, a ~$6,410 gap).
+Neither source accounts for it. City of Garland appears in NEITHER ACT (no city line on Garland
+parcels) NOR the GISD portal (which shows only the GARLAND ISD block) — so a **THIRD collector** is
+the leading hypothesis. **Unverified — do not assume it.** It is the next measurement.
+
+### 17.5 THE LIVE DEFECT THIS EXPOSES — zero-balance cases are classified **PAID** and leave the queue
+
+The payoff line is not the worst of it. `frontend/index.html balanceBand()` maps `b <= 0` → `"zero"`,
+commented *"paid — represented by the disposition flag, not a $"*. That inference is sound where ACT
+collects everything (Dallas) and **false wherever an ISD collects separately**.
+
+**Measured on the local 334-case book: 88 cases carry `current_tax_balance == 0` and are therefore
+classified PAID. 15 of them are Garland cases — every one with a real petition amount ($5,917–$11,679)
+and `account_status = resolved`, i.e. enrichment ran and ACT genuinely returned $0.**
+
+Examples: TX-26-00991 ($11,679 filed), TX-25-00387 ($11,096), TX-26-00992 ($10,966), TX-24-00090
+($9,234).
+
+**Honest state of proof: the mechanism is CONFIRMED on one case (TX-26-01455); the other 15 are
+SUSPECTED on the same pattern and are not individually verified.** The 73 non-Garland zeros are a
+separate question — in Dallas, ACT $0 probably does mean paid, which is exactly why the fix must be
+jurisdiction-aware and not a blanket change.
+
+**Why this outranks the schema work in urgency:** a payoff that is understated still shows the case to
+a rep, who can catch it. A case classified `zero` **silently drops out of amount-owed triage** — the
+rep never sees it. That is the project's own standing rule violated at the display layer: *no field may
+silently become 0 and be displayed as if that were a real value.* The correct state for a Garland
+parcel with ACT $0 and no ISD reading is **`unknown`, not `zero`** — §17.3 item 3 applied to the band
+classifier rather than only to the payoff line.
+
+**NOT CHANGED — sequencing is the user's call.** `balanceBand` is a deployed served artifact and this
+would alter live triage for 88 cases. Recommended as the first increment of §17 (ahead of the payoff
+schema), but not started.
