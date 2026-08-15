@@ -138,6 +138,15 @@ class CaseInput:
     sale_scheduled_date: Optional[str] = None
     owner_of_record: Optional[str] = None         # DCAD current owner (may differ from defendant → heir)
     defendant: Optional[str] = None               # the sued party; owner_of_record ≠ defendant = title question
+    # FULL DCAD owner list [{name, pct}]. owner_of_record is only owners[0] — on a multi-owner parcel
+    # the remaining co-owners are exactly where a conveyance path hides (TX-23-00553: owners[1] is
+    # HERNANDEZ NORMA, same family as the defendant). The blocking branch reads THIS, not owners[0].
+    owners: list = field(default_factory=list)
+    # EVERY defendant named in the suit, not just the lead. `defendant` is the lead only; tax suits
+    # routinely name 2–21 parties and the record owner is very often ONE OF THEM (Ruby: the DCAD
+    # owner TAYLOR FELICIA D is co-defendant "Felicia Denise Taylor"). Measured on the live book:
+    # comparing the lead alone produced 13 FALSE fatal verdicts out of 38. The fatal branch reads THIS.
+    all_defendants: list = field(default_factory=list)   # list of names (str)
 
 
 @dataclass
@@ -376,6 +385,38 @@ def owner_defendant_mismatch(case: CaseInput) -> bool:
     return o.isdisjoint(d)
 
 
+def no_conveyance_path(case: CaseInput) -> bool:
+    """FATAL title branch (2026-08-15): NO party on the DCAD record is a party to the suit — nobody
+    named in the case can convey, and no related party is on title to negotiate or quiet-title
+    through. VERIFIABLE-FACT branch: it reads the county ownership record against the defendant
+    roster. Petition language (estate/heir/absentee wording) never reaches it.
+
+    BOTH SIDES MUST BE COMPLETE, and this is the whole difficulty of the gate:
+      · every OWNER, not owners[0] — TX-23-00553's owners are BACA NORMA ESTELA (50%) and HERNANDEZ
+        NORMA (50%); the second co-owner is the defendant's family and IS the conveyance path.
+      · every DEFENDANT, not the lead — TX-26-01379 (Ruby) reads as departed title against the lead
+        (DCAD owner TAYLOR FELICIA D vs lead defendant Ruby Faye Brown) but the suit ALSO names
+        "Felicia Denise Taylor": the record owner is already a party, so a path exists and Ruby is a
+        COUNTER-fixture, not a blocking one. Measured on the live 334-case book, comparing the lead
+        alone produced 13 FALSE fatal verdicts out of 38 (Ruby and the 10-defendant Williams/Motley
+        heir case among them) — precisely the heir population this pipeline exists to work.
+
+    Blocking fixture is TX-26-01196: sole owner ANDERSON BETTY, sole defendant Gayla Jefferson.
+
+    FAIL-SOFT BY CONSTRUCTION — returns False whenever the fact cannot be verified (no owner list,
+    no defendant). ~11% of the book has no DCAD owner at all; missing data must never manufacture a
+    NO-GO. Absence of evidence is not evidence of departed title."""
+    owner_names = [o.get("name") for o in (case.owners or []) if isinstance(o, dict) and o.get("name")]
+    def_names = [n for n in (case.all_defendants or []) if n] or ([case.defendant] if case.defendant else [])
+    if not owner_names or not def_names:
+        return False
+    def_tokens = [_name_tokens(n) for n in def_names]
+    def_tokens = [t for t in def_tokens if t]
+    if not def_tokens:
+        return False
+    return all(_name_tokens(o).isdisjoint(d) for o in owner_names for d in def_tokens)
+
+
 def deal_gates(case: CaseInput, acq: AcquisitionInputs, seller: dict) -> list:
     gates = []
     if case.property_type == "personal":
@@ -399,7 +440,14 @@ def deal_gates(case: CaseInput, acq: AcquisitionInputs, seller: dict) -> list:
     # Heir/estate title — GRADUATED (minimal Stage-3 graduated gate). A real owner-mismatch (named
     # counterpart) is SUBSTANTIVE and lifts; absentee/estate language without a mismatch is a GENERIC
     # soft signal that does not lift out of HOLD on its own.
-    if owner_defendant_mismatch(case):
+    if no_conveyance_path(case):
+        holders = "; ".join(o.get("name", "?") for o in (case.owners or []) if isinstance(o, dict))
+        n_def = len(case.all_defendants or []) or 1
+        gates.append({"gate": "heir_no_conveyance_path", "severity": "fatal",
+                      "detail": f"Record title is held by {holders}, and NONE of the {n_def} defendant(s) "
+                                f"in this suit is that party or related to them. Nobody named in the case "
+                                f"can convey — there is no seller to contract with pre-foreclosure"})
+    elif owner_defendant_mismatch(case):
         gates.append({"gate": "heir_estate_title", "severity": "substantive",
                       "detail": f"DCAD owner '{case.owner_of_record}' differs from the defendant "
                                 f"'{case.defendant}' — identified conveyance-path/title question; confirm who can convey"})

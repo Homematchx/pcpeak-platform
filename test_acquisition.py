@@ -48,7 +48,24 @@ RUBY = CaseInput(
     actual_age=79, year_built=1947, distress_level="high",
     distress_signals=["high_depreciation", "no_homestead"], no_homestead=True, is_absentee=True,
     property_type="real", case_track=None, owner_of_record="TAYLOR FELICIA D",
-    defendant="Ruby Faye Brown",  # owner ≠ defendant → substantive heir mismatch
+    defendant="Ruby Faye Brown",
+    # REAL RECORD (checked 2026-08-15). DCAD: 2020 arm's-length sale BROWN RUBY FAYE → TAYLOR
+    # FELICIA D (deed 6/22/2020), Taylor holds 100%. BUT the suit names THREE defendants and one of
+    # them is "Felicia Denise Taylor" — the record owner is already a party. A conveyance path
+    # EXISTS, so Ruby is the COUNTER-fixture for the fatal branch and stays SUBSTANTIVE.
+    owners=[{"name": "TAYLOR FELICIA D", "pct": 100}],
+    all_defendants=["Ruby Faye Brown", "Felicia Denise Taylor",
+                    "The Unknown Shareholders, Successors, and Assigns of Mesquite NF SNF, LLC"],
+)
+
+# THE BLOCKING FIXTURE (2026-08-15). TX-26-01196: sole DCAD owner ANDERSON BETTY, sole defendant
+# Gayla Jefferson — no party to the suit holds or is related to record title. Nobody can convey.
+NO_PATH = CaseInput(
+    case_number="TX-26-01196", market_value=114000, owed=12818.78, total_due_filing=12818.78,
+    filed_date="2026-01-15", living_area_sqft=1100, depreciation_pct=45, actual_age=60,
+    year_built=1966, distress_level="high", no_homestead=True, property_type="real",
+    owner_of_record="ANDERSON BETTY", defendant="Gayla Jefferson",
+    owners=[{"name": "ANDERSON BETTY", "pct": 100}], all_defendants=["Gayla Jefferson"],
 )
 GRANT = CaseInput(
     case_number="TX-25-00249", market_value=232800, owed=152224.40, total_due_filing=80583.24,
@@ -219,6 +236,11 @@ def test_golden_derivable():
 def test_golden_heir_signal():
     r = A.analyze(RUBY, AcquisitionInputs(), AS_OF)   # DCAD owner TAYLOR FELICIA D ≠ defendant
     check("Ruby heir/estate title gate", any(g["gate"] == "heir_estate_title" for g in r["gates"]))
+    # HELD 2026-08-15 against the new fatal branch: Ruby must NOT escalate. The DCAD owner
+    # (TAYLOR FELICIA D) is co-defendant "Felicia Denise Taylor" — an identified counterpart already
+    # in the suit. Departed title with the buyer-of-record joined is a CONDITION, not a dead end.
+    check("Ruby does NOT hit the fatal branch (record owner is a co-defendant)",
+          not any(g["gate"] == "heir_no_conveyance_path" for g in r["gates"]))
 
 
 def test_worked_scenario_closable():
@@ -298,7 +320,71 @@ def test_pin_ruby_held_indeterminate_never_go():
     check("Ruby tax payoff verified $11,437", r["tax_payoff"]["amount"] == 11437 and r["tax_payoff"]["label"] == A.VERIFIED)
     # And if that lien were later quantified low + ARV confirmed, it could promote — sanity that the
     # ONLY thing blocking a clean path here is the lien + provisional valuation, not a fatal flaw.
+    # HELD 2026-08-15: the new fatal title branch must not disturb this golden human verdict.
     check("Ruby not fatal", not any(g["severity"] == "fatal" for g in r["gates"]))
+
+
+# ── THE THIRD STATE: fatal no-conveyance-path vs soft graduated gate (2026-08-15) ────────────────
+def test_no_conveyance_path_predicate():
+    check("TX-26-01196: owner ANDERSON BETTY, defendant Gayla Jefferson → NO path",
+          A.no_conveyance_path(NO_PATH) is True)
+    # THE TWO WAYS A PATH HIDES — both were live false-positives before the fix.
+    check("Ruby: record owner TAYLOR is a CO-DEFENDANT → path exists (not fatal)",
+          A.no_conveyance_path(RUBY) is False)
+    check("00553: co-owner HERNANDEZ NORMA shares the defendant's name → path exists",
+          A.no_conveyance_path(TX_00553) is False)
+    check("Tryon: owner IS the defendant → path exists", A.no_conveyance_path(TRYON) is False)
+    # The Williams/Motley shape: 10 defendants, owner MOTLEY MRS JAMES A, lead defendant a Williams.
+    # Matching on the LEAD alone would have wrongly killed this heir case.
+    wm = CaseInput("TX-23-00042", defendant="WILLIAMS, RUBY J.",
+                   owners=[{"name": "MOTLEY MRS JAMES A"}],
+                   all_defendants=["Ruby J. Williams", "Gerre Ganell Williams", "Motley, Cora Pearl",
+                                   "Williams, Willie A", "Motley, James"])
+    check("10-defendant heir case: a non-lead Motley defendant establishes the path",
+          A.no_conveyance_path(wm) is False)
+    check("…and it WOULD have blocked on the lead defendant alone (the bug this guards)",
+          A.no_conveyance_path(CaseInput("X", defendant="WILLIAMS, RUBY J.",
+                                         owners=[{"name": "MOTLEY MRS JAMES A"}])) is True)
+    # FAIL-SOFT: unverifiable facts must never manufacture a NO-GO (~11% of the book has no owner).
+    check("no owners list → never blocks (fail-soft)",
+          A.no_conveyance_path(CaseInput("X", defendant="John Smith")) is False)
+    check("owners present but no defendant → never blocks",
+          A.no_conveyance_path(CaseInput("X", owners=[{"name": "TAYLOR FELICIA D"}])) is False)
+    check("owner_of_record set but owners list EMPTY → never blocks (owners[0] alone is not enough)",
+          A.no_conveyance_path(CaseInput("X", owner_of_record="TAYLOR FELICIA D", defendant="Ruby Brown")) is False)
+    # A single matching co-owner ANYWHERE in the list is enough to establish a path.
+    multi = CaseInput("X", defendant="Pauline Hernandez",
+                      owners=[{"name": "BACA NORMA ESTELA"}, {"name": "SMITH JOHN"}, {"name": "HERNANDEZ NORMA"}])
+    check("path found on the LAST co-owner (not just owners[0])", A.no_conveyance_path(multi) is False)
+    check("all co-owners AND all defendants unrelated → blocks",
+          A.no_conveyance_path(CaseInput("X", defendant="Pauline Hernandez",
+                                         all_defendants=["Pauline Hernandez", "Jose Ruiz"],
+                                         owners=[{"name": "BACA NORMA"}, {"name": "SMITH JOHN"}])) is True)
+    # Petition LANGUAGE must never reach this branch — only the county record does.
+    lang = CaseInput("X", estate=True, is_absentee=True, defendant="John Smith")
+    check("estate + absentee language alone NEVER blocks", A.no_conveyance_path(lang) is False)
+
+
+def test_third_state_severity_separation():
+    """The three states stay distinct: fatal block / substantive soft / generic soft."""
+    rb = A.analyze(NO_PATH, AcquisitionInputs(), AS_OF)
+    check("blocking branch → NO-GO", rb["decision"] == "NO-GO", rb["decision"])
+    check("blocking branch gate is fatal",
+          any(g["gate"] == "heir_no_conveyance_path" and g["severity"] == "fatal" for g in rb["gates"]))
+    check("blocking branch does NOT also emit the soft gate",
+          not any(g["gate"] == "heir_estate_title" for g in rb["gates"]))
+    r5 = A.analyze(TX_00553, AcquisitionInputs(), AS_OF)
+    check("00553 stays SUBSTANTIVE, never fatal",
+          not any(g["severity"] == "fatal" for g in r5["gates"]))
+    # estate/absentee with a RELATED owner on record → generic soft signal, still no block.
+    soft = CaseInput("X", property_type="real", estate=True, is_absentee=True,
+                     owner_of_record="SMITH JOHN", defendant="John Smith",
+                     owners=[{"name": "SMITH JOHN"}])
+    rs = A.analyze(soft, AcquisitionInputs(), AS_OF)
+    check("estate/absentee + matching owner → generic signal only",
+          any(g["gate"] == "estate_absentee_signal" and g["severity"] == "generic" for g in rs["gates"]))
+    check("generic-only case never fatal", not any(g["severity"] == "fatal" for g in rs["gates"]))
+    check("generic-only case stays HOLD (does not lift)", rs["decision"] == "HOLD", rs["decision"])
 
 
 # ── GRADUATED heir/estate gate + decision-table drift fix (2026-07-21) ────────────────────────────
@@ -307,6 +393,10 @@ TX_00553 = CaseInput(  # the live gap case: no-zip (city fallback) AND a real ow
     living_area_sqft=1174, depreciation_pct=35, actual_age=46, year_built=1980, distress_level="high",
     distress_signals=["no_homestead"], no_homestead=True, is_absentee=True, estate=True,
     property_type="real", owner_of_record="BACA NORMA ESTELA ET AL &", defendant="Pauline Hernandez",
+    # REAL DCAD record: TWO co-owners at 50/50. owners[1] HERNANDEZ NORMA shares the defendant's
+    # family name → a conveyance path EXISTS (estate devolution, not departed title) → stays
+    # SUBSTANTIVE, never fatal. This is the counter-fixture for the blocking branch.
+    owners=[{"name": "BACA NORMA ESTELA ET AL &", "pct": 50}, {"name": "HERNANDEZ NORMA", "pct": 50}],
 )
 
 

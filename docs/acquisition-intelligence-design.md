@@ -760,3 +760,77 @@ prevents).
 
 **Sequencing:** below the `heir_estate_title` block; after the Stage-2 gate work. No code until
 §17.2 is measured and this section is approved.
+
+## 18. THE THIRD TITLE STATE — fatal `heir_no_conveyance_path` (built 2026-08-15)
+
+Approved as the revised Stage-1 exit criterion: **the owner-mismatch branch blocks; estate/absentee
+stays graduated.** `heir_estate_title` was NOT promoted to fatal — that would have reversed the
+2026-07-21 graduation. Instead the gate now has **three** states.
+
+### 18.1 The three states
+
+| Condition (all read the COUNTY RECORD, never petition language) | Gate | Severity | Verdict effect |
+|---|---|---|---|
+| No party to the suit is, or is related to, any owner of record | `heir_no_conveyance_path` | **fatal** | **NO-GO** |
+| Owner of record ≠ defendant, but a related party is on title or in the suit | `heir_estate_title` | substantive | GO-WITH-CONDITIONS |
+| Estate/absentee signal with no confirmed mismatch | `estate_absentee_signal` | generic | does not lift HOLD |
+
+The fatal branch is the only one that can kill a deal, and it fires on a single verifiable question:
+**is there anybody we can actually sign a purchase contract with?** Pre-foreclosure acquisition is a
+contract with the owner. If no party to the suit holds record title and none is related to whoever
+does, there is no seller — and no amount of valuation work changes that.
+
+### 18.2 BOTH SIDES OF THE COMPARISON MUST BE COMPLETE (this is the whole difficulty)
+
+The naive predicate — `owner_of_record` vs `defendant` — is wrong on **both** sides, and each error
+was live in the code:
+
+- **Owners.** `_case_input` passed only `owners[0]`. TX-23-00553's owners are BACA NORMA ESTELA (50%)
+  and **HERNANDEZ NORMA (50%)** — the co-owner who shares the defendant's family name, i.e. the
+  conveyance path itself, was being discarded before the engine saw it.
+- **Defendants.** `CaseInput.defendant` is the **lead defendant only**, but tax suits name 2–21
+  parties and the record owner is very often one of them. **Measured on the live 334-case book:
+  matching the lead alone produced 38 fatal verdicts, of which 13 were FALSE** — the record owner or a
+  relative was a non-lead defendant. The false set was concentrated in exactly the heir cases this
+  pipeline exists to work.
+
+Both sides are now complete: `CaseInput.owners` (full DCAD list) and `CaseInput.all_defendants` (full
+roster, parsed from the `cases.all_defendants` JSON column by `_defendant_names()`).
+
+### 18.3 Fixture correction — Ruby is the COUNTER-fixture, not the blocking one
+
+TX-26-01379 was nominated as the blocking fixture on the reading "DCAD owner TAYLOR FELICIA D ≠
+Brown". That is true of the *lead* defendant and false of the case: **the suit names three defendants
+and the second is "Felicia Denise Taylor"** — the record owner is already a party. DCAD confirms she
+bought it in a 2020 arm's-length sale (BROWN RUBY FAYE → TAYLOR FELICIA D, deed 6/22/2020), so title
+departed, but **the buyer is joined to the suit**. That is a *condition*, not a dead end, and it is
+precisely the "identified counterpart to negotiate/quiet-title through" the 2026-07-21 graduation
+described. **Ruby's golden GO-WITH-CONDITIONS verdict stands unchanged** and is now pinned against the
+fatal branch as a must-not-escalate case.
+
+**The blocking fixture is TX-26-01196**: sole DCAD owner ANDERSON BETTY, sole defendant Gayla
+Jefferson. Nobody in that suit can convey.
+
+**Standing lesson (third time this project has hit the shape):** the earlier version of this rule read
+one element of a list and treated it as the whole — the same root cause as the comma-joined DCAD
+account and the `owners[0]` ownership parse. Before comparing two parties, confirm both sides are the
+FULL set.
+
+### 18.4 Guardrails
+
+- **Fail-soft by construction.** `no_conveyance_path()` returns False whenever the fact cannot be
+  verified — no owner list (**11% of the book**), or no defendant. Missing data must never manufacture
+  a NO-GO; absence of evidence is not evidence of departed title.
+- **Never reads petition language.** Estate/heir/absentee wording cannot reach this branch; pinned by
+  a test that an estate+absentee case with no owner record does not block.
+- **Fleet impact measured, not assumed:** **25/334 (7.5%) fatal**, 28/334 (8.4%) substantive.
+- **Other findings still report** — the fatal title gate does not suppress the lien or valuation gates.
+
+### 18.5 Tests
+
+`test_acquisition.py` **146/146** (predicate incl. both hiding-places, the Williams/Motley 10-defendant
+case and an explicit pin that it *would* have blocked on the lead alone, fail-soft set, three-state
+separation, Ruby held at GO-WITH-CONDITIONS, 00553 held substantive) · `backend/test_acquisition_api.py`
+**52/52** (fatal branch end-to-end on TX-26-01196; Ruby and 00553 pinned non-fatal through the real
+endpoint, which is what guards the backend against reverting to `owners[0]` / lead-defendant).
+Regressions green: `test_comps` 111/111, `test_skeleton_equivalence` 28/28, `test_balance_card` 47/47.

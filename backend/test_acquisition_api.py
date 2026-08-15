@@ -96,8 +96,14 @@ def seed():
         "property_intel": _pi(market_value=232800, current_tax_balance=152224.40, living_area_sqft=1125, bedrooms=3,
             bathrooms="1/1", year_built=1978, depreciation_pct=45, actual_age=48, lot_area_sqft=4878,
             legal_description="1: MOUNTAIN LAKEVIEW 3 2: BLK 19 LOT 16 3:", owners=[{"name": "MIDDLETON MICHAEL"}])})
-    # Ruby (DCAD owner ≠ defendant; absentee)
-    c.post("/api/cases", json={"case_number": "TX-26-01379", "property_address": "4227 York St., Dallas, TX 75210-1741",
+    # Ruby — DCAD owner ≠ LEAD defendant (Taylor bought in 2020), but Felicia Denise Taylor is
+    # herself a co-defendant, so a conveyance path exists. `defendant`/`all_defendants` were
+    # previously MISSING here, so the title branch was never exercised through the API at all.
+    c.post("/api/cases", json={"case_number": "TX-26-01379", "defendant": "Ruby Faye Brown",
+        "all_defendants": json.dumps([{"name": "Ruby Faye Brown"}, {"name": "Felicia Denise Taylor"},
+                                      {"name": "The Unknown Shareholders, Successors, and Assigns of "
+                                               "Mesquite NF SNF, LLC"}]),
+        "property_address": "4227 York St., Dallas, TX 75210-1741",
         "total_due_filing": 11437.29, "filed_date": "2026-07-06", "property_type": "real",
         "property_intel": _pi(market_value=143320, current_tax_balance=11437.29, living_area_sqft=1077, bedrooms=2,
             bathrooms="1/0", year_built=1947, depreciation_pct=60, actual_age=79, lot_area_sqft=5310, is_absentee=True,
@@ -109,7 +115,11 @@ def seed():
         "property_intel": _pi(market_value=120000, current_tax_balance=9500, living_area_sqft=1174, bedrooms=3,
             bathrooms="2/0", year_built=1980, depreciation_pct=35, actual_age=46, lot_area_sqft=6000, is_absentee=True,
             legal_description="1: SUNSET SUMMIT 2: BLK G/3483 LOT 16 3:",
-            owners=[{"name": "BACA NORMA ESTELA ET AL &"}])})   # owner ≠ defendant → substantive heir mismatch
+            # REAL DCAD record is TWO co-owners at 50/50 — the fixture previously carried only the
+            # first. owners[1] HERNANDEZ NORMA shares the defendant's family name, which is what makes
+            # this a conveyance path (substantive) and NOT departed title (fatal).
+            owners=[{"name": "BACA NORMA ESTELA ET AL &", "pct": 50},
+                    {"name": "HERNANDEZ NORMA", "pct": 50}])})   # owner ≠ defendant → substantive heir mismatch
     # Kemrock-shaped: valid locality + GLA + lot size, but the comp stub returns ZERO comps.
     c.post("/api/cases", json={"case_number": "TX-99-ZERO", "defendant": "Zero Comp",
         "property_address": "6406 Kemrock Dr., Dallas, TX 75241", "property_type": "real",
@@ -187,6 +197,11 @@ def run():
     check("Ruby closability INDETERMINATE", r["analysis"]["seller_net_sheet"]["closable"] is None)
     check("Ruby verdict GO-WITH-CONDITIONS", r["decision"] == "GO-WITH-CONDITIONS")
     check("Ruby NEVER a plain GO despite confirmed valuation", r["decision"] != "GO")
+    # HELD 2026-08-15 against the new fatal branch. The DCAD owner TAYLOR FELICIA D is co-defendant
+    # "Felicia Denise Taylor", so a conveyance path exists. This pin proves the backend reads the
+    # WHOLE defendant roster: against the lead defendant alone this case goes wrongly fatal.
+    check("Ruby NOT fatal via API — record owner is a co-defendant",
+          not any(g["gate"] == "heir_no_conveyance_path" for g in r["analysis"]["gates"]))
 
     # ── LOCALITY FALLBACK: a no-zip but enriched case (TX-23-00553) proposes via city, no longer 422 ──
     r553 = c.post("/api/cases/TX-23-00553/comps/propose", headers=TOK)
@@ -198,6 +213,28 @@ def run():
     check("00553 verdict GO-WITH-CONDITIONS (owner-mismatch, NOT the provisional ARV)",
           a553["decision"] == "GO-WITH-CONDITIONS")
     check("00553 valuation still provisional (0 confirmed comps)", a553["valuation_state"] == "provisional")
+    # The counter-fixture: a co-owner sharing the defendant's family name keeps this SOFT. This is the
+    # regression guard against the backend reverting to owners[0] — under owners[0] alone, 00553's
+    # first owner (BACA) is unrelated to Hernandez and the case would wrongly go fatal.
+    check("00553 NEVER fatal — co-owner HERNANDEZ NORMA is the conveyance path",
+          not any(g["severity"] == "fatal" for g in a553["analysis"]["gates"]))
+    check("00553 has no no-conveyance-path gate",
+          not any(g["gate"] == "heir_no_conveyance_path" for g in a553["analysis"]["gates"]))
+    # ── THE FATAL BRANCH end-to-end: TX-26-01196, sole owner ANDERSON BETTY vs sole defendant ──
+    c.post("/api/cases", json={"case_number": "TX-26-01196", "defendant": "Gayla Jefferson",
+        "all_defendants": json.dumps([{"name": "Gayla Jefferson"}]),
+        "property_address": "3625 Crane St., Dallas, TX 75212", "total_due_filing": 12818.78,
+        "filed_date": "2026-01-15", "property_type": "real",
+        "property_intel": _pi(market_value=114000, current_tax_balance=12818.78, living_area_sqft=1100,
+            year_built=1966, depreciation_pct=45, actual_age=60,
+            owners=[{"name": "ANDERSON BETTY", "pct": 100}])})
+    a1196 = c.get("/api/cases/TX-26-01196/acquisition", headers=TOK).json()
+    check("no-conveyance-path fires via API (fatal)",
+          any(g["gate"] == "heir_no_conveyance_path" and g["severity"] == "fatal"
+              for g in a1196["analysis"]["gates"]))
+    check("no-conveyance-path → NO-GO via API", a1196["decision"] == "NO-GO")
+    check("fatal title verdict needs NO confirmed valuation to fire",
+          a1196["valuation_state"] == "provisional")
     # mandatory-photo rule: the 0-photo comp T0 cannot be confirmed
     check("0-photo comp confirm → 422 (mandatory-photo rule)",
           c.post("/api/cases/TX-23-00423/comps/T0/confirm", headers=TOK).status_code == 422)

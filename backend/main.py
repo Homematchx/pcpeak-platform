@@ -2138,7 +2138,26 @@ def _case_input(case: dict, pi: dict):
         sale_scheduled_date=case.get("sale_scheduled_date"),
         owner_of_record=(owners[0].get("name") if owners else None),
         defendant=case.get("defendant"),
+        owners=owners,          # FULL list — the no-conveyance-path branch needs every co-owner
+        all_defendants=_defendant_names(case),   # …and every defendant, not just the lead
     )
+
+
+def _defendant_names(case: dict) -> list:
+    """Every defendant named in the suit. `cases.all_defendants` is a JSON array of objects; the
+    scalar `defendant` column is only the LEAD. The fatal no-conveyance-path branch must see all of
+    them — the DCAD record owner is frequently a co-defendant (see acquisition.no_conveyance_path)."""
+    raw = case.get("all_defendants")
+    names = []
+    if raw:
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+            names = [d.get("name") for d in parsed if isinstance(d, dict) and d.get("name")]
+        except (ValueError, TypeError, AttributeError):
+            names = []
+    if not names and case.get("defendant"):
+        names = [case["defendant"]]
+    return names
 
 
 def _median(vals):

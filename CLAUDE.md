@@ -64,6 +64,28 @@ localStorage mirror is gone: `/api/cases` returns a SKELETON (no `property_intel
 
 **QUEUED / PENDING (gated on the user):**
 - **Phase 4** (above) — held for explicit go.
+- **DONE 2026-08-15 — THIRD TITLE STATE: fatal `heir_no_conveyance_path`** (design §18). Revised
+  Stage-1 exit criterion MET: the owner-mismatch branch blocks, estate/absentee stays graduated,
+  both suites green (`test_acquisition` **146/146**, `backend/test_acquisition_api` **52/52**).
+  `heir_estate_title` was NOT promoted to fatal (that would reverse the 2026-07-21 graduation);
+  it now has three states — fatal `heir_no_conveyance_path` → NO-GO / substantive `heir_estate_title`
+  → GO-WITH-CONDITIONS / generic `estate_absentee_signal` → does not lift HOLD.
+  **⚠ FIXTURE CORRECTED — Ruby is the COUNTER-fixture, not the blocking one.** TX-26-01379 was
+  nominated on "TAYLOR FELICIA D ≠ Brown", true of the LEAD defendant only: **the suit names three
+  defendants and the second is "Felicia Denise Taylor"** — the record owner is already a party, so a
+  conveyance path exists. **Ruby's golden GO-WITH-CONDITIONS verdict is UNCHANGED** and is now pinned
+  as must-not-escalate. Blocking fixture is **TX-26-01196** (sole owner ANDERSON BETTY vs sole
+  defendant Gayla Jefferson). **Both sides of the comparison were incomplete in the code and each
+  error was live:** `_case_input` passed only `owners[0]` (discarding 00553's HERNANDEZ NORMA — the
+  path itself), and `CaseInput.defendant` is the lead only — **matching the lead alone produced 38
+  fatal verdicts on the live book of which 13 were FALSE**, concentrated in heir cases (the
+  10-defendant Williams/Motley case among them). Now reads the FULL owner list + FULL defendant
+  roster (`all_defendants` via `_defendant_names()`). **Fail-soft by construction** (no owners = 11%
+  of the book, or no defendant → never blocks; missing data must never manufacture a NO-GO) and it
+  never reads petition language. **Fleet impact measured: 25/334 (7.5%) fatal, 28/334 (8.4%)
+  substantive.** STANDING LESSON (third occurrence of this shape, after the comma-joined DCAD account
+  and the `owners[0]` ownership parse): *before comparing two parties, confirm BOTH sides are the
+  FULL set.*
 - **LOGGED 2026-08-15 — PER-JURISDICTION PAYOFF LINES (multi-jurisdiction tax collection). NO ACTION;
   sequenced BELOW the `heir_estate_title` block, after Stage-2 gate work.** Design
   [`docs/acquisition-intelligence-design.md`](docs/acquisition-intelligence-design.md) §17. Trigger:
