@@ -140,9 +140,43 @@ is the very ~2% failure the guard exists to catch. **Not attempted; it is enrich
 with its own gate.** This is the §19 meta-defect at the DATA layer: one parcel's identity written into
 another case's row.
 
-**GATE 2 — §17.4 (`14dc51a`, frontend triage band) is NOT deployed.** Ships on its own fingerprinted
-gate once §18 is stable; it surfaces 50 previously-hidden cases to reps. Contamination scope is now
-known and does not block it.
+## §17.4 DEPLOYED + ACCEPTANCE-VERIFIED 2026-08-15 (`ff64257`) — gate 2 of 2. STAGE 1 COMPLETE.
+
+`origin/main == origin/production == origin/feature == ff64257`. Ran ALONE, after §18, never batched.
+**Fingerprints before → after — the exact mirror of gate 1:** `frontend/index.html` `f3d1899c99b288c3`
+→ **`526112adf37e4f74`** (changed; confirmed against the LIVE served bytes, not just git);
+`backend/main.py` **`86efd144ca6a8f9b` → unchanged** (§18's artifact untouched).
+
+**ACCEPTANCE TEST — the SERVED artifact's own functions, extracted from the live HTML and executed in
+Chromium against LIVE prod data** (stronger than a UI click-through, which was unavailable: the browser
+pane is policy-blocked for this host):
+- **258/258 cases classified — NONE dropped from triage**, every case carries a band, zero pageerror.
+- **All 21 predicted flips now read `unknown` ("Unconfirmed — needs check"), not PAID.** Examples:
+  TX-26-01478 (filed $11,971 · ACT $0.00 · active) · TX-26-00082 ($34,497) · TX-26-00028 ($15,678) ·
+  TX-26-01456 ($13,954) · TX-26-01462 ($7,647).
+- **28 remain PAID** — no blanket zero→unknown, exactly as designed.
+- Bands: `low 111 · mid 60 · high 13 · unknown 46 · zero 28` (the 46 = 25 pre-existing null-balance +
+  21 newly surfaced).
+
+**Why 21 and not 50:** the 50 was the LOCAL book (334 cases, including archived + local-only held);
+prod's 258 excludes archived. Same denominator effect as §18's 10.8% → 11.2%. Not a discrepancy.
+
+**STAGE 1 IS COMPLETE** by the agreed definition: **§19 `test_set_invariance.py` 26/26 passing is the
+exit criterion** (design §20) — the four-question rule EXISTING AND ENFORCED, not the five fixes, which
+are only its first five applications. Position invariance is what catches the sixth.
+
+## NEXT — sequenced, both AFTER Stage 1
+
+1. **4-case enrichment re-resolution (its own gated increment).** TX-24-00080 · TX-26-00086 ·
+   TX-26-00990 · TX-26-01093. Route each through `property_intel.resolve_account_corroborated`, verify
+   against ACT's site address, THEN sync. **Do NOT re-sync** — local carries the same bad account.
+2. **LOGGED, post-Stage-1 — PERIODIC ENRICHMENT INTEGRITY AUDIT.** The 2.1% matching the 2026-07-11
+   audit rate means the corroboration guard **stops new contamination but does not heal pre-guard
+   rows**: there is a LEGACY BACKLOG OF UNKNOWN SIZE, and the 5 found are only the *double-detectable*
+   ones (wrong account AND an ACT site address that disagrees with the petition address). Promote the
+   reconciliation sweep — **ACT site address, street-number discriminator** — to a periodic audit so
+   the legacy population gets found, not just the colliding subset. The sweep is already written and
+   reusable (234 accounts reconciled in ~4 min).
 
 **QUEUED / PENDING (gated on the user):**
 - **Phase 4** (above) — held for explicit go.
