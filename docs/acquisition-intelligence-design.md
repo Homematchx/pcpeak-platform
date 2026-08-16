@@ -1032,3 +1032,79 @@ five fixes, which are only its first five applications.
 
 **26/26.** Position invariance is the general form: every one of the five instances fails it, so a
 sixth of the same shape is caught by a test nobody has to remember to write.
+
+## 21. GISD BALANCE AUTOMATION — STEP-1 FEASIBILITY (2026-08-15). VERDICT: **BLOCKED-ON-DATA for Garland; the increment stops here.**
+
+Step 1 asked: can a parcel's ISD be resolved authoritatively, and from what field? Measured, not
+reasoned about.
+
+### 21.1 What DOES authoritatively name a parcel's ISD
+
+**ACT's per-parcel unit list (`reports/taxbyyearbyunit.jsp?can=…`) names the ISD by name whenever ACT
+collects it.** Sampled across every city code on the real prod book (one nonzero-balance parcel each):
+
+| ACT names an ISD | ACT names NO ISD |
+|---|---|
+| DA Dallas · CA Addison · CJ Seagoville · CT Wilmer · CU Hutchins → **DALLAS ISD** | **CG Garland (n=18)** |
+| CM Mesquite → **MESQUITE ISD** | CI Irving (n=5) |
+| CH Cedar Hill → **CEDAR HILL ISD** | CR Richardson · CF Farmers Branch |
+| CP Grand Prairie → **GRAND PRAIRIE ISD** | CC Carrollton · CW Rowlett *(equalization only)* |
+
+This is a real, per-parcel, already-fetchable authority — and it covers the large majority of the book
+(DA alone is 118 of the ~180 sampled).
+
+### 21.2 Why that does NOT unblock the GISD increment — three independent failures
+
+1. **ACT is silent for exactly the self-collecting districts.** The right-hand column above IS the set
+   of districts that collect their own taxes — Garland, Irving, Carrollton-Farmers Branch, Richardson.
+   ACT cannot name what it does not bill, and **Garland is the case this increment exists for.**
+2. **The source is empty precisely when the balance is $0.** `taxbyyearbyunit.jsp` renders
+   *"No taxes due."* with no unit list at all (2 of the sampled city codes returned an empty list for
+   this reason) — so it is unavailable for the §17.4 "Unconfirmed" population that motivated the work.
+   The one place we most need jurisdiction identity is the one place this field is blank.
+3. **The GISD portal is NOT usable as an automated membership oracle today.** A district's own tax roll
+   *would* be authoritative membership, but a headless HTTP replay returned NO MATCH for two CADs that
+   were manually confirmed to be in GISD (`26380500080060000` acct 0000103464, `26238500070260000`
+   acct 0000056331). **That means my harness is wrong, not that the parcels are absent** — recorded as
+   *not established*, never as a negative result. The portal is session + widget driven.
+
+### 21.3 The finding that settles the §19 question — city ≠ ISD in BOTH directions
+
+**CW / Rowlett shows no ISD line**, and Rowlett is largely Garland ISD territory. So GISD's footprint
+extends *beyond* Garland city, while Garland city contains parcels in Richardson and Dallas ISD
+(TX-26-00774 is the live example). A city→ISD mapping is wrong in both directions. **Confirmed ISD
+identity is the set membership; the address is not a proxy for it** — exactly the §19 class.
+
+### 21.4 VERDICT AND RECOMMENDATION
+
+**For Garland ISD specifically: STOP. Keep it manual.** No field we can reach today names the ISD for a
+self-collecting district, and a clean manual flag (current §17.4 behaviour) beats an automated fetch
+against the wrong district. Steps 2 and 3 do not begin.
+
+**But two spin-offs are NOT blocked and are worth their own increments:**
+
+**(a) Capture ACT's per-parcel unit list as a stored fact.** It yields two things: the ISD *named* for
+the majority, and — crucially — the **negative signal** "ACT bills no ISD on this parcel ⇒ an external
+collector exists." **That negative signal alone is enough to make §17.3's schema correct.** Marking an
+ISD line `unavailable` (→ INDETERMINATE, §5.3) requires only knowing that a collector exists, NOT which
+one. **Identifying the district is needed only to FETCH a number.** That decoupling means step 2 can
+proceed on the negative signal while step 3 stays blocked — and it is the honest-labelling outcome
+§17 wanted, without any new portal integration. Caveat carried: the unit list is blank at $0 balance,
+so absence of the signal is itself `unknown`, never "no ISD".
+
+**(b) Fix `property_intel` line ~477 — a SIXTH §19 instance, found while investigating.** The
+jurisdiction parser is
+`re.findall(r'(DALLAS[A-Z\s]*|PARKLAND[A-Z\s]*|UNASSIGNED)\s+\$([\d,\.]+)', text)` — it can only
+recognise units named `DALLAS…` or `PARKLAND…`. **A `GARLAND ISD` line is structurally invisible to
+it**, which is why stored `tax_rates` is malformed or empty and could never have answered this
+question. A Dallas-local truth hardcoded as a fleet-wide rule, in the exact shape §19 names. Note this
+would NOT have been caught by `test_set_invariance` Q1 (it is not a `[0]` read) but IS caught by Q2
+(*whose truth is it?* — a locality baked into a classifier). Worth a Q2 source-guard extension.
+
+**UNTESTED — the one remaining candidate.** DCAD's own per-parcel page may name taxing units; it could
+not be loaded this session (direct GET returns "Details for the account you requested could not be
+shown" — it needs the Playwright session `property_intel` already uses). **Defined test before any
+further work here:** drive `AcctDetailRes.aspx` through the existing Playwright path for
+`26380500080060000` (Garland) and `26545500120260000` (the Garland-address parcel with no GISD match)
+and check whether either names its school district. If DCAD names it, step 1 is unblocked and this
+verdict is revisited; if not, Garland stays manual permanently.
