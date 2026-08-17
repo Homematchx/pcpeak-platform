@@ -178,6 +178,35 @@ are only its first five applications. Position invariance is what catches the si
    the legacy population gets found, not just the colliding subset. The sweep is already written and
    reusable (234 accounts reconciled in ~4 min).
 
+## §23 DEPLOYED + LIVE-VERIFIED 2026-08-17 (`7b456ed`) — per-collector payoff schema, gate 1 of the GISD arc
+
+`origin/main == origin/production == origin/feature == 7b456ed`. **Fingerprints before → after:**
+`acquisition.py` `43dc38015e1c8df8` → **`06ee56cc80e920c6`** · `jurisdictions.py` **NEW** →
+**`fb55efe9b6fb0337`** · `backend/main.py` `86efd144ca6a8f9b` → **`70953982e844b0c2`** ·
+`frontend/index.html` **`526112adf37e4f74` UNCHANGED** (byte-verified against the LIVE served page —
+UI surfacing of the new lines is its own later gate).
+
+**LIVE VERIFICATION — full before/after sweep of the prod book through the real endpoint:**
+- **VERDICT FLIPS: 0** across all 252 cases compared against the pre-deploy baseline. Decisions
+  identical (HOLD 205 · GO-WITH-CONDITIONS 32 · NO-GO 15).
+- `tax_payoff_lines` served on **252/252**.
+- `collector_balance_unavailable` fires on **73 cases (29.0%)** — named-but-unreached collectors:
+  GARLAND ISD 36 · CITY OF GARLAND 27 · RICHARDSON ISD 15 · IRVING ISD 7 · CARROLLTON-FARMERS BRANCH
+  ISD 4 · plus a small tail (Balch Springs, DeSoto ISD, University Park).
+- TX-26-00991 reads exactly as designed live: ACT $0.00 `verified`, two `external` lines
+  `unavailable` with no amount, completeness "2 named collector(s) outside ACT not retrieved".
+
+**⚠ DEPLOY-WINDOW LESSON REPEATED (a diagnosis error worth recording).** The post-deploy poll reported
+"not live" for ~4 minutes. The build was actually live; the *poll* was broken — a bash `sed` mangled
+the token out of the env file, so every probe was a silent **401** that `grep -c` scored as 0. Verify
+with the same mechanism you trust (the Python client that already worked), and read the RESPONSE BODY,
+not a grep count, before concluding a deploy failed.
+
+**NEXT IN THE ARC:** (1) `property_intel.py:477` `DALLAS|PARKLAND` regex — its own standalone gate
+(sixth §19 instance) + a §19 Q2 guard extension for hardcoded jurisdiction names in a parser;
+(2) the **gds** adapter (one fetcher, agency-parameterised, CAD-keyed — covers 4 of the 5 mapped
+collectors); (3) the **irving_act** adapter; (4) UI surfacing of the per-collector lines.
+
 **QUEUED / PENDING (gated on the user):**
 - **Phase 4** (above) — held for explicit go.
 - **⚠ AWAITING ITS OWN FINGERPRINTED FF GATE — §17.4 zero-balance fix (BUILT, NOT DEPLOYED).** Alters
