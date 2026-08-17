@@ -2140,6 +2140,9 @@ def _case_input(case: dict, pi: dict):
         defendant=case.get("defendant"),
         owners=owners,          # FULL list — the no-conveyance-path branch needs every co-owner
         all_defendants=_defendant_names(case),   # …and every defendant, not just the lead
+        # The petition's own per-entity breakdown = the COLLECTOR MEMBERSHIP ORACLE (design §22/§23).
+        # Without it a Garland payoff reads the ACT scalar alone — measured at 23% of the true number.
+        tax_breakdown=case.get("tax_breakdown"),
     )
 
 

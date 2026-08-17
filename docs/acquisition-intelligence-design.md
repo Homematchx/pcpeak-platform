@@ -1193,3 +1193,82 @@ in ACT, so Irving ISD self-collects somewhere else. Unmapped — treat as `unava
 **Unchanged hard rules:** membership before balance; absence is `unknown`, never a value; own
 fingerprinted FF gate per served-artifact change, never batched; blast radius measured on the real
 book before shipping.
+
+## 23. BUILT 2026-08-17 — per-collector payoff schema + petition membership (gate 1 of the GISD arc)
+
+**The finding that collapsed the increment: membership was already in the database.** §22 planned a
+petition parser; none was needed. `cases.tax_breakdown` — the petition's Exhibit-A per-entity rows,
+already captured by the existing extraction schema — **is populated on 321 of 334 cases (96%)** and
+names the plaintiff taxing districts directly. 75 distinct entities, including GARLAND ISD (49 cases),
+CITY OF GARLAND (39), RICHARDSON ISD (23), IRVING ISD (8), CARROLLTON-FARMERS BRANCH ISD (7).
+
+*(PDF parsing was attempted first and abandoned on evidence: petitions carry multiple font encodings
+per document, varying by law firm — a shift-25 decode read the Perdue Brandon petition and 0 of 12
+sampled others. The stored breakdown is both more robust and already there.)*
+
+### 23.1 The coverage backlog — measured, not hunted
+
+**108 of 334 cases (32.3%) name at least one collector outside ACT.** Not a Garland edge case — a third
+of the book.
+
+| collector | cases | platform | agency | adapter |
+|---|---|---|---|---|
+| GARLAND ISD | 49 | gds | 057909 | no |
+| CITY OF GARLAND | 39 | gds | 057120 | no |
+| RICHARDSON ISD | 23 | gds | 057916 | no |
+| IRVING ISD | 8 | irving_act | — | no |
+| CARROLLTON-FARMERS BRANCH ISD | 7 | gds | 057903 | no |
+| 23 further units (PIDs, utility liens, small cities, transferred tax liens) | 1–5 each | unmapped | — | no |
+
+That last row is the point of the exercise: coverage is now a **measured set with a named tail**,
+not an open-ended hunt. An unmapped unit is `scope='unknown'` and is **never assumed to be inside
+ACT** — the fail-safe direction.
+
+### 23.2 What shipped
+
+`jurisdictions.py` (new) — canonical unit names (petitions suffix "- TRACT 1 (2022)"; the same
+collector must not fragment), the petition membership oracle, a collector→platform→agency registry,
+and per-collector lines with independent labels. **Agency ids are DATA** (`data/gds_agency_roster.json`,
+captured from the platform's own roster) — an AST test asserts no 6-digit id is a literal in the
+module, the same discipline the `DALLAS|PARKLAND` regex broke. `ADAPTERS` is **empty by design**: the
+schema is correct with zero adapters because every external line reads `unavailable`, which is true.
+
+`acquisition.py` — `CaseInput.tax_breakdown / act_units / collector_balances`; `tax_payoff_lines()`;
+gate `collector_balance_unavailable`; and an incomplete payoff forces `closable=None`
+(`indeterminate_payoff_incomplete`). The scalar `tax_payoff` is unchanged, so no existing consumer
+shifts underneath.
+
+### 23.3 Blast radius — and the severity the measurement corrected
+
+Modelled first as **`substantive`**, the gate lifted **95 of 334 cases (28.4%) HOLD → GO-WITH-CONDITIONS**
+— a case reading *more* positive because we had just discovered its payoff was **incomplete**.
+Backwards. Severity is therefore **`generic`**:
+
+| | |
+|---|---|
+| verdict changes across the book | **0** |
+| `collector_balance_unavailable` fires | **108 (32.3%)** |
+| closability moved confident → **INDETERMINATE** | **108** |
+
+Those 108 previously returned a confident seller-net from a payoff missing a named collector. Fail-loud
+is delivered by the mechanism that governs money (closability), not by a verdict label that would have
+flattered the case.
+
+### 23.4 Pins
+
+`test_jurisdictions.py` **46/46** — canonicalisation incl. tract suffixes; membership from the
+petition; multi-tract rows summed not fragmented; unknown unit never assumed ACT; roster-driven
+agencies with the AST literal guard; `unavailable` carries no amount; completeness UNKNOWN when ACT's
+own unit coverage was never captured; the 3909 Cambridge reconstruction ($25,750 with both collectors,
+ACT alone 23%); gate is generic, verdict unchanged, closability INDETERMINATE, and an all-ACT Dallas
+parcel raises no false alarm. Regressions green: `test_acquisition` 148/148,
+`backend/test_acquisition_api` 52/52, `test_set_invariance` 26/26, `test_zero_balance_band` 18/18,
+`test_comps` 111/111, `test_balance_card` 17/17.
+
+### 23.5 Next
+
+Adapters, behind the interface: **gds** (one fetcher, agency-parameterised, CAD-number keyed — covers
+Garland ISD + City of Garland + Richardson ISD + C-FB ISD, 118 of the 126 external collector rows) then
+**irving_act**. Irving is one increment behind the interface, not a special case. Standalone and
+independent: the `property_intel.py:477` `DALLAS|PARKLAND` regex (sixth §19 instance) plus the §19 Q2
+guard extension for hardcoded jurisdiction names in a parser.

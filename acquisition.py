@@ -27,6 +27,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+import jurisdictions
+
 # ── assumption labels ──────────────────────────────────────────────────────────────────────────
 VERIFIED = "verified"
 ESTIMATED = "estimated"
@@ -142,6 +144,15 @@ class CaseInput:
     # the remaining co-owners are exactly where a conveyance path hides (TX-23-00553: owners[1] is
     # HERNANDEZ NORMA, same family as the defendant). The blocking branch reads THIS, not owners[0].
     owners: list = field(default_factory=list)
+    # The petition's Exhibit-A per-entity breakdown — [{entity, taxAmt, penaltyInterest, total}].
+    # THIS IS THE COLLECTOR MEMBERSHIP ORACLE (design §22): a taxing district that sued is owed, and
+    # `current_tax_balance` only covers the ones ACT bills. Never inferred from the address.
+    tax_breakdown: list = field(default_factory=list)
+    # The units ACT bills for THIS parcel, when captured. None = coverage UNKNOWN — ACT renders no
+    # unit list at all when the balance is $0, so absence is not "ACT collects nothing".
+    act_units: Optional[list] = None
+    # {collector: live balance} from a collector-portal adapter. Empty until an adapter ships.
+    collector_balances: dict = field(default_factory=dict)
     # EVERY defendant named in the suit, not just the lead. `defendant` is the lead only; tax suits
     # routinely name 2–21 parties and the record owner is very often ONE OF THEM (Ruby: the DCAD
     # owner TAYLOR FELICIA D is co-defendant "Felicia Denise Taylor"). Measured on the live book:
@@ -193,6 +204,28 @@ def tax_payoff(case: CaseInput, as_of: Optional[datetime.date] = None) -> dict:
         return {"amount": round(est), "label": ESTIMATED, "basis": "fallback_estimate",
                 "note": f"NO live balance — est. from filing ${filed:,.0f} + {months}mo penalty/interest"}
     return {"amount": None, "label": UNAVAILABLE, "basis": "none", "note": "no live balance or filing amount"}
+
+
+def tax_payoff_lines(case: CaseInput) -> dict:
+    """PER-COLLECTOR payoff lines (design §17.3, §23) — the structure `tax_payoff` alone cannot express.
+
+    A single `verified` scalar asserts *correct* and silently implies *complete*; only the first was
+    ever checked. Measured on 3909 Cambridge Dr the ACT balance was **23% of the true payoff**
+    ($5,974.81 of $25,749.87 across ACT + Garland ISD + City of Garland). This returns one labelled
+    line per collector plus a completeness verdict, so an incomplete payoff can SAY SO instead of
+    reading low and confident.
+
+    An `unavailable` line contributes NOTHING to any sum — a named-but-unreached collector is a known
+    debt of unknown size, never $0."""
+    lines = jurisdictions.collector_lines(
+        case.tax_breakdown, act_balance=case.owed, act_units=case.act_units,
+        fetched=case.collector_balances)
+    completeness = jurisdictions.payoff_completeness(lines)
+    known = [l["amount"] for l in lines["collectors"] if l["amount"] is not None]
+    act_amt = lines["act"]["amount"] or 0
+    return {"act": lines["act"], "collectors": lines["collectors"],
+            "known_total": round(act_amt + sum(known)) if (known or lines["act"]["amount"] is not None) else None,
+            "completeness": completeness}
 
 
 def tax_suit_attorney_fees(case: CaseInput, tax_payoff_amount: Optional[float]) -> dict:
@@ -320,6 +353,12 @@ def seller_net_sheet(case: CaseInput, acq: AcquisitionInputs, tax_pay: dict) -> 
     has_unquantified = any(v is None for v in lien_vals)
     lien_amount = sum(v for v in lien_vals if v)              # quantified liens only
     liens_known = (acq.lien_status != "unavailable") and not has_unquantified
+    # A NAMED-BUT-UNRETRIEVED COLLECTOR IS THE SAME SHAPE AS AN UNQUANTIFIED LIEN (design §23): a
+    # known debt of unknown size. `tax_amount` here is the ACT scalar, which on such a parcel is only
+    # part of the payoff — computing `closable` from it would be a confident answer to a question the
+    # data cannot answer. Measured worst case: ACT was 23% of the true payoff. So an incomplete
+    # payoff forces INDETERMINATE exactly as an unquantified lien does.
+    payoff_incomplete = bool(tax_payoff_lines(case)["completeness"]["unavailable_collectors"])
 
     agreed = acq.agreed_price
     seller_closing = (agreed or 0) * ACQ_CONFIG["seller_closing_cost_pct"]
@@ -327,6 +366,8 @@ def seller_net_sheet(case: CaseInput, acq: AcquisitionInputs, tax_pay: dict) -> 
 
     if agreed is None:
         seller_net, closable, gate = None, None, "no_agreed_price"
+    elif payoff_incomplete:
+        seller_net, closable, gate = agreed - total_payoffs, None, "indeterminate_payoff_incomplete"
     elif not liens_known:
         seller_net, closable, gate = agreed - total_payoffs, None, "indeterminate_liens_unavailable"
     else:
@@ -513,6 +554,22 @@ def deal_gates(case: CaseInput, acq: AcquisitionInputs, seller: dict) -> list:
     # Heir/estate title — GRADUATED (minimal Stage-3 graduated gate). A real owner-mismatch (named
     # counterpart) is SUBSTANTIVE and lifts; absentee/estate language without a mismatch is a GENERIC
     # soft signal that does not lift out of HOLD on its own.
+    # A taxing district that SUED but whose balance we cannot retrieve is a known debt of unknown
+    # size. Structurally identical to an identified-but-unquantified lien (§5.3) and treated the
+    # same: SUBSTANTIVE, closability INDETERMINATE, never a confident low payoff. This is what makes
+    # "named collector unreachable" fail loud instead of silently short.
+    # SEVERITY IS `generic`, DELIBERATELY, AND THE BLAST RADIUS IS WHY. Modelled as `substantive` it
+    # lifted 95 of 334 cases (28.4%) out of HOLD into GO-WITH-CONDITIONS — a case would have read MORE
+    # positive because we had just discovered its payoff was INCOMPLETE. Backwards. `generic` surfaces
+    # the finding without lifting anything, and closability is forced INDETERMINATE in
+    # `seller_net_sheet` independently of severity, so the fail-loud requirement is met by the
+    # mechanism that actually governs money rather than by the verdict label.
+    missing = tax_payoff_lines(case)["completeness"]["unavailable_collectors"]
+    if missing:
+        gates.append({"gate": "collector_balance_unavailable", "severity": "generic",
+                      "detail": f"Named in the suit but collected outside ACT and NOT retrieved: "
+                                f"{'; '.join(missing)}. The tax payoff is INCOMPLETE — quantify before "
+                                f"any offer; an unretrieved collector is never $0"})
     if no_conveyance_path(case):
         holders = "; ".join(o.get("name", "?") for o in (case.owners or []) if isinstance(o, dict))
         n_def = len(case.all_defendants or []) or 1
@@ -650,6 +707,10 @@ def analyze(case: CaseInput, acq: AcquisitionInputs, as_of: Optional[datetime.da
         "owed_live": labeled(case.owed, VERIFIED, "live ACT balance"),
         "condition": cond,
         "tax_payoff": payoff,
+        # PER-COLLECTOR breakdown alongside the scalar. The scalar stays the ACT live balance so no
+        # existing consumer changes behaviour; this is what lets a payoff say "incomplete" instead of
+        # reading low and confident (design §17.3/§23).
+        "tax_payoff_lines": tax_payoff_lines(case),
         "recommended_rule_pct": rule,
         "repairs_used": labeled(repairs, repairs_label,
                                 "override" if acq.repair_estimate is not None else "engine condition estimate"),
