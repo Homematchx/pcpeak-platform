@@ -1108,3 +1108,88 @@ further work here:** drive `AcctDetailRes.aspx` through the existing Playwright 
 `26380500080060000` (Garland) and `26545500120260000` (the Garland-address parcel with no GISD match)
 and check whether either names its school district. If DCAD names it, step 1 is unblocked and this
 verdict is revisited; if not, Garland stays manual permanently.
+
+## 22. GISD CAPTURE — THE TWO PRE-BUILD ANSWERS (2026-08-16). §21's verdict is SUPERSEDED.
+
+§21 concluded "blocked-on-data" because it hunted for a *downstream* ISD oracle. The petition is the
+oracle, and we already scrape it at step one. That collapses step 1 and both pre-build questions are
+now answered against live pages (not the screenshots — portals change markup).
+
+### 22.1 ANSWER — which address does the portal tolerate? **Don't use an address. Use the CAD number.**
+
+Both offices expose a **Search by CAD Number** mode, and the CAD number is the exact 17-char parcel key
+we ALREADY store as `account_number` from ACT/DCAD. Confirmed live on three parcels across two
+agencies (`26380500080060000`, `26238500070260000`, `26341500100280000`). **The address-tolerance risk
+is designed out, not mitigated** — build no address normalization, and the LYNNACRE/"Lynna Cre" class
+of defect cannot reach this fetch. Address search stays a documented fallback only.
+
+Residual, handled by the hard rule: `26545500120260000` (TX-26-00774, a Garland *address*) returns 0
+GISD matches. Under petition-gated membership we would never query it. A 0-match on a
+**petition-confirmed** parcel is `unavailable` → INDETERMINATE, surfaced — never $0.
+
+### 22.2 ANSWER — is the petition the complete collector record? **Authoritative for MEMBERSHIP, incomplete for AMOUNTS.**
+
+Decoded from the live petition (custom font encoding, every glyph shifted by 25):
+
+> "Now come the taxing districts set out below: **CITY OF GARLAND and GARLAND INDEPENDENT SCHOOL
+> DISTRICT** on behalf of themselves and all taxing districts for Whom they collect."
+
+- **Membership: authoritative.** GISD is a named plaintiff ⇒ the parcel is definitionally in GISD. No
+  proxy, no inference. It also names **TWO** collectors, not one — the petition supplies the full
+  *plaintiff-side* collector list, which is exactly the agency set to query.
+- **Amounts: NOT complete.** The four ACT-billed county units (Dallas County, Dallas College, Parkland,
+  School Equalization) are **not plaintiffs here**, yet ACT shows **$5,974.81** owed on this parcel.
+  So petition ∪ ACT is required and **neither source alone is complete**. The §17.3 negative-signal
+  schema fix must still run — it is what catches a collector no source enumerated.
+
+### 22.3 THE MEASUREMENT THAT SETTLES THE REQUIREMENT — 3909 Cambridge Dr (the deal PC Peak closed)
+
+CAD `26341500100280000`, owner MELKA GEORGE F, `Lawsuit: Yes` on both rolls:
+
+| collector | agency | account | balance due |
+|---|---|---|---|
+| ACT — Dallas county-side | — | `26341500100280000` | $5,974.81 |
+| **Garland ISD** | **057909** | `0000089040` | **$12,108.43** |
+| **City of Garland** | **057120** | `0000110637` | **$7,666.63** |
+| **TRUE TOTAL** | | | **$25,749.87** |
+
+**The ACT-only payoff is 23.2% of the real number — it understates by $19,775 (77%).** On the very
+property the firm already closed. Rates confirm the shape: GISD $1.170900 + City $0.689746 dwarf the
+county-side levy. This is the requirement restated as evidence: in the target market the instrument is
+not slightly off, it is wrong by 4×.
+
+### 22.4 THE BONUS FINDING — this is NOT a Garland special case; it is one parameterized integration
+
+texaspayments.com publishes its agency roster as JSON on the home page. The Dallas County (`057…`)
+self-collecting offices are:
+
+| office | agency |
+|---|---|
+| City of Garland Tax Office | `057120` |
+| Garland ISD Tax Office | `057909` |
+| Carrollton-Farmers Branch ISD Tax Office | `057903` |
+| Richardson ISD Tax Office | `057916` |
+
+**That set maps EXACTLY onto the cities where §21 measured "ACT names no ISD"** (CG Garland, CC
+Carrollton, CF Farmers Branch, CR Richardson). Two independent observations converging on the same
+set is strong corroboration of the model: *ACT silence ⇔ a self-collecting office exists*. Step 4 is
+therefore **ONE fetcher parameterized by agency code**, not a Garland one-off — and the petition's
+plaintiff list is what selects the agencies to query. (Irving is NOT on this platform: CI shows no ISD
+in ACT, so Irving ISD self-collects somewhere else. Unmapped — treat as `unavailable`, never $0.)
+
+### 22.5 REVISED PLAN
+
+1. **Petition → membership + agency set.** Parse the "Now come the taxing districts set out below: …"
+   clause into a collector list; map named collectors to GDS agency codes. Ships with the schema fix.
+2. **§17.3 negative-signal schema.** Per-jurisdiction lines, independent labels; ACT-silence ⇒ an
+   external collector exists ⇒ line `unavailable` ⇒ INDETERMINATE. Correct even with zero portal
+   integration, and it is what covers collectors no petition named.
+3. **DCAD** — parcel facts only. No longer the jurisdiction oracle. **The `property_intel.py:477`
+   `DALLAS|PARKLAND` regex fix is independent and still owed** (sixth §19 instance).
+4. **GDS fetch, keyed on CAD number, agency-parameterized, confirmed-membership only.** Fail-soft: a
+   timeout degrades that line to `unavailable` → INDETERMINATE and must never block or zero the
+   ACT/DCAD/petition enrichment already landed.
+
+**Unchanged hard rules:** membership before balance; absence is `unknown`, never a value; own
+fingerprinted FF gate per served-artifact change, never batched; blast radius measured on the real
+book before shipping.
