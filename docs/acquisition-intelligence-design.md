@@ -1507,3 +1507,27 @@ as a labelled FLOOR; both halves of the double-count guard; no movement on all-A
 Grant St flip end to end. Regressions green: `test_acquisition` 148/148, `test_jurisdictions` 47/47,
 `test_collectors_gds` 28/28, `test_set_invariance` 29/29, `test_dcad_jurisdictions` 25/25,
 `test_zero_balance_band` 18/18, `backend/test_acquisition_api` 52/52.
+
+### 26.5 DATA SYNC LANDED (2026-08-17) — 63 cases now priced on real payoffs
+
+Ran after the code gate, never with it. `sync_to_prod.py --update-existing --only <63 cases>`:
+created 0 · updated 63 · failed 0 · reconciled.
+
+**Live on prod after the sync:** payoff basis across the 63 — `act_plus_collectors` **31** ·
+`collectors_outside_act` **9** · `act_live_balance` 6 · `fallback_estimate` 17. **40 cases now priced
+with collector balances, aggregate payoff $602,380** — matching the local projection exactly.
+
+**Spot-checks against the LIVE portal, prod vs source:**
+
+| case | collector | portal | prod | |
+|---|---|---|---|---|
+| TX-26-00774 | RICHARDSON ISD · CITY OF GARLAND | $14,082.76 · $8,154.64 | identical | ✓ |
+| TX-26-01459 | RICHARDSON ISD | $20,089.29 | identical | ✓ |
+| TX-24-00098 | GARLAND ISD | $19,639.35 | identical | ✓ |
+
+*(The third check first read MISMATCH because the verification script used a guessed CAD rather than
+the case's own — the `cad-match=False` flag caught it immediately. Tester error, not data error, and
+the identity guard is exactly what made it visible in one line.)*
+
+**Payoffs now live on prod:** TX-26-00774 **$29,050** (was $6,812) · TX-26-01459 **$33,479** (was
+$13,390) · TX-24-00098 **$48,610** (was $28,970).
