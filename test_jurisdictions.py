@@ -95,8 +95,14 @@ def test_resolution_and_roster():
     u = J.resolve_collector("MIDTOWN PREMIUM PUBLIC IMPROVEMENT DISTRICT")
     check("an UNKNOWN taxing unit is 'unknown', never 'act'", u["scope"] == "unknown", str(u))
     check("…and is not reachable", u["reachable"] is False)
-    check("no adapter exists yet, so nothing claims to be reachable",
-          all(not J.resolve_collector(n)["reachable"] for n in J.EXTERNAL_COLLECTORS))
+    # UPDATED §25: the gds adapter now exists, so gds collectors ARE reachable. Reachability is
+    # derived from the adapter registry, so it can never over-claim — irving_act has no adapter and
+    # still reports unreachable, which is what keeps its lines honestly `unavailable`.
+    gds = [n for n, s in J.EXTERNAL_COLLECTORS.items() if s["platform"] == "gds"]
+    check("gds collectors are reachable now that the adapter exists",
+          all(J.resolve_collector(n)["reachable"] for n in gds), str(gds))
+    check("irving_act has no adapter and does NOT claim reachability",
+          J.resolve_collector("IRVING ISD")["reachable"] is False)
     # §19 Q2 discipline: agency ids must not be literals in the module.
     src = (ROOT / "jurisdictions.py").read_text()
     tree = ast.parse(src)

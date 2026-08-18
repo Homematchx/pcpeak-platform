@@ -1353,3 +1353,57 @@ nav-bar anchor trap; petition corroboration). `test_set_invariance.py` **26 → 
 **Deploy note:** `property_intel.py` is a LOCAL scraping tool — it is **not imported by the web app**,
 so no served artifact changes and prod behaviour is unaffected until cases are re-enriched locally.
 The fingerprint check below proves that rather than assuming it.
+
+## 25. BUILT 2026-08-17 — the `gds` collector adapter (texaspayments.com)
+
+One fetcher, agency-parameterised, covering the self-collecting Dallas County offices: **Garland ISD,
+City of Garland, Richardson ISD, Carrollton-Farmers Branch ISD — 4 of 5 mapped collectors, 118 of 126
+external collector rows.** Adding another GDS office is a roster entry, not code.
+
+### 25.1 The confirmed shape, built as specified
+
+- **CAD number is the key.** Both systems share the 17-char parcel id and we already store it, so
+  address normalisation is designed OUT rather than solved. Address search is never used.
+- **Agency ids come from the roster file**, resolved by name at call time; the AST guard asserts no
+  literal appears in the adapter.
+- **Membership before balance.** `fetch_for_case` only queries collectors the PETITION named.
+- **Fail-soft.** Any failure — timeout, no match, changed markup, unparseable page — returns nothing
+  for that collector, which renders `unavailable` → INDETERMINATE. Never $0, never blocks enrichment
+  already stored.
+- **Local only.** The cloud never scrapes: the adapter runs during local enrichment and writes
+  `property_intel.collector_balances`, which the served engine merely reads.
+
+### 25.2 Two findings from building it against the live portal
+
+**1. The balance is the SUM ACROSS YEARS, not the expanded detail block.** The account page expands
+one year by default. On 3909 Cambridge that block reads **$4,086.97** while the account actually owes
+**$12,108.43** across three delinquent years. Parsing the block would have understated by 3× — the
+same shape as the original ACT-only defect, one level down. Pinned by test.
+
+**2. AN IDENTITY GUARD WAS MISSING AND IS NOW ENFORCED.** The first sample stored balances without
+confirming the returned page was for the requested parcel. That is precisely the cross-contamination
+class that put one parcel's enrichment into another case's row (2.1% of the book, §17.2). The adapter
+now compares the returned CAD against the requested CAD and **discards any result it cannot tie to the
+parcel**, recording it as rejected rather than storing it.
+
+Live end-to-end on 3909 Cambridge: Garland ISD **$12,108.43** (acct 0000089040) + City of Garland
+**$7,666.63** (acct 0000110637) = **$19,775.06**, matching the manual measurement to the cent.
+
+### 25.3 A FETCHED zero is not an ASSUMED zero
+
+TX-26-00991 (413 W Carolyn Dr) filed at $11,679 and was flagged `Unconfirmed` by §17.4. The adapter
+returns **$0.00 with `Lawsuit: No`** from Garland ISD — and the identity is confirmed: CAD
+`26485500040430000` is 413 W Carolyn Dr per ACT, and GISD's owner "MACIAS JUAN CARLOS ESTRADA" is the
+defendant "JUAN CARLOS ESTRADA MACIAS". **The taxes really were paid.** The adapter therefore resolves
+`Unconfirmed` in BOTH directions — surfacing real debt, and clearing cases that are genuinely settled.
+That distinction is the whole point of the arc: a verified zero is a fact, an assumed zero was the bug.
+
+### 25.4 Pins
+
+`test_collectors_gds.py` **28/28** — sum-across-years vs the expanded block; a fetched $0 rendering
+`verified` (and completing the payoff) while an absent balance stays `unavailable`; five fail-closed
+shapes; no hardcoded agency id; the identity guard present; membership gating; roster-resolved
+agencies; and the registry honestly reporting `gds` reachable while `irving_act` is not.
+`test_jurisdictions` updated (the "no adapter exists yet" pin is now "gds reachable, irving_act not").
+
+`collector_backfill.py` is the local runner (`--dry-run` / `--limit` / `--case`).

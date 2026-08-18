@@ -104,9 +104,12 @@ EXTERNAL_COLLECTORS = {
     "IRVING ISD":                    {"platform": "irving_act", "roster_name": None},
 }
 
-# Adapter registry. EMPTY BY DESIGN in this increment — the schema is correct with zero adapters
-# because every external line reads `unavailable`, which is the truth.
-ADAPTERS = {}
+# Adapter registry — which platforms we can actually reach. `reachable` is derived from THIS, so a
+# collector is only ever claimed as fetchable when an adapter really exists. The fetchers themselves
+# live in local scraping modules (the cloud never scrapes) and are not imported here: this is a
+# capability declaration, so the served engine can reason about reachability without pulling in
+# Playwright.
+ADAPTERS = {"gds": "collectors_gds"}
 
 
 def load_gds_roster(path=None):

@@ -2143,6 +2143,11 @@ def _case_input(case: dict, pi: dict):
         # The petition's own per-entity breakdown = the COLLECTOR MEMBERSHIP ORACLE (design §22/§23).
         # Without it a Garland payoff reads the ACT scalar alone — measured at 23% of the true number.
         tax_breakdown=case.get("tax_breakdown"),
+        # Collector balances fetched LOCALLY by the adapters (cloud never scrapes) and stored on
+        # property_intel. {collector: {amount, …}} → the engine wants {collector: amount}. Absent =
+        # `unavailable`, which is the correct state, so a missing dict changes nothing.
+        collector_balances={k: v.get("amount") for k, v in (pi.get("collector_balances") or {}).items()
+                            if isinstance(v, dict) and v.get("amount") is not None},
     )
 
 
