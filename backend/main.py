@@ -654,6 +654,19 @@ def init_db():
             mv, bal, _h = _pi_subvalues(pij)
             db.execute("UPDATE cases SET current_tax_balance=?, market_value=? WHERE case_number=?",
                        [bal, mv, cn])
+        # …and the same one-time backfill for the COLLECTOR-coverage columns (§31). Without this the
+        # columns stay NULL on every pre-existing row until that case is next written, so the band
+        # would read "never checked" for parcels whose collectors HAVE been fetched — the very state
+        # this gate exists to end. Verified against live prod, where they came up all-null before it.
+        # Keyed on tax_breakdown/property_intel presence, not on the column being NULL, because NULL
+        # is also the correct answer for a case with nothing fetched and must stay reachable.
+        for cn, pij, tbj in db.execute(
+                "SELECT case_number, property_intel, tax_breakdown FROM cases "
+                "WHERE property_intel IS NOT NULL OR tax_breakdown IS NOT NULL").fetchall():
+            ctot, cnt = _collector_subvalues(pij)
+            db.execute("UPDATE cases SET collector_fetched_total=?, collectors_fetched=?, "
+                       "collectors_named=? WHERE case_number=?",
+                       [ctot, cnt, _named_external_count(tbj), cn])
         # One-time case_snapshots BASELINE: every case already live at migration time gets a genesis
         # snapshot of its current field values (source='baseline', old=NULL), so history doesn't start
         # blank for the existing book — new changes then diff against a real baseline instead of a void.
