@@ -1771,3 +1771,73 @@ where 11 did before. The band now joins the enforced-parity family:
 
 `test_zero_balance_band.py`'s harness was extended for the new dependency (18/18 still green) — a
 reminder that extracting functions for a browser test couples the test to the artifact's call graph.
+
+## 32. BUILT 2026-08-17 — enrichment integrity: resolving the accounts that block every adapter
+
+The last coverage gap, and the lowest-certainty work in the arc. Two populations, one operation:
+**A** the 18 cases whose petition names a reachable collector but that carry NO DCAD account (so no
+adapter can be queried at all), and **B** the 4 carrying a WRONG account (§17.2 contamination
+residue, wrong in LOCAL as well as prod — which is why a plain re-sync was never the fix).
+
+### 32.1 THE FINDING THAT CHANGED THE GATE — ACT verification IS the second signal
+
+Validated the pipeline first on a case whose answer was already known by hand (5221 Robin Road →
+`26380500080060000`). The resolver returned **the correct account** but graded it **`uncorroborated`**,
+because DCAD's owner reads "VILLANUEVA LUIS A C & GELISTA HERLINDA M" against a defendant of
+"HERLINDA M. GELISTA" and the name heuristic did not converge.
+
+Under the original gate (`corroborated` only) that verified-correct answer would have been **thrown
+away**. So the gate was restructured: a candidate is accepted when **ACT's own site address confirms
+the parcel**, whichever grade the name heuristic assigned. This is *stricter*, not looser — the ~2%
+confidently-wrong-parcel rate the guard exists to stop is exactly the case where ACT **disagrees**,
+and ACT is an independent authority rather than a fuzzy string compare. Nothing is accepted on an
+address search alone.
+
+### 32.2 Result — 12 of 22 resolved, every one ACT-verified
+
+| outcome | n | |
+|---|---|---|
+| **RESOLVED + ACT-verified + written** | **12** | 5 also `corroborated` by name, 7 `uncorroborated`-but-ACT-confirmed |
+| UNRESOLVED — no DCAD candidate | 8 | 6 of these have **no street address at all** (blank, or a legal description only) — structurally unresolvable by address search |
+| REJECTED by verification | 2 | the case has an EMPTY address, so ACT had nothing to verify against — the guard correctly refused to write |
+
+**Population B: 3 of 4 contamination residues fixed and ACT-verified** — TX-24-00080 → `00C23700000000211` (2220 CANTON ST) · TX-26-00990 → `00000626481080000` (10130 SHAYNA DR) · TX-26-01093 → `00000510373000000` (3048 BEAUCHAMP ST).
+
+**⚠ TX-26-00086 required a deliberate act, not just a skip.** Re-resolution found no candidate, but the
+case still carried the KNOWN-WRONG account marked `resolved` — so every downstream consumer would keep
+trusting a parcel belonging to another case. The account, status and all values derived from it were
+**cleared to `needs_lookup`**. Leaving a known-wrong value marked confident is the exact failure this
+whole arc exists to eliminate; absence is the honest state.
+
+**Adapter coverage unlocked: eligible cases 71 → 80.**
+
+### 32.3 What remains, and why it is not a defect
+
+The 8 unresolved stay `needs_lookup` → payoff **INDETERMINATE**. Six have no street address in the
+petition extraction, so this is an EXTRACTION gap upstream of resolution, not a resolver limitation —
+the correct next target, and materially different work from account resolution.
+
+### 32.4 ⚠ A THROTTLED PORTAL READ AS A CLEAN NEGATIVE — caught by ground truth, now impossible
+
+Backfilling the 12 newly-resolved cases, **six came back UNAVAILABLE including TX-26-01455 — a parcel
+confirmed BY HAND earlier the same session to be on BOTH Garland rolls** (GISD acct `0000103464`
+$4,896.59, City acct `0000110637`). A parcel cannot stop being on a roll, so the result was
+impossible, and only ground truth made that visible.
+
+**Diagnosis:** after the ~200-request fleet run, texaspayments began **302-ing every request to
+`/Error/WrongRequest`**. The two ACT hosts answered 200 normally throughout, so it is that portal
+throttling us, not a code regression and not a network fault.
+
+**The design gap:** `parse_account_detail` saw an error page, found no account, returned `{}` — and
+the caller recorded `unavailable`, **indistinguishable from "this parcel is not on the roll."** Safe
+(nothing wrong was written) but misleading, and it would have been reported as coverage that does not
+exist.
+
+**Fixed:** `PortalUnavailable` is raised when the portal redirects to an error page or the search form
+is absent, propagates past the blanket `except`, and is recorded as `_portal_unavailable` —
+infrastructure to retry, never a fact about a parcel — and the run stops hammering a portal that is
+refusing it. **Verified against the live block**, which was still in force.
+
+This is the same principle as `unavailable` vs `$0`, one layer up: **absence must stay
+distinguishable from a negative.** The nine Garland/C-FB cases are pending a retry once the portal
+recovers; their accounts are resolved and stored, so the retry is a fetch, not a re-resolution.

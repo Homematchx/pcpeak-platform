@@ -78,7 +78,7 @@ async def fetch_one(page, agency: str, cad: str, attempts: int = 2) -> dict:
     roll, and a Richardson ISD parcel owing $14,082.76. Fail-soft is the right FINAL state, but
     accepting a transient failure as the final state silently discards recoverable debt."""
     for i in range(max(1, attempts)):
-        got = await _fetch_once(page, agency, cad)
+        got = await _fetch_once(page, agency, cad)      # PortalUnavailable propagates to the caller
         if got:
             return got
         if i + 1 < attempts:
@@ -86,10 +86,27 @@ async def fetch_one(page, agency: str, cad: str, attempts: int = 2) -> dict:
     return {}
 
 
+class PortalUnavailable(RuntimeError):
+    """The PORTAL is refusing us — not an answer about a parcel.
+
+    Discovered the hard way: after the ~200-request fleet run, texaspayments began 302-ing every
+    request to /Error/WrongRequest. `parse_account_detail` saw an error page, found no account, and
+    returned {} — which the caller then recorded as `unavailable`, i.e. INDISTINGUISHABLE FROM "this
+    parcel is not on the roll". Safe (nothing wrong was written) but misleading: six cases including
+    one KNOWN by hand to be on both Garland rolls looked like clean negatives.
+
+    Absence must be distinguishable from a negative — the same principle as `unavailable` vs `$0`,
+    one layer up. A throttled portal is an infrastructure condition to retry, not a fact about a
+    parcel, and it must never be mistaken for one."""
+
+
 async def _fetch_once(page, agency: str, cad: str) -> dict:
     try:
         await page.goto(f"{BASE}/{agency}", wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
         await asyncio.sleep(1.5)
+        # The portal is refusing us outright — say so, do not let it look like a parcel answer.
+        if "/Error/" in page.url or not await page.query_selector("#searchValue"):
+            raise PortalUnavailable(f"{agency}: portal returned {page.url}")
         # The search-method radios are hidden behind a kendo widget, so set the underlying input and
         # fire its change event — driving the widget's own chrome is brittle and unnecessary.
         await page.evaluate("""() => {
@@ -104,6 +121,8 @@ async def _fetch_once(page, agency: str, cad: str) -> dict:
         await page.wait_for_load_state("domcontentloaded")
         await asyncio.sleep(1.5)
         return parse_account_detail(await page.inner_text("body"))
+    except PortalUnavailable:
+        raise                      # infrastructure, not a parcel answer — must not be swallowed
     except Exception:
         return {}
 
@@ -125,7 +144,13 @@ async def fetch_for_case(collectors, cad: str, browser, roster=None) -> dict:
             info = jurisdictions.resolve_collector(name, roster=roster)
             if not info or info["platform"] != "gds" or not info["agency"]:
                 continue
-            got = await fetch_one(page, info["agency"], cad)
+            try:
+                got = await fetch_one(page, info["agency"], cad)
+            except PortalUnavailable as e:
+                # Record it as an INFRASTRUCTURE fault, distinct from a per-parcel negative, and stop
+                # hammering a portal that is refusing us.
+                out.setdefault("_portal_unavailable", []).append(str(e))
+                break
             if not got:
                 continue                      # fail-soft → stays `unavailable`
             # IDENTITY GUARD. Confirm the page we got back is for the parcel we asked about. A search
