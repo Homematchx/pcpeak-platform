@@ -22,9 +22,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import collectors_act
 import collectors_gds
 import jurisdictions
 from browser_env import chrome_path
+
+# platform → the adapters that can reach it. Adding a platform is an entry here; the runner below is
+# platform-agnostic.
+REACHABLE = set(jurisdictions.ADAPTERS)
 
 DB = Path(__file__).parent / "data" / "db" / "pcpeak.db"
 
@@ -46,7 +51,7 @@ def eligible(conn, only=None):
             continue
         named = [c["collector"] for c in jurisdictions.petition_collectors(tb)]
         reach = [n for n in named
-                 if (jurisdictions.resolve_collector(n, roster=roster) or {}).get("platform") == "gds"]
+                 if (jurisdictions.resolve_collector(n, roster=roster) or {}).get("platform") in REACHABLE]
         if reach:
             out.append({"case": cn, "cad": cad, "collectors": reach, "intel": intel})
     return out
@@ -60,7 +65,10 @@ async def run(targets, write=True):
         browser = await p.chromium.launch(executable_path=chrome_path())
         try:
             for t in targets:
+                # Each adapter takes only the collectors on ITS platform and ignores the rest, so a
+                # case naming both a GDS office and an ACT district is served by both in one pass.
                 got = await collectors_gds.fetch_for_case(t["collectors"], t["cad"], browser)
+                got.update(collectors_act.fetch_for_case(t["collectors"], t["cad"]))
                 miss = [c for c in t["collectors"] if c not in got]
                 total = sum(v["amount"] for v in got.values())
                 print(f"  {t['case']:<14} cad={t['cad']}  fetched {len(got)}/{len(t['collectors'])}"

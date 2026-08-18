@@ -1658,3 +1658,60 @@ real cases have data.** Only a no-data case exposes it, which is exactly the cas
 - **partial data** still computes, so the fix cannot over-blank real figures;
 - **source guard** — every money field must be interpolated through `fmtC()`; a future field added
   raw is caught. Verified to have teeth against a synthetic unwrapped field.
+
+## 30. BUILT 2026-08-17 — the `irving_act` adapter, behind the same interface
+
+Irving ISD runs its **own copy of the same ACT software** Dallas County uses, so its detail page is a
+plain `showdetail2.jsp?can=<CAD>&ownerno=0` GET — **no session, no widget, no browser**. That is a
+real simplification: the adapter runs in-process, so the backfill reaches it without Playwright.
+
+Same contract as `gds`: CAD-keyed (no address normalisation), membership before balance, identity
+guard on every fetch, retry once, fail-soft to `unavailable` → INDETERMINATE. The instance path
+(`irving`) is registry DATA on the collector spec (`act_path`), asserted absent from the fetcher.
+`collector_backfill.py` is now platform-agnostic — each adapter takes only the collectors on its own
+platform, so a case naming both a GDS office and an ACT district is served by both in one pass.
+
+### 30.1 Live result — all 8 Irving cases, 0 discards, 0 unavailable
+
+**$117,358.39 fetched.** Every returned site address matched its case address independently of the
+account match. Payoff effect:
+
+| case | payoff before → after |
+|---|---|
+| TX-26-00041 | $83,263 → **$171,467** (+$88,204) |
+| TX-26-00056 | $10,765 → **$25,207** |
+| TX-26-00085 | $13,360 → **$26,494** |
+| TX-23-01976 | $1,428 → $2,731 |
+| TX-23-00768 | $14,834 → **$274** |
+| TX-23-01979 | $18,742 → **$0** |
+| TX-23-00478 | $27,257 → **$0** |
+
+**The three DECREASES are correct and worth stating.** Those cases had a known ACT $0 and were falling
+back to an estimate derived from the filing amount; now every named collector has been read and
+returns ~zero, so the payoff is a **verified** $0/$274 rather than a guess. The adapter resolves
+uncertainty in both directions — that is the same mechanism that made TX-26-00991 verified-paid.
+
+TX-26-00041's $88,203.96 was checked rather than accepted: current $3,382.91 + prior $84,821.05
+reconciles exactly, the petition filed Irving ISD at $28,778 (since accrued), and City of Irving is
+inside ACT's units so no third collector is missing.
+
+### 30.2 ⚠ FOUND, NOT FIXED — the §17.4 band and the payoff now disagree on 11 cases
+
+`balanceBand()` reads only the ACT scalar, so a parcel with ACT $0 + an active suit still reads
+**"Unconfirmed — needs check"** even where **every named collector has now been fetched and came back
+zero** — where the payoff correctly reads a **verified $0**. Two surfaces, one parcel, different
+answers: the exact family §28 just closed.
+
+**11 cases:** TX-26-00991 · TX-26-00992 · TX-26-00994 · TX-23-02248 · TX-23-02239 · TX-24-00090 ·
+TX-23-00478 · TX-26-00039 · TX-25-00479 · TX-25-00591 · TX-26-01291.
+
+This is the §17.4 residual recorded as *blocked-on-data* — and **the data now exists** for these
+cases. The fix is to make the band collector-aware: a zero corroborated by every named collector is
+CONFIRMED paid, not unconfirmed. `frontend/index.html` is a served artifact, so it takes **its own
+gate** and is not batched here.
+
+### 30.3 Pins
+
+`test_collectors_act.py` **25/25** — total-vs-current-year parsing, current+prior reconciliation, a
+fetched zero staying a fact, five fail-closed shapes, the instance path being registry data, identity
+guard and retry present, membership gating, and gds collectors not routed here.

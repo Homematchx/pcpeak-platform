@@ -101,15 +101,24 @@ EXTERNAL_COLLECTORS = {
     "CITY OF GARLAND":               {"platform": "gds",        "roster_name": "City of Garland Tax Office"},
     "RICHARDSON ISD":                {"platform": "gds",        "roster_name": "Richardson ISD Tax Office"},
     "CARROLLTON-FARMERS BRANCH ISD": {"platform": "gds",        "roster_name": "Carrollton-Farmers Branch ISD Tax Office"},
-    "IRVING ISD":                    {"platform": "irving_act", "roster_name": None},
+    # `act_path` is the district's own ACT instance segment — registry DATA, so a second
+    # self-hosted ACT district is an entry here rather than a literal in the fetcher.
+    "IRVING ISD":                    {"platform": "irving_act", "roster_name": None,
+                                      "act_path": "irving"},
 }
+
+
+def act_path_for(collector):
+    """The ACT instance segment for a self-hosted district, or None."""
+    spec = EXTERNAL_COLLECTORS.get(canonical(collector)) or {}
+    return spec.get("act_path")
 
 # Adapter registry — which platforms we can actually reach. `reachable` is derived from THIS, so a
 # collector is only ever claimed as fetchable when an adapter really exists. The fetchers themselves
 # live in local scraping modules (the cloud never scrapes) and are not imported here: this is a
 # capability declaration, so the served engine can reason about reachability without pulling in
 # Playwright.
-ADAPTERS = {"gds": "collectors_gds"}
+ADAPTERS = {"gds": "collectors_gds", "irving_act": "collectors_act"}
 
 
 def load_gds_roster(path=None):

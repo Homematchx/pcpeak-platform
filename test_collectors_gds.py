@@ -114,8 +114,12 @@ def test_adapter_is_registered():
     print("\nregistry")
     check("gds is registered as an available adapter", "gds" in J.ADAPTERS, str(list(J.ADAPTERS)))
     check("a gds collector now reports reachable", J.resolve_collector("GARLAND ISD")["reachable"] is True)
-    check("irving_act still has no adapter (honest)",
-          J.resolve_collector("IRVING ISD")["reachable"] is False)
+    # UPDATED §30: irving_act has its own adapter now, on a different platform. What this pins is
+    # that `gds` does not claim collectors it cannot reach — the platform routing, not a count.
+    check("Irving ISD is NOT routed to the gds adapter",
+          J.resolve_collector("IRVING ISD")["platform"] != "gds")
+    check("an unmapped collector remains unreachable by any adapter",
+          J.resolve_collector("CITY OF BALCH SPRINGS")["reachable"] is False)
 
 
 def run():

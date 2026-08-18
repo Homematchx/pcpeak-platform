@@ -101,8 +101,13 @@ def test_resolution_and_roster():
     gds = [n for n, s in J.EXTERNAL_COLLECTORS.items() if s["platform"] == "gds"]
     check("gds collectors are reachable now that the adapter exists",
           all(J.resolve_collector(n)["reachable"] for n in gds), str(gds))
-    check("irving_act has no adapter and does NOT claim reachability",
-          J.resolve_collector("IRVING ISD")["reachable"] is False)
+    # UPDATED §30: irving_act now has an adapter too. Reachability stays DERIVED from the registry,
+    # so it can never over-claim — a collector with no mapped platform is still unreachable, which is
+    # what keeps the unmapped tail honestly `unavailable`.
+    check("irving_act is reachable now that its adapter exists",
+          J.resolve_collector("IRVING ISD")["reachable"] is True)
+    check("an UNMAPPED collector still claims no reachability",
+          J.resolve_collector("CITY OF BALCH SPRINGS")["reachable"] is False)
     # §19 Q2 discipline: agency ids must not be literals in the module.
     src = (ROOT / "jurisdictions.py").read_text()
     tree = ast.parse(src)
