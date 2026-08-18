@@ -40,6 +40,7 @@ import sys as _sys
 if str(BASE_DIR) not in _sys.path:
     _sys.path.insert(0, str(BASE_DIR))
 import acquisition          # noqa: E402  — Stage-1 calculators/gates (pure, no I/O)
+import jurisdictions        # noqa: E402  — collector identity/registry (pure, no I/O)
 import comps                # noqa: E402  — Stage-2 NTREIS comp engine
 
 from contextlib import asynccontextmanager
@@ -587,6 +588,17 @@ def init_db():
             # show. Kept in lockstep: create_case rewrites them from property_intel on every write.
             ("current_tax_balance", "REAL"),
             ("market_value", "REAL"),
+            # …and the same treatment for COLLECTOR coverage (§31). The sidebar band must be able to
+            # tell "ACT says $0 and we never checked the other collectors" from "ACT says $0 and
+            # every named collector was fetched and also says $0" — the first is UNCONFIRMED, the
+            # second is CONFIRMED PAID. That distinction lives in property_intel.collector_balances,
+            # which the skeleton drops, so it is promoted here and kept in the SAME lockstep.
+            ("collector_fetched_total", "REAL"),      # sum of VERIFIED external collector balances
+            ("collectors_fetched", "INTEGER"),        # how many external collectors were retrieved
+            # …and how many the PETITION named, since tax_breakdown is dropped from the skeleton too.
+            # Derived by jurisdictions.py — the same module the engine uses — so the band can never
+            # disagree with the payoff about WHICH collectors exist.
+            ("collectors_named", "INTEGER"),
             ("disposition_state", "TEXT DEFAULT 'active'"),   # active | watching | archived
             ("disposition_code", "TEXT"),
             ("disposition_at", "TEXT"),
@@ -986,6 +998,48 @@ def _pi_subvalues(pi_raw):
     stable = {k: v for k, v in pi.items() if k not in ("enriched_at", "errors", "street_view_url")}
     h = hashlib.sha256(json.dumps(stable, sort_keys=True, default=str).encode()).hexdigest()[:16]
     return mv, bal, h
+
+
+def _collector_subvalues(pi_raw):
+    """From property_intel, the promoted COLLECTOR-coverage pair: (fetched_total, fetched_count).
+
+    Counts only entries carrying a real numeric `amount` — a collector we could not reach is absent
+    from the dict and must stay absent from the total. A fetched $0.00 IS counted, because a verified
+    zero is a fact and is exactly what lets the band say CONFIRMED PAID rather than unconfirmed.
+    (None, None) when nothing has been fetched, so "never checked" stays distinct from "checked, $0".
+    """
+    if not pi_raw:
+        return None, None
+    try:
+        pi = json.loads(pi_raw) if isinstance(pi_raw, str) else pi_raw
+    except (ValueError, TypeError):
+        return None, None
+    if not isinstance(pi, dict):
+        return None, None
+    cb = pi.get("collector_balances")
+    if not isinstance(cb, dict):
+        return None, None
+    amounts = [v.get("amount") for k, v in cb.items()
+               if k != "_rejected" and isinstance(v, dict) and isinstance(v.get("amount"), (int, float))]
+    if not amounts:
+        return None, None
+    return round(sum(amounts), 2), len(amounts)
+
+
+def _named_external_count(tax_breakdown):
+    """How many taxing units the PETITION named that bill OUTSIDE ACT.
+
+    Uses `jurisdictions` — the same module the payoff engine uses — so the sidebar band and the
+    payoff can never disagree about which collectors exist. Returns 0 (not None) when a breakdown is
+    present but names no external unit, so "an all-ACT parcel" stays distinct from "no breakdown"."""
+    if not tax_breakdown:
+        return None
+    try:
+        cols = jurisdictions.petition_collectors(tax_breakdown)
+    except Exception:
+        return None
+    return sum(1 for c in cols
+               if (jurisdictions.resolve_collector(c["collector"]) or {}).get("scope") != "act")
 
 
 def _snapshot_view(row):
@@ -1591,6 +1645,10 @@ async def create_case(data: dict):
         _mv, _bal, _h = _pi_subvalues(merged.get("property_intel"))
         merged["current_tax_balance"] = _bal
         merged["market_value"] = _mv
+        _ctot, _cnt = _collector_subvalues(merged.get("property_intel"))
+        merged["collector_fetched_total"] = _ctot
+        merged["collectors_fetched"] = _cnt
+        merged["collectors_named"] = _named_external_count(merged.get("tax_breakdown"))
 
         write = {k: v for k, v in merged.items() if k in valid_cols and k not in ("case_number", "id")}
         write["updated_at"] = datetime.now().isoformat()
