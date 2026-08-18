@@ -1531,3 +1531,59 @@ the identity guard is exactly what made it visible in one line.)*
 
 **Payoffs now live on prod:** TX-26-00774 **$29,050** (was $6,812) · TX-26-01459 **$33,479** (was
 $13,390) · TX-24-00098 **$48,610** (was $28,970).
+
+## 27. SEQUENCING READ (2026-08-17) — and a LIVE REGRESSION §26 INTRODUCED
+
+Asked to weigh irving_act (8 cases) against account resolution (18 cases, all platforms). Measuring
+both surfaced a third item that outranks them, and it is one this work caused.
+
+### 27.1 ⚠ §26 RE-OPENED THE TAB-DIVERGENCE BUG THAT `f8188d5` CLOSED IN JULY
+
+The frontend has **two** payoff paths:
+- **Acquisition tab** (`index.html:2296`) renders `analysis.tax_payoff` from the API — now correct,
+  collector-inclusive.
+- **Financials tab** (`index.html:1701`) calls `calcPayoff(ex, _liveBal)`, which computes client-side
+  from the **ACT live balance alone** — the pre-§26 model.
+
+Commit `f8188d5` (2026-07-19) existed precisely to make those two agree. **§26 changed the engine and
+not the client, so they disagree again — live, right now:**
+
+| case | Financials tab | Acquisition tab | divergence |
+|---|---|---|---|
+| TX-26-00774 | $6,812 | **$29,050** | $22,238 |
+| TX-26-01459 | $13,390 | **$33,479** | $20,089 |
+| TX-24-00098 | $28,970 | **$48,610** | $19,640 |
+
+**31 cases disagree; $307,863 of understatement is on screen today.** A rep on the Financials tab sees
+the old wrong number for the very cases this arc just fixed. The engine being right does not help if
+the interface contradicts it — and a contradiction is worse than the original understatement, because
+now the platform states two different payoffs for one parcel.
+
+**This is not "UI surfacing" and should not be scheduled as a feature.** It is a correctness fix for a
+regression introduced by §26, and it ranks above any coverage work.
+
+### 27.2 The two coverage options, measured
+
+| option | cases unlocked | notes |
+|---|---|---|
+| **irving_act adapter** | **8** (all 8 have a CAD → fully fetchable) | one adapter behind the existing interface; high certainty |
+| **account resolution** | **18** across 4 collectors (Garland ISD 8 · Richardson ISD 8 · City of Garland 7 · C-FB 2) | every one is `needs_lookup` — the KNOWN-HARD residue |
+
+Account resolution unlocks more cases and helps every platform, but these 18 are the structural
+backlog that prior resolution attempts already failed on (Rowlett/Farmers Branch/multi-parcel HOA,
+county-spanning parcels), and naive address search has a measured **~2% confidently-wrong-parcel rate**
+(2026-07-11 audit) — so each needs `resolve_account_corroborated` plus per-case verification against
+ACT's site address. Higher ceiling, much lower certainty per unit of effort, and it is the same work
+already queued as the 4-case re-resolution increment.
+
+### 27.3 RECOMMENDED ORDER
+
+1. **Fix the tab divergence + surface the collector lines** — one frontend gate. Retire `calcPayoff`'s
+   independent payoff in favour of the API's `tax_payoff`, and render `tax_payoff_lines` so
+   TX-26-00774 shows Richardson ISD + City of Garland and its NO-GO. Fixes a live wrong number AND
+   delivers the surfacing in the same change, because they are the same code path.
+2. **irving_act** — 8 cases, all fetchable, one adapter, high certainty.
+3. **Account resolution** — 18 cases, all platforms; fold in the 4-case re-resolution already queued
+   and treat it as one enrichment-integrity increment rather than two.
+
+Coverage we already have but display wrongly beats coverage we do not have yet.
