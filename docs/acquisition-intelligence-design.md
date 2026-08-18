@@ -1824,9 +1824,12 @@ confirmed BY HAND earlier the same session to be on BOTH Garland rolls** (GISD a
 $4,896.59, City acct `0000110637`). A parcel cannot stop being on a roll, so the result was
 impossible, and only ground truth made that visible.
 
-**Diagnosis:** after the ~200-request fleet run, texaspayments began **302-ing every request to
-`/Error/WrongRequest`**. The two ACT hosts answered 200 normally throughout, so it is that portal
-throttling us, not a code regression and not a network fault.
+**Diagnosis (CORRECTED 2026-08-18 — see §32.6).** texaspayments serves `/Error/WrongRequest` for
+every path INCLUDING its own homepage, and the page states the reason itself: *"You have been
+redirected to this page possibly due to your IP location."* This is an **IP-level block**, confirmed
+by the site rather than inferred. The original "throttled after ~200 requests" wording was a guess at
+the trigger; the mechanism is IP, and whether our fleet volume caused it is unknown. The two ACT hosts
+answered 200 throughout, so it is that host refusing this IP — not a code regression.
 
 **The design gap:** `parse_account_detail` saw an error page, found no account, returned `{}` — and
 the caller recorded `unavailable`, **indistinguishable from "this parcel is not on the roll."** Safe
@@ -1841,3 +1844,36 @@ refusing it. **Verified against the live block**, which was still in force.
 This is the same principle as `unavailable` vs `$0`, one layer up: **absence must stay
 distinguishable from a negative.** The nine Garland/C-FB cases are pending a retry once the portal
 recovers; their accounts are resolved and stored, so the retry is a fetch, not a re-resolution.
+
+
+### 32.6 ⚠ CORRECTION — two independent faults overlapped, and I misattributed one of them
+
+Recorded because the diagnosis was wrong in a way worth remembering.
+
+**Fault 1 — the local machine ran out of disk.** `No space left on device`; bash could not write temp
+files, `df`/`head`/Python all failed, and a scratch probe script was silently **truncated to 0 bytes**
+(which then "ran" successfully and printed nothing). Playwright could not launch. This broke every
+diagnostic I was using at the moment I was using it.
+
+**Fault 2 — texaspayments is IP-blocking this host.** Real, independent, and confirmed by the site's
+own error text once there was disk to run a browser again.
+
+**The misattribution went both ways, which is the lesson.** First I attributed the failing fetches to
+the portal from a bare `curl` status code — the wrong mechanism, since the adapter drives a real
+browser. Then, on discovering the disk was full, I over-corrected and told the user my portal
+diagnosis was *"likely wrong"* — but it was substantially right; I had simply proven it badly. **A
+correct conclusion reached by an invalid method is still worth re-deriving, but it is not
+automatically false**, and revising it on the strength of a second confounder is its own error.
+
+**Integrity after the disk event, verified not assumed:** git fsck clean · 0 uncommitted · all four
+served artifacts byte-match their commits · `pcpeak.db` integrity ok at 334 cases · prod ledger intact
+(330 predictions, 4,627 case_snapshots). The local `ledger.db` was truncated to 0 bytes, which is
+harmless — it is the prod-owned file and the local copy is documented as empty; `init_db` recreates
+the schema.
+
+**Operational consequence, wider than the 9 cases:** while this IP is blocked, the **entire `gds`
+adapter is unusable** — Garland ISD, City of Garland, Richardson ISD and Carrollton-Farmers Branch,
+4 of the 5 mapped collectors. Already-fetched balances are unaffected (stored in `property_intel`,
+synced to prod); only NEW fetches fail, and they fail honestly as `_portal_unavailable` →
+INDETERMINATE. Remedies are operational, not code: contact `support@gdsincorporated.com`, or run
+enrichment from a different network. `irving_act` and all ACT/DCAD enrichment are unaffected.
