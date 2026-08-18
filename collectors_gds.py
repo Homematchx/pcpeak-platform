@@ -70,8 +70,23 @@ def parse_account_detail(text: str) -> dict:
     }
 
 
-async def fetch_one(page, agency: str, cad: str) -> dict:
-    """Query ONE agency for ONE parcel by CAD number. Returns {} on any failure — never raises."""
+async def fetch_one(page, agency: str, cad: str, attempts: int = 2) -> dict:
+    """Query ONE agency for ONE parcel by CAD number. Returns {} on any failure — never raises.
+
+    RETRIES ONCE. Measured on the first fleet run: 4 of 63 cases came back empty, and ALL FOUR hit on
+    a straight retry — including 729 Woodcastle, which was already known by hand to be on the GISD
+    roll, and a Richardson ISD parcel owing $14,082.76. Fail-soft is the right FINAL state, but
+    accepting a transient failure as the final state silently discards recoverable debt."""
+    for i in range(max(1, attempts)):
+        got = await _fetch_once(page, agency, cad)
+        if got:
+            return got
+        if i + 1 < attempts:
+            await asyncio.sleep(2)
+    return {}
+
+
+async def _fetch_once(page, agency: str, cad: str) -> dict:
     try:
         await page.goto(f"{BASE}/{agency}", wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
         await asyncio.sleep(1.5)

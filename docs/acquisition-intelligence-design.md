@@ -1407,3 +1407,39 @@ agencies; and the registry honestly reporting `gds` reachable while `irving_act`
 `test_jurisdictions` updated (the "no adapter exists yet" pin is now "gds reachable, irving_act not").
 
 `collector_backfill.py` is the local runner (`--dry-run` / `--limit` / `--case`).
+
+### 25.5 FLEET ACCEPTANCE RUN (2026-08-17) — 81 eligible cases
+
+| outcome | cases | |
+|---|---|---|
+| **RESOLVED → REAL DEBT** | **40** | **$385,471.74 newly quantified** |
+| **RESOLVED → VERIFIED-PAID ($0)** | **23** | fetched zeros, not assumed ones |
+| UNAVAILABLE · no CAD on file | 18 | never queried — an ENRICHMENT gap, not a portal failure |
+| UNAVAILABLE · portal miss | **0** | |
+| IDENTITY-GUARD DISCARDS | **0** | every stored balance tied to the requested CAD |
+
+**78% of eligible cases now carry a VERIFIED collector balance.** Per collector: GARLAND ISD 42 cases
+/ $142,116 · RICHARDSON ISD 15 / $144,716 · CITY OF GARLAND 33 / $83,187 · CARROLLTON-FARMERS BRANCH
+ISD 5 / $15,453.
+
+**$385,471.74 of real tax debt that the platform previously could not see at all** — every dollar of it
+outside ACT, on cases whose payoff the old model would have computed from the ACT scalar alone.
+
+**A DEFECT THE RUN EXPOSED — TRANSIENT FAILURES WERE BEING ACCEPTED AS FINAL.** The first pass left 4
+cases unavailable. All four hit on a straight retry, including **729 Woodcastle — a parcel already
+known BY HAND to be on the GISD roll** — and TX-26-00774's Richardson ISD line at **$14,082.76**.
+Fail-soft is the correct *final* state, but treating a transient failure as final silently discards
+recoverable debt. `fetch_one` now retries once; after the retry the portal-miss count is **0**, and
+those four cases contributed a further ~$31,700. Ground truth is what caught it: one of the four was a
+parcel whose answer was already known, so "no result" was checkable rather than plausible.
+
+**TX-26-00774 closes its own loop.** The case that first showed "Garland address, zero GISD matches"
+resolves to **Richardson ISD + City of Garland = $22,237.40**. City ≠ district, proven end to end: the
+petition named Richardson ISD, the adapter fetched Richardson ISD, and the parcel owes $22K nobody
+could see.
+
+**The 18 no-CAD cases are the next real gap** — an enrichment failure upstream (no account resolved),
+not an adapter limitation. They correctly read `unavailable` → INDETERMINATE. Logged, not fixed here.
+
+**NOT YET SYNCED TO PROD** — this is local data behind the `prod_ready` gate; pushing it is its own
+step.
