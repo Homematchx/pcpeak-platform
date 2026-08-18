@@ -1639,3 +1639,22 @@ zero pageerror). Frontend regressions green: `test_zero_balance_band` 18/18, `te
 17/17, `test_selection_stability` 7/7, `test_rep_sidebar` 9/9, `test_land_evidence_browser` 56/56.
 Engine regressions green: `test_payoff_total` 21/21, `test_acquisition` 148/148,
 `backend/test_acquisition_api` 52/52.
+
+### 28.4 §29 — the assumed-zero bug is STRUCTURAL, and now has a dedicated guard
+
+It appeared **four times inside §28 alone**: the client returning `$0/estimated` where the engine said
+`unavailable`; the engine losing a VERIFIED $0 to truthiness on the external sum; `null * rate` → `$0`
+attorney fees; and `null + 0` → `$0.00` total-to-clear, minimum offer and suggested offer.
+
+That is not carelessness — **it is structural.** JS coerces `null` to `0` silently, so every derived
+money field is a fresh opportunity for the bug, and **spot-checking real cases cannot catch it because
+real cases have data.** Only a no-data case exposes it, which is exactly the case nobody clicks.
+
+`test_unknown_payoff.py` **27/27** pins the invariant in both directions:
+- **no data at all** → every one of the five money fields is `null`, renders `—`, and **no field
+  renders `$0.00`**; the engine agrees (`amount None`, `label unavailable`);
+- **a fetched zero** → `$0 verified`, rendering `$0.00` — losing that distinction is the same bug
+  inverted, and §25/§26 exist to preserve it;
+- **partial data** still computes, so the fix cannot over-blank real figures;
+- **source guard** — every money field must be interpolated through `fmtC()`; a future field added
+  raw is caught. Verified to have teeth against a synthetic unwrapped field.
