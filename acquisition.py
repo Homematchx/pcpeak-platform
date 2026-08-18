@@ -207,13 +207,26 @@ def tax_payoff(case: CaseInput, as_of: Optional[datetime.date] = None) -> dict:
     # whole point. Truthiness on the sum cannot tell the two apart, so track retrieval explicitly.
     fetched_any = any(l["amount"] is not None for l in ext_lines)
     act_known = isinstance(live, (int, float))
-    # Complete = every named collector retrieved AND ACT's own figure known. An unknown ACT balance
-    # cannot yield a verified TOTAL even when every external line came back.
-    incomplete = bool(lines["completeness"]["unavailable_collectors"]) or not act_known
-    part = ("" if not incomplete else
-            f" — FLOOR: excludes {len(lines['completeness']['unavailable_collectors'])} "
-            f"unretrieved collector(s)")
-    label = ESTIMATED if incomplete else VERIFIED
+    # §33 — TWO QUESTIONS, NEVER COLLAPSED AGAIN.
+    #   RETRIEVAL  did we reach every collector we KNOW about?  -> `unavailable_collectors`
+    #   MEMBERSHIP do we know the full set of levying units?    -> `payoff_is_complete`
+    # Retrieval governs the FLOOR note. MEMBERSHIP governs the LABEL, because `verified` is the word
+    # that asserts COMPLETE — and the collector set comes from the petition, which names PLAINTIFFS,
+    # a LOWER BOUND on who levies. Measured at the time of writing: `act_units` is populated nowhere,
+    # so membership is unverified fleet-wide and this label is honestly ESTIMATED until an ACT
+    # per-parcel unit capture lands. That is the §17.1 defect stated exactly: `verified` asserted
+    # *correct* while silently implying *complete*, and only the first was ever checked.
+    comp = lines["completeness"]
+    retrieval_incomplete = bool(comp["unavailable_collectors"]) or not act_known
+    complete = jurisdictions.payoff_is_complete(comp)
+    if retrieval_incomplete:
+        part = (f" — FLOOR: excludes {len(comp['unavailable_collectors'])} unretrieved collector(s)")
+    elif not complete:
+        part = (" — FLOOR: every NAMED collector was read, but the collector set is UNVERIFIED "
+                "(the petition names plaintiffs, not everyone who levies)")
+    else:
+        part = ""
+    label = VERIFIED if complete else ESTIMATED
 
     if live and live > 0:
         if external:
@@ -395,6 +408,15 @@ def seller_net_sheet(case: CaseInput, acq: AcquisitionInputs, tax_pay: dict) -> 
     # part of the payoff — computing `closable` from it would be a confident answer to a question the
     # data cannot answer. Measured worst case: ACT was 23% of the true payoff. So an incomplete
     # payoff forces INDETERMINATE exactly as an unquantified lien does.
+    # §33 SCOPING — THIS GATE READS RETRIEVAL, NOT MEMBERSHIP, AND THAT IS DELIBERATE.
+    # Membership is unverified fleet-wide (no `act_units` source exists yet), so gating closability
+    # on `payoff_is_complete` would force EVERY priced deal to INDETERMINATE and silently retire the
+    # seller-net money gate — "Total Payoffs > Agreed Price ⇒ cannot close" could never fire again.
+    # A cold fleet sweep would report ZERO verdict flips for that change, because no case carries an
+    # agreed_price until a rep enters one: the damage would be invisible in the sweep and live at the
+    # exact moment money is decided. So the money gate stays on the question the data can answer —
+    # a NAMED collector we could not reach is a known debt of unknown size — while the UNVERIFIED
+    # collector set is disclosed through the payoff label and the `collector_set_unverified` gate.
     payoff_incomplete = bool(tax_payoff_lines(case)["completeness"]["unavailable_collectors"])
 
     agreed = acq.agreed_price
@@ -601,12 +623,26 @@ def deal_gates(case: CaseInput, acq: AcquisitionInputs, seller: dict) -> list:
     # the finding without lifting anything, and closability is forced INDETERMINATE in
     # `seller_net_sheet` independently of severity, so the fail-loud requirement is met by the
     # mechanism that actually governs money rather than by the verdict label.
-    missing = tax_payoff_lines(case)["completeness"]["unavailable_collectors"]
+    _comp = tax_payoff_lines(case)["completeness"]
+    missing = _comp["unavailable_collectors"]
     if missing:
         gates.append({"gate": "collector_balance_unavailable", "severity": "generic",
                       "detail": f"Named in the suit but collected outside ACT and NOT retrieved: "
                                 f"{'; '.join(missing)}. The tax payoff is INCOMPLETE — quantify before "
                                 f"any offer; an unretrieved collector is never $0"})
+    # §33 — THE UNVERIFIED COLLECTOR SET IS DELIBERATELY *NOT* A GATE. MEASURED, not preferred.
+    # An unverified set is the state of EVERY case on the book today (no `act_units` source exists),
+    # and `deal_gates` feeds a decision table where `GO-WITH-CONDITIONS if generic else GO` — so a
+    # gate firing at 100% would silently retire the GO verdict outright. That is the same over-fire
+    # §23 recorded when this collector finding was modelled as `substantive` and lifted 95 of 334
+    # cases: the count exposes the over-fire, never the reasoning. A condition true of the entire
+    # book carries no discriminating information at the verdict layer.
+    # The disclosure instead lives where payoff completeness belongs and cannot be missed: the payoff
+    # LABEL is ESTIMATED not VERIFIED, its note says FLOOR + "collector set UNVERIFIED", and
+    # `completeness.membership_verified` states it as a fact for any consumer.
+    # WHEN TO REVISIT: once ACT per-parcel unit capture lands, unverified becomes a real MINORITY —
+    # at that point a gate discriminates and should be reinstated, severity chosen by measuring the
+    # then-current blast radius rather than assumed.
     if no_conveyance_path(case):
         holders = "; ".join(o.get("name", "?") for o in (case.owners or []) if isinstance(o, dict))
         n_def = len(case.all_defendants or []) or 1

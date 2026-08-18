@@ -163,7 +163,17 @@ def test_3909_cambridge_reconstruction():
     c2 = CaseInput("TX-CAMBRIDGE", owed=5974.81, property_type="real", tax_breakdown=tb,
                    collector_balances={"GARLAND ISD": 12108.43, "CITY OF GARLAND": 7666.63})
     out2 = A.tax_payoff_lines(c2)
-    check("all collectors retrieved → payoff COMPLETE", out2["completeness"]["complete"] is not False)
+    # §33 — this assertion used to read `is not False`, which PASSES FOR None and so could never
+    # tell "verified complete" apart from "completeness unknown". That is the exact bug the tri-state
+    # exists to prevent, sitting in the test meant to pin it. Retrieval is complete here; MEMBERSHIP
+    # is not, because no act_units were supplied — so the honest verdict is None, and it is now
+    # asserted exactly.
+    check("every NAMED collector retrieved → retrieval complete",
+          not out2["completeness"]["unavailable_collectors"])
+    check("…but with no ACT unit coverage the SET is unverified → complete is None, never True",
+          out2["completeness"]["complete"] is None)
+    check("…and membership_verified says so in its own right",
+          out2["completeness"]["membership_verified"] is False)
     check("known total is $25,750 (ACT + ISD + city)", out2["known_total"] == 25750, out2["known_total"])
     check("ACT alone was 23% of it", round(5974.81 / 25749.87, 3) == 0.232)
 

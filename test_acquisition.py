@@ -100,7 +100,10 @@ def test_payoff_is_live_balance_as_is():
     p = A.tax_payoff(CaseInput("X", owed=71938.09, total_due_filing=40443.06,
                                filed_date="2023-03-09", judgment_date="2026-03-18"), AS_OF)
     check("payoff == live balance as-is", p["amount"] == 71938, p["amount"])
-    check("payoff labeled VERIFIED", p["label"] == A.VERIFIED)
+    # §33: the ACT live balance is used AS-IS and its AMOUNT is unchanged — but `verified`
+    # asserts COMPLETE, and the collector set is a petition-derived LOWER BOUND that no ACT
+    # per-parcel unit report has yet confirmed. The honest label is ESTIMATED until it does.
+    check("payoff labeled ESTIMATED — amount as-is, set unverified (§33)", p["label"] == A.ESTIMATED)
     check("payoff basis act_live_balance", p["basis"] == "act_live_balance")
 
 
@@ -224,7 +227,9 @@ def test_golden_derivable():
         r = A.analyze(case, AcquisitionInputs(), AS_OF)   # no ARV, no agreed price, liens unavailable
         exp_pay, exp_atty, exp_cls, exp_rehab = GOLDEN_EXPECTED[case.case_number]
         check(f"{case.case_number} tax payoff (live as-is)", r["tax_payoff"]["amount"] == exp_pay, r["tax_payoff"]["amount"])
-        check(f"{case.case_number} payoff VERIFIED", r["tax_payoff"]["label"] == A.VERIFIED)
+        # §33 — see note at the golden-payoff pin: unverified collector set ⇒ ESTIMATED, not VERIFIED.
+        check(f"{case.case_number} payoff ESTIMATED (set unverified, §33)",
+              r["tax_payoff"]["label"] == A.ESTIMATED)
         check(f"{case.case_number} atty fee est", A.tax_suit_attorney_fees(case, exp_pay)["amount"] == exp_atty)
         check(f"{case.case_number} condition class", r["condition"]["condition_class"]["value"] == exp_cls, r["condition"]["condition_class"]["value"])
         check(f"{case.case_number} rehab base", r["condition"]["rehab_base"]["value"] == exp_rehab, r["condition"]["rehab_base"]["value"])
@@ -290,7 +295,11 @@ def test_pin_grant_structurally_unclosable_nogo():
     check("Grant structurally_unclosable fatal gate fires",
           any(g["gate"] == "structurally_unclosable" and g["severity"] == "fatal" for g in r["gates"]))
     check("Grant verdict NO-GO", r["decision"] == "NO-GO", r["decision"])
-    check("Grant tax payoff verified $152,224", r["tax_payoff"]["amount"] == 152224 and r["tax_payoff"]["label"] == A.VERIFIED)
+    # §33: the ACT live balance is used AS-IS and its AMOUNT is unchanged — but `verified`
+    # asserts COMPLETE, and the collector set is a petition-derived LOWER BOUND that no ACT
+    # per-parcel unit report has yet confirmed. The honest label is ESTIMATED until it does.
+    check("Grant tax payoff $152,224 — AMOUNT unchanged, label ESTIMATED (§33)",
+          r["tax_payoff"]["amount"] == 152224 and r["tax_payoff"]["label"] == A.ESTIMATED)
     check("Grant ARV label verified (human CMA)", r["arv"]["label"] == A.VERIFIED)
 
 
@@ -317,7 +326,11 @@ def test_pin_ruby_held_indeterminate_never_go():
     check("Ruby closability INDETERMINATE", r["seller_net_sheet"]["closable"] is None)
     check("Ruby verdict GO-WITH-CONDITIONS", r["decision"] == "GO-WITH-CONDITIONS", r["decision"])
     check("Ruby NEVER a plain GO while lien unquantified", r["decision"] != "GO")
-    check("Ruby tax payoff verified $11,437", r["tax_payoff"]["amount"] == 11437 and r["tax_payoff"]["label"] == A.VERIFIED)
+    # §33: the ACT live balance is used AS-IS and its AMOUNT is unchanged — but `verified`
+    # asserts COMPLETE, and the collector set is a petition-derived LOWER BOUND that no ACT
+    # per-parcel unit report has yet confirmed. The honest label is ESTIMATED until it does.
+    check("Ruby tax payoff $11,437 — AMOUNT unchanged, label ESTIMATED (§33)",
+          r["tax_payoff"]["amount"] == 11437 and r["tax_payoff"]["label"] == A.ESTIMATED)
     # And if that lien were later quantified low + ARV confirmed, it could promote — sanity that the
     # ONLY thing blocking a clean path here is the lien + provisional valuation, not a fatal flaw.
     # HELD 2026-08-15: the new fatal title branch must not disturb this golden human verdict.

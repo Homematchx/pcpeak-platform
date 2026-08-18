@@ -228,16 +228,44 @@ def collector_lines(tax_breakdown, act_balance=None, act_units=None, fetched=Non
 def payoff_completeness(lines):
     """Is the tax payoff COMPLETE, and if not, why? This is the label defect §17.1 named: a live
     balance labelled `verified` asserts *correct* while silently implying *complete*. Only the first
-    was ever checked. Returns {complete, unavailable_collectors, reason}."""
+    was ever checked. Returns {complete, membership_verified, unavailable_collectors, reason}.
+
+    §33 — THE VERDICT IS TRI-STATE AND THE THIRD STATE IS LOAD-BEARING. It answers TWO questions
+    that must never be collapsed into one:
+
+      RETRIEVAL   did we reach every collector we KNOW about?   -> `unavailable_collectors`
+      MEMBERSHIP  do we know the full set of levying units?     -> `membership_verified`
+
+    `complete is True` requires BOTH. `complete is None` means retrieval succeeded but membership is
+    unproven — an answer that is NOT yes. `petition_collectors` is a LOWER BOUND: the petition names
+    PLAINTIFFS, not everyone who levies, so a district that levies but did not sue is invisible to
+    it. Only ACT's own per-parcel unit report (`act_units`) can close that, which is why absence of
+    that report yields None rather than True."""
     missing = [l["collector"] for l in lines["collectors"] if l["label"] == UNAVAILABLE]
+    verified = bool(lines["act_units_known"])
     if lines["act"]["label"] == UNAVAILABLE:
-        return {"complete": False, "unavailable_collectors": missing,
-                "reason": "no live ACT balance"}
+        return {"complete": False, "membership_verified": verified,
+                "unavailable_collectors": missing, "reason": "no live ACT balance"}
     if missing:
-        return {"complete": False, "unavailable_collectors": missing,
+        return {"complete": False, "membership_verified": verified,
+                "unavailable_collectors": missing,
                 "reason": f"{len(missing)} named collector(s) outside ACT not retrieved: "
                           + ", ".join(missing)}
-    if not lines["act_units_known"]:
-        return {"complete": None, "unavailable_collectors": [],
-                "reason": "ACT per-parcel unit coverage not captured — completeness UNKNOWN"}
-    return {"complete": True, "unavailable_collectors": [], "reason": "every named collector accounted for"}
+    if not verified:
+        return {"complete": None, "membership_verified": False, "unavailable_collectors": [],
+                "reason": "every named collector was read, but the petition names plaintiffs, not "
+                          "everyone who levies — ACT per-parcel unit coverage not captured, so the "
+                          "collector set is UNVERIFIED"}
+    return {"complete": True, "membership_verified": True, "unavailable_collectors": [],
+            "reason": "every named collector accounted for, against a verified collector set"}
+
+
+def payoff_is_complete(completeness) -> bool:
+    """§33 — the ONE reading of the tri-state, so no caller can invent its own.
+
+    TRUE only when completeness is affirmatively established. `None` is NOT complete: the third
+    state exists precisely so that UNKNOWN cannot be read as YES, and `is not False` — which passes
+    for None — is the exact bug this replaces. Any surface that CLAIMS completeness (the `verified`
+    label, a corroborated-zero band) must gate on this. Surfaces that govern MONEY gate on
+    `unavailable_collectors` instead; see acquisition.seller_net_sheet for why."""
+    return completeness.get("complete") is True

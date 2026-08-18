@@ -90,13 +90,19 @@ async def main():
         z = await pg.evaluate("a => window.__pay(a,0.0,{'GARLAND ISD':0.0},[])",
                               {"totalDueAtFiling": 5000, "filedDate": "2026-01-01", "judgmentDate": None})
         check("a verified $0 payoff is 0, not null", z["taxPayoff"] == 0, repr(z["taxPayoff"]))
-        check("…labelled verified, not unavailable", z["payoffLabel"] == "verified", z["payoffLabel"])
+        # §33: the AMOUNT stays a real 0 and still renders "$0.00" — the §29 invariant, untouched.
+        # The LABEL is the separate axis: `verified` asserts COMPLETE, and the collector set is a
+        # petition-derived lower bound, so it reads `estimated`. What §29 forbids is the zero
+        # becoming UNKNOWN; that is still pinned on the line above and below.
+        check("…labelled estimated, and crucially NOT unavailable",
+              z["payoffLabel"] == "estimated", z["payoffLabel"])
         check("…and RENDERS as '$0.00'", await pg.evaluate("v => window.__fmt(v)", 0) == "$0.00")
         pyz = A.tax_payoff(CaseInput("X", owed=0.0, total_due_filing=5000,
                                      tax_breakdown=[{"entity": "GARLAND INDEPENDENT SCHOOL DISTRICT"}],
                                      collector_balances={"GARLAND ISD": 0.0}))
-        check("engine agrees a fetched zero is $0 verified",
-              pyz["amount"] == 0 and pyz["label"] == A.VERIFIED, f'{pyz["amount"]} {pyz["label"]}')
+        check("engine agrees a fetched zero is a real $0 (label estimated per §33)",
+              pyz["amount"] == 0 and pyz["label"] != A.UNAVAILABLE,
+              f'{pyz["amount"]} {pyz["label"]}')
 
         # ── PARTIAL DATA still produces numbers (the fix must not over-blank) ───────────────────
         print("\npartial data must still compute — the fix must not blank real figures")

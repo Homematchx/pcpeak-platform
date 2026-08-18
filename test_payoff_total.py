@@ -48,7 +48,10 @@ def test_cambridge_ground_truth():
     p = A.tax_payoff(c)
     check("payoff is ACT + both collectors = $25,750", p["amount"] == 25750, str(p["amount"]))
     check("basis says so", p["basis"] == "act_plus_collectors", p["basis"])
-    check("complete ⇒ VERIFIED", p["label"] == A.VERIFIED)
+    # §33: retrieval is complete, but MEMBERSHIP is not — no ACT per-parcel unit report exists, and
+    # the petition names plaintiffs, not everyone who levies. The $25,750 is unchanged; the label
+    # stops claiming the set is closed.
+    check("retrieval complete but set unverified ⇒ ESTIMATED (§33)", p["label"] == A.ESTIMATED)
     old = A.tax_payoff(CaseInput("CAMB", owed=5974.81, total_due_filing=20000, property_type="real"))
     check("the OLD ACT-only payoff was $5,975 — 23% of the truth", old["amount"] == 5975)
 
@@ -89,7 +92,7 @@ def test_unchanged_where_it_should_be():
     p = A.tax_payoff(d)
     check("a parcel with no external collectors is untouched",
           p["amount"] == 19366 and p["basis"] == "act_live_balance")
-    check("…and stays VERIFIED", p["label"] == A.VERIFIED)
+    check("…and its AMOUNT is untouched, label ESTIMATED per §33", p["label"] == A.ESTIMATED)
     # An all-ACT petition (Dallas) must not create external lines or change the number.
     dallas_tb = [{"entity": "DALLAS INDEPENDENT SCHOOL DISTRICT", "total": 8923.52},
                  {"entity": "CITY OF DALLAS", "total": 5889.98}]

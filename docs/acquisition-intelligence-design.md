@@ -1877,3 +1877,101 @@ adapter is unusable** — Garland ISD, City of Garland, Richardson ISD and Carro
 synced to prod); only NEW fetches fail, and they fail honestly as `_portal_unavailable` →
 INDETERMINATE. Remedies are operational, not code: contact `support@gdsincorporated.com`, or run
 enrichment from a different network. `irving_act` and all ACT/DCAD enrichment are unaffected.
+
+## 33. BUILT 2026-08-18 — the COMPLETENESS INVARIANT: petition membership is a LOWER BOUND
+
+**Seventh instance of the §19 "is this a set?" class, and the §23 defect one layer upstream.** §23
+closed the case where a *balance* was scoped narrower than it claimed (`current_tax_balance` meaning
+"all units" in Dallas and "county-side only" in Garland). §33 closes the same defect in the
+*membership* that replaced it: `petition_collectors` reads the petition's Exhibit-A breakdown, which
+names **plaintiffs**. A district that levies on the parcel and did not join the suit is invisible to
+it. So petition membership is a **lower bound**, and "we retrieved every collector we know about" is
+not "we know about every collector". **Fetching a lower bound to completion proves nothing about the
+set.**
+
+### 33.1 What the trace found — the safeguard existed and was disconnected at both ends
+
+`payoff_completeness` was already correct: it refuses `True` without `act_units` (ACT's own
+per-parcel unit report) and returns `None` — UNKNOWN — instead. Its own comment says it outright:
+*"the petition lists plaintiffs, not everyone owed."* Two facts killed it in production:
+
+1. **`act_units` is populated nowhere.** Its only occurrences outside tests were the dataclass
+   default (`None`) and the pass-through into `collector_lines`. So `complete` was **structurally
+   never `True`** — only `False` or `None`.
+2. **No production caller read `complete` at all.** All four read `unavailable_collectors` instead
+   (`acquisition.py` 212 / 398 / 604, and `frontend/index.html` re-implementing it independently) —
+   a list derived *entirely from petition membership*.
+
+The engine computed an honest UNKNOWN and every caller discarded it. Worse, the one test asserting
+the happy path used `is not False`, **which passes for `None`**, so the suite could not tell
+"verified complete" from "completeness unknown" either.
+
+**The cited counter-mechanisms were both inert, and were checked rather than assumed.** "DCAD
+corroboration" is measured unusable by this project's own test (`test_dcad_jurisdictions.py`:
+`tax_rates` EMPTY on 223 and MALFORMED on 77 of 300); "the negative signal" *is* `act_units`, never
+populated. `property_intel.tax_by_year` — the field that would carry ACT's unit report — is present
+on all 300 enriched blobs and **nonempty on zero**.
+
+### 33.2 The invariant
+
+No surface may CLAIM completeness unless it is affirmatively established.
+
+| verdict | meaning |
+|---|---|
+| `complete is True` | retrieval complete **and** membership verified |
+| `complete is None` | **NOT complete** — the state `is not False` used to swallow |
+| `complete is False` | a NAMED collector was not retrieved |
+
+`jurisdictions.payoff_is_complete()` is the single reading, so no caller invents its own.
+`membership_verified` is exposed alongside it as a fact in its own right.
+
+### 33.3 TWO QUESTIONS, NEVER COLLAPSED — and the scoping decision that follows
+
+  · **RETRIEVAL** — did we reach every collector we KNOW about? → `unavailable_collectors`
+  · **MEMBERSHIP** — do we know the full set of levying units? → `payoff_is_complete`
+
+**Money gates on RETRIEVAL. Claims of completeness gate on MEMBERSHIP.** Gating closability on
+membership would force every priced deal to INDETERMINATE and silently retire the seller-net money
+gate — *and a cold fleet sweep would report ZERO verdict flips*, because no case carries an
+`agreed_price` until a rep enters one. The damage would be invisible in the sweep and live at the
+exact moment money is decided. That trap is pinned in `test_payoff_completeness.py` so it cannot be
+"fixed" by accident.
+
+**The unverified set is deliberately NOT a gate.** `deal_gates` feeds a table where any `generic`
+gate demotes `GO → GO-WITH-CONDITIONS`; an unverified set is the state of *every* case today, so a
+gate would fire at 100% and retire the `GO` verdict outright — **measured, not predicted: it flipped
+the Tryon golden fixture (a signed, closing deal) on the first run.** Identical over-fire to the one
+§23 recorded when this same finding was modelled `substantive` and lifted 95 of 334 cases. A
+condition true of the whole book carries no discriminating information at the verdict layer.
+**Revisit when ACT unit capture lands** — unverified then becomes a real minority, a gate
+discriminates, and its severity should be chosen by measuring the *then-current* blast radius.
+
+### 33.4 Measured blast radius (local book, n=329, engine errors 0)
+
+- **281 payoff labels flip `verified → estimated`**, one single cause: membership unverified. Amounts
+  are **byte-identical** — this is a LABEL fix, not an arithmetic one, pinned as such.
+- **11 band flips `zero`/PAID → `unknown`/UNCONFIRMED.** All are `active` (7) or `judged_pending` (4)
+  with a real filed debt — the case posture *independently* contradicts "paid", so every flip is a
+  genuine "we cannot prove this is the full collector set", not an artifact. This reverts §31's
+  corroborated-zero branch, which rested on the same lower bound.
+- **0 verdict flips.** Golden set intact: Grant St NO-GO, Addie Rd GO, Brown GO-WITH-CONDITIONS.
+
+### 33.5 A guard that went vacuous, caught by its own standing lesson
+
+Changing the label broke §31's parity predicate *silently*. It compared `band=="zero"` against
+`label==VERIFIED`; §33 pins that label to ESTIMATED fleet-wide, so **both sides went constant-False
+together and every fixture passed while its description claimed the opposite outcome** — including
+two rows literally named "⇒ CONFIRMED PAID". The suite reported 10/10.
+
+Fixed by reading `payoff_is_complete(completeness)` instead of the label word, **and** by asserting
+each row's `expected_band` DIRECTLY — a parity check alone cannot notice that both of its sides went
+false at once. This is the standing "**0 flips → trace why before calling success**" lesson landing
+on the guard family itself.
+
+### 33.6 Suites
+
+`test_payoff_completeness.py` **30/30** (fifth guard family). Every claim additionally re-run against
+the DEFECT's own logic (`[teeth]`) and required to disagree with it — *a guard that would pass with
+the bug reinstated is not a guard*. Rejected one teeth-check as theatre when truthiness and the
+correct reading agreed on every state; the defect was specifically `is not False`.
+`test_band_payoff_parity.py` 10 → **18/18**. All four prior families green.

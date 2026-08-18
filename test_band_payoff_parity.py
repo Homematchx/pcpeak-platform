@@ -10,10 +10,17 @@ only one of them learned about collectors, they disagreed on **11 cases** — th
   §28  did every consumer update?  (client vs engine payoff)
   §31  …and this consumer too?     (band vs payoff, on paid-vs-unconfirmed)
 
-THE INVARIANT
-  band == "zero"  (confirmed paid)  ⟺  payoff is a VERIFIED $0
-  band == "unknown" (unconfirmed)   ⟺  payoff is NOT a verified $0
+THE INVARIANT (restated by §33 — it used to read "a VERIFIED $0")
+  band == "zero"  (confirmed paid)  ⟺  payoff is $0 AND completeness is affirmatively established
+  band == "unknown" (unconfirmed)   ⟺  anything else
 Anything else means one surface learned something the other did not.
+
+⚠ §33 changed what "confirmed paid" can mean, and the parity predicate had to move with it. The old
+form compared against `label == VERIFIED`; §33 pins that label to ESTIMATED fleet-wide (the collector
+set is petition-derived and therefore a lower bound), so the comparison became a constant-False vs
+constant-False and passed VACUOUSLY. It now reads `payoff_is_complete(completeness)`, and every row
+additionally asserts its expected band DIRECTLY — a parity check alone cannot notice that both sides
+went false together.
 """
 import asyncio
 import json
@@ -59,25 +66,38 @@ def _fn(name, src):
 GISD = "GARLAND INDEPENDENT SCHOOL DISTRICT"
 COG = "CITY OF GARLAND"
 
-# (label, ACT balance, petition rows, fetched balances, filing amount, track)
+# (label, ACT balance, petition rows, fetched balances, filing amount, track, expected_band)
+#
+# ⚠ §33 REWROTE THE FIRST TWO. They used to read "every named collector fetched at $0 ⇒ CONFIRMED
+# PAID". That inference is unsound: `collectors_named` comes from the petition, which names
+# PLAINTIFFS — a LOWER BOUND on who levies — so fetching it to completion proves nothing about the
+# SET. Corroborating a zero needs ACT's per-parcel unit report, which exists for no parcel today.
+#
+# `expected_band` is asserted DIRECTLY, not only through parity. Parity alone went VACUOUS under
+# §33: it compares `band=="zero"` against `label==VERIFIED`, and §33 makes the label never VERIFIED,
+# so both sides go false together and the row passes while its description claims the opposite.
+# Parity still catches a revert of the band flip — but a guard whose fixtures can drift out of
+# agreement with their own names is one bad rename from meaning nothing.
 CASES = [
-    ("corroborated zero — every named collector fetched, all $0 ⇒ CONFIRMED PAID",
-     0.0, [{"entity": GISD, "total": 6991.30}], {"GARLAND ISD": 0.0}, 11329.20, "active"),
-    ("corroborated zero, TWO collectors both fetched at $0",
+    ("named collectors all fetched at $0 — still UNCONFIRMED: the SET is a lower bound (§33)",
+     0.0, [{"entity": GISD, "total": 6991.30}], {"GARLAND ISD": 0.0}, 11329.20, "active", "unknown"),
+    ("…same with TWO collectors both fetched at $0 — fetching a lower bound to completion "
+     "corroborates nothing",
      0.0, [{"entity": GISD}, {"entity": COG}], {"GARLAND ISD": 0.0, "CITY OF GARLAND": 0.0},
-     11329.20, "active"),
+     11329.20, "active", "unknown"),
     ("PARTIALLY checked — one of two fetched ⇒ still UNCONFIRMED",
-     0.0, [{"entity": GISD}, {"entity": COG}], {"GARLAND ISD": 0.0}, 11329.20, "active"),
+     0.0, [{"entity": GISD}, {"entity": COG}], {"GARLAND ISD": 0.0}, 11329.20, "active", "unknown"),
     ("never checked — collectors named, none fetched ⇒ UNCONFIRMED (the §17.4 case)",
-     0.0, [{"entity": GISD}, {"entity": COG}], {}, 11329.20, "active"),
+     0.0, [{"entity": GISD}, {"entity": COG}], {}, 11329.20, "active", "unknown"),
     ("collector fetched with a REAL balance ⇒ not paid, not a zero band",
-     0.0, [{"entity": GISD}], {"GARLAND ISD": 6991.30}, 11329.20, "active"),
+     0.0, [{"entity": GISD}], {"GARLAND ISD": 6991.30}, 11329.20, "active", "unknown"),
     ("all-ACT parcel, ACT $0, active suit ⇒ UNCONFIRMED (no collector can corroborate)",
-     0.0, [{"entity": "DALLAS INDEPENDENT SCHOOL DISTRICT"}], {}, 19366.44, "active"),
-    ("dismissed_paid ⇒ zero band regardless (docket stopped collection)",
-     0.0, [{"entity": GISD}], {}, 11329.20, "dismissed_paid"),
+     0.0, [{"entity": "DALLAS INDEPENDENT SCHOOL DISTRICT"}], {}, 19366.44, "active", "unknown"),
+    ("dismissed_paid ⇒ zero band regardless (the DOCKET stopped collection — independent evidence, "
+     "not a balance corroborating itself)",
+     0.0, [{"entity": GISD}], {}, 11329.20, "dismissed_paid", "zero"),
     ("no suit amount ⇒ nothing to contradict",
-     0.0, [{"entity": GISD}], {}, 0, "active"),
+     0.0, [{"entity": GISD}], {}, 0, "active", "zero"),
 ]
 
 
@@ -100,7 +120,7 @@ async def main():
         await pg.goto("about:blank")
         await pg.add_script_tag(content=harness)
 
-        for label, bal, tb, fetched, filed, track in CASES:
+        for label, bal, tb, fetched, filed, track, expected_band in CASES:
             # SKELETON shape: the promoted columns, exactly what the sidebar receives.
             named = sum(1 for c in J.petition_collectors(tb)
                         if J.resolve_collector(c["collector"])["scope"] != "act")
@@ -112,10 +132,20 @@ async def main():
             band = await pg.evaluate("c => window.__band(c)", skel)
             payoff = A.tax_payoff(CaseInput("X", owed=bal, total_due_filing=filed,
                                             tax_breakdown=tb, collector_balances=fetched))
-            verified_zero = payoff["amount"] == 0 and payoff["label"] == A.VERIFIED
-            agree = (band == "zero") == verified_zero if track != "dismissed_paid" and filed else True
-            check(f"{label}", agree,
-                  f'band={band} payoff=${payoff["amount"]} [{payoff["label"]}]')
+            # DIRECT assertion of the band — states the intent even if the parity predicate below
+            # ever goes vacuous again.
+            check(f"{label}", band == expected_band,
+                  f'band={band} expected={expected_band} payoff=${payoff["amount"]} [{payoff["label"]}]')
+            # PARITY: the band and the engine must not disagree about a confirmed-paid parcel. Read
+            # completeness, not the label word — §33 pinned the label to ESTIMATED fleet-wide, so
+            # `label == VERIFIED` is now a constant False and comparing against it proves nothing.
+            comp = A.tax_payoff_lines(CaseInput("X", owed=bal, total_due_filing=filed,
+                                                tax_breakdown=tb,
+                                                collector_balances=fetched))["completeness"]
+            confirmed_paid = payoff["amount"] == 0 and J.payoff_is_complete(comp)
+            agree = (band == "zero") == confirmed_paid if track != "dismissed_paid" and filed else True
+            check(f"  ↳ band/payoff parity", agree,
+                  f'band={band} amount=${payoff["amount"]} complete={comp["complete"]}')
 
         # ── the 11 real cases that exposed the disagreement ──────────────────────────────────────
         print("\nthe 11 live cases that disagreed before this gate")
@@ -144,7 +174,8 @@ async def main():
                 band = await pg.evaluate("c => window.__band(c)", skel)
                 po = A.tax_payoff(CaseInput(cn, owed=bal, total_due_filing=filed,
                                             tax_breakdown=tb_raw, collector_balances=fetched))
-                vz = po["amount"] == 0 and po["label"] == A.VERIFIED
+                _c = A.tax_payoff_lines(CaseInput(cn, owed=bal, total_due_filing=filed, tax_breakdown=tb_raw, collector_balances=fetched))["completeness"]
+                vz = po["amount"] == 0 and J.payoff_is_complete(_c)
                 if (band == "zero") != vz and track != "dismissed_paid" and (filed or 0) > 0:
                     bad.append((cn, band, po["amount"], po["label"]))
             check(f"no case on the real book disagrees (was 11)", not bad, str(bad[:6]))

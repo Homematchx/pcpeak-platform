@@ -1193,7 +1193,13 @@ function collectorsNamedInSuit(c) {
 // collectorBalances: {collector: amount} of VERIFIED balances from offices that bill OUTSIDE ACT
 // (Garland ISD, City of Garland, Richardson ISD, …). `unavailableCollectors`: named in the suit but
 // not retrieved — they contribute NOTHING and drop the label to estimated, never a silent $0.
-function calcPayoff(ex, dallasactBalance, collectorBalances, unavailableCollectors) {
+// §33 — `membershipVerified` mirrors the engine's `completeness.membership_verified`. It answers a
+// DIFFERENT question from `unavailableCollectors`: that one is RETRIEVAL (did we reach the
+// collectors we know of), this one is MEMBERSHIP (do we know the full set at all). Only ACT's
+// per-parcel unit report can establish it, which is populated nowhere today — so it defaults FALSE
+// and the payoff reads `estimated`, not `verified`. Keeping the default false is what makes the
+// client incapable of claiming a completeness the engine would not claim (§28 parity).
+function calcPayoff(ex, dallasactBalance, collectorBalances, unavailableCollectors, membershipVerified) {
   const filedAmt    = ex.totalDueAtFiling || 0;
   const hasLive     = dallasactBalance != null && dallasactBalance > 0;
   const hasJudgment = !!ex.judgmentDate;
@@ -1202,7 +1208,9 @@ function calcPayoff(ex, dallasactBalance, collectorBalances, unavailableCollecto
   const fetchedAny  = extVals.length > 0;          // a fetched ZERO is a fact, not an absence
   const actKnown    = dallasactBalance != null;
   const nMissing    = (unavailableCollectors || []).length;
-  const complete    = !nMissing && actKnown;
+  // RETRIEVAL complete AND MEMBERSHIP verified — `verified` is the word that asserts COMPLETE, so it
+  // requires both. Reading only the first is what let a floor read as a total (§33).
+  const complete    = !nMissing && actKnown && membershipVerified === true;
   let taxPayoff, payoffLabel, fallbackAccrued = 0;
   if (hasLive) {
     // ACT live + every VERIFIED collector billing outside it.
@@ -1364,23 +1372,23 @@ function zeroIsContradicted(c) {
   var filed = c.total_due_filing;
   if (typeof filed !== "number" || filed <= 0) return false;   // no suit amount ⇒ nothing to contradict
   if (caseTrack(c) === "dismissed_paid") return false;         // dismissal = collection stopped
-  // ── THE CONTRADICTION IS RESOLVED ONCE EVERY NAMED COLLECTOR HAS BEEN READ (§31) ──────────────
-  // §17.4 flagged an ACT $0 as UNCONFIRMED precisely because a collector billing outside ACT might
-  // be unread. That was the honest state when nobody had checked. Now the adapters have: if every
-  // collector the PETITION named was fetched and they sum to zero, the zero is CORROBORATED and the
-  // parcel is genuinely paid — the same fetched-vs-assumed distinction §25 established, applied to
-  // the band. Recorded in §17.5 as blocked-on-data; the data now exists.
-  // Read the PROMOTED columns, not the blob: the sidebar runs on the skeleton, where both
-  // property_intel and tax_breakdown are dropped. They are derived server-side by jurisdictions.py —
-  // the same module the payoff engine uses — so the band cannot disagree with the payoff about which
-  // collectors exist. (Falls back to the local parse on a detail/draft record that has the blob.)
-  var named = (typeof c.collectors_named === "number") ? c.collectors_named
-                                                       : collectorsNamedInSuit(c).length;
-  var got   = c.collectors_fetched;
-  var tot   = c.collector_fetched_total;
-  if (named > 0 && got === named && typeof tot === "number" && tot <= 0) return false;
-  // Nothing named outside ACT at all: ACT IS the whole picture, so its $0 is not contradicted by a
-  // collector — the suit amount alone is then the only tension, which §17.4 already judged.
+  // ── §33 CORRECTION — READING EVERY *NAMED* COLLECTOR DOES NOT CORROBORATE THE ZERO ────────────
+  // §31 resolved the contradiction here: if every collector the PETITION named was fetched and they
+  // summed to zero, it called the zero CORROBORATED and the parcel genuinely paid. That inference is
+  // UNSOUND, and it is the §23 defect one layer up. `collectors_named` derives from the petition's
+  // tax_breakdown, and a petition names PLAINTIFFS — a LOWER BOUND on who levies. A district that
+  // levies on this parcel and did not join the suit is invisible to that count, so "we read all of
+  // them" only ever means "we read all the ones that sued". Fetching a lower bound to completion
+  // proves nothing about the set.
+  //
+  // Corroborating the zero needs the collector SET verified, which needs ACT's per-parcel unit
+  // report (`act_units`) — populated nowhere today, exactly as the residual note above already said
+  // for `dismissed_paid`. Same blind spot, same honest answer: the zero stays CONTRADICTED, the case
+  // stays UNCONFIRMED (§17.4's state), and it is not upgraded to paid on an unprovable premise.
+  //
+  // This deliberately reverts §31's flip. `collectors_named`/`collectors_fetched`/
+  // `collector_fetched_total` remain populated and are still read by the payoff surfaces; they are
+  // simply no longer allowed to answer a question about set completeness that they cannot answer.
   return true;
 }
 
@@ -1803,7 +1811,10 @@ function renderDetail(c) {
           });
           var _named = collectorsNamedInSuit(c);
           var _unavail = _named.filter(function(n){ return !(n in _cb); });
-          const po = calcPayoff(ex, _liveBal, _cb, _unavail);
+          // Membership is EXPLICITLY unverified: no ACT per-parcel unit report is captured for any
+          // parcel, so there is no client-side source that could establish it. Passed literally
+          // rather than left undefined so the claim is visible at the call site (§33).
+          const po = calcPayoff(ex, _liveBal, _cb, _unavail, false);
           const chip = (l) => l === "verified"
             ? `<span style="font-size:9px;text-transform:uppercase;letter-spacing:.4px;background:rgba(34,197,94,.18);color:var(--green);padding:1px 5px;border-radius:4px;margin-left:4px">verified</span>`
             : `<span style="font-size:9px;text-transform:uppercase;letter-spacing:.4px;background:rgba(245,158,11,.18);color:var(--amber);padding:1px 5px;border-radius:4px;margin-left:4px">estimated</span>`;
