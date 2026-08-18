@@ -194,11 +194,41 @@ def tax_payoff(case: CaseInput, as_of: Optional[datetime.date] = None) -> dict:
     amount, labeled ESTIMATED. Returns {amount, label, basis, note}."""
     as_of = as_of or datetime.date.today()
     live = case.owed
+
+    # PER-COLLECTOR TOTAL (design §26). The ACT scalar covers only the units ACT bills. Where a
+    # self-collecting district was fetched, its VERIFIED balance is part of the payoff — leaving it
+    # out is the 4x understatement this whole arc exists to close (3909 Cambridge: ACT $5,974.81 of a
+    # true $25,749.87). Only `verified` external lines are summed; an `unavailable` one contributes
+    # NOTHING and is reported through `completeness`, never silently as zero.
+    lines = tax_payoff_lines(case)
+    external = sum(l["amount"] for l in lines["collectors"]
+                   if l["scope"] != "act" and l["amount"] is not None)
+    incomplete = bool(lines["completeness"]["unavailable_collectors"])
+    part = ("" if not incomplete else
+            f" — FLOOR: excludes {len(lines['completeness']['unavailable_collectors'])} "
+            f"unretrieved collector(s)")
+    label = ESTIMATED if incomplete else VERIFIED
+
     if live and live > 0:
-        return {"amount": round(live), "label": VERIFIED, "basis": "act_live_balance",
-                "note": "ACT current amount due — used as-is"}
+        if external:
+            return {"amount": round(live + external), "label": label, "basis": "act_plus_collectors",
+                    "note": f"ACT ${live:,.0f} + ${external:,.0f} from collectors billing outside "
+                            f"ACT{part}"}
+        return {"amount": round(live), "label": label, "basis": "act_live_balance",
+                "note": "ACT current amount due — used as-is" + part}
+    if external:
+        # ACT shows nothing (or nothing yet) but a self-collecting district does. That figure is real
+        # and fetched; it must NOT be replaced by an estimate derived from the filing amount.
+        return {"amount": round(external), "label": label, "basis": "collectors_outside_act",
+                "note": f"ACT balance ${live if live is not None else 0:,.0f}; "
+                        f"${external:,.0f} owed to collectors billing outside ACT{part}"}
+
     filed = case.total_due_filing or 0.0
     if filed > 0:
+        # ⚠ NEVER fallback + external. `total_due_filing` is the PETITION total, which ALREADY
+        # includes every plaintiff collector's filed amount — adding fetched external balances on top
+        # would DOUBLE COUNT. Measured: 9 of 63 backfilled cases would have been inflated that way.
+        # This branch is reachable only when `external` is 0, so the two can never combine.
         months = _months_between(case.filed_date, as_of)
         est = filed + filed * (ACQ_CONFIG["payoff"]["fallback_monthly_interest_rate"] * months)
         return {"amount": round(est), "label": ESTIMATED, "basis": "fallback_estimate",

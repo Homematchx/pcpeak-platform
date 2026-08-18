@@ -1443,3 +1443,67 @@ not an adapter limitation. They correctly read `unavailable` → INDETERMINATE. 
 
 **NOT YET SYNCED TO PROD** — this is local data behind the `prod_ready` gate; pushing it is its own
 step.
+
+## 26. BUILT 2026-08-17 — verified collector balances enter the PAYOFF TOTAL
+
+**Caught before the data sync shipped.** §25's fleet run quantified $385K of external debt; the sync
+was ready. Measuring its blast radius first returned **0 verdict flips and no payoff movement** — and
+the zero was the defect, not a clean result. `tax_payoff()` returned only the ACT scalar, every
+calculator consumed that, and `known_total` was computed and consumed by nothing. **The fetched
+balances were displayed but not counted.** Syncing would have landed $385K into a field the engine
+reads for labels and ignores for money — the 4x understatement surviving behind honest-looking lines.
+
+The §23 decision to leave the scalar alone was correct while every external line was `unavailable`
+and there was nothing to add. It expired the moment real amounts existed.
+
+### 26.1 The rule
+
+```
+ACT live + verified external      both present
+verified external alone           ACT $0/absent but a collector was fetched
+filing-derived fallback           neither — and NEVER fallback + external
+```
+
+**The double-count trap:** `total_due_filing` is the PETITION total, which already includes every
+plaintiff collector's filed amount. Adding fetched external balances on top of the fallback estimate
+would count them twice — **measured at 9 of 63 backfilled cases**. The fallback branch is now
+reachable only when `external` is 0, so the two can never combine. Pinned.
+
+Only `verified` lines are summed; an `unavailable` collector contributes **nothing** and drops the
+total's label to `estimated` with the note naming it a **FLOOR** and counting what is missing. A
+payoff that cannot be complete says so instead of reading confident and low.
+
+### 26.2 Blast radius, measured on the real book (63 cases carrying fetched balances)
+
+| | |
+|---|---|
+| payoff changes | **40 cases** · aggregate **$304,936 → $602,380** |
+| verdict flips (cold) | **0** |
+| closability transitions | **60 × `INDETERMINATE → closable`**, 2 unchanged |
+| deals killed on the cold book | **0** |
+
+**The 0 cold verdict flips are correct and expected, not a null result.** A fatal `NO-GO` via
+`structural_unclosability` is **confirmed-valuation-gated** (§5.4) and no case in the book has
+confirmed comps, so cold triage cannot produce one — that is the 2026-07-21 decision-table fix
+behaving. What the data actually does cold is **resolve indeterminacy**: 60 cases move from
+INDETERMINATE to a real closability answer because the collector line is no longer unavailable.
+
+### 26.3 The Grant St shape, demonstrated on real numbers
+
+TX-26-00774 (Richardson ISD + City of Garland), confirmed valuation, agreed price $32,000:
+
+| | payoff | seller net | closable | verdict |
+|---|---|---|---|---|
+| ACT-only (old) | $6,812 | **+$23,526** | INDETERMINATE | GO-WITH-CONDITIONS |
+| with both collectors | **$29,050** | **−$2,048** | **False** | **NO-GO** |
+
+The deal dies on debt the platform previously could not see. That is the mechanism the whole arc was
+built for, and it is pinned by test.
+
+### 26.4 Pins
+
+`test_payoff_total.py` **21/21** — the 3909 Cambridge ground truth to the cent; incomplete rendering
+as a labelled FLOOR; both halves of the double-count guard; no movement on all-ACT parcels; and the
+Grant St flip end to end. Regressions green: `test_acquisition` 148/148, `test_jurisdictions` 47/47,
+`test_collectors_gds` 28/28, `test_set_invariance` 29/29, `test_dcad_jurisdictions` 25/25,
+`test_zero_balance_band` 18/18, `backend/test_acquisition_api` 52/52.
