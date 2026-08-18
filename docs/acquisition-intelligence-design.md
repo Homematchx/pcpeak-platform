@@ -1587,3 +1587,55 @@ already queued as the 4-case re-resolution increment.
    and treat it as one enrichment-integrity increment rather than two.
 
 Coverage we already have but display wrongly beats coverage we do not have yet.
+
+## 28. BUILT 2026-08-17 — payoff parity: the client and the engine can no longer disagree
+
+Fixes the §26 regression (§27) AND surfaces the collector lines, because they are the same code path.
+
+### 28.1 What changed
+
+`calcPayoff()` now implements the §26 rule exactly — ACT live + verified external; external alone
+when ACT is $0/absent but collectors were fetched; the filing-derived fallback only when neither, and
+never fallback + external. The Financials payoff card renders a **per-collector breakdown**: the ACT
+county-side line, each fetched collector with a `verified` chip, and any named-but-unretrieved
+collector in amber as `unavailable` with a FLOOR warning. `collectorsNamedInSuit()` derives membership
+from the petition's own breakdown, mirroring `jurisdictions.py` — never from the address.
+
+**Divergence closed: 63/63 cases now agree; 31 disagreed before.** TX-26-00774 reads **$29,050** on
+both tabs, with Richardson ISD $14,082.76 and City of Garland $8,154.64 itemised beneath it.
+
+### 28.2 THE GUARD — `test_payoff_parity.py`, and the three bugs it found immediately
+
+The standing rule the user asked for: **a test that fails if the two implementations ever state
+different numbers.** It runs the REAL `calcPayoff` extracted from the served artifact in Chromium and
+the REAL `acquisition.tax_payoff()` over a 10-shape case matrix, asserting BOTH amount and label, plus
+that the two sides agree on *which* collectors are external. A comment reading "the two must agree"
+sat above `calcPayoff` through both previous drifts and stopped nothing; this does.
+
+It failed on first run and found **three genuine defects, two of them pre-existing**:
+
+1. **Month off-by-one (pre-existing).** `new Date("2026-01-01")` parses as UTC midnight, which is the
+   *previous month* in US local time, inflating the fallback accrual by a whole month. This is the
+   exact defect `fmt()` was fixed for in July — **`calcPayoff` was a missed consumer of that fix**,
+   which is the same "did you update every consumer" family, third instance.
+2. **Rounding placement (pre-existing).** The client rounded the accrual then added, yielding a
+   non-integer payoff ($12,689.20); the engine rounds the total.
+3. **A fabricated $0 (pre-existing) and a lost verified $0 (introduced by §26).** With nothing to
+   compute from, the client returned `$0 / estimated` where the engine correctly says `unavailable` —
+   the assumed-zero bug living in the client the whole time. Conversely §26's engine used truthiness
+   on the external sum, so a **complete set of fetched zeros** read as `unavailable` instead of a
+   verified $0 — losing exactly the distinction §25 established. Both fixed: retrieval is now tracked
+   explicitly (`fetched_any` / `fetchedAny`), and completeness requires ACT's figure to be known too.
+
+**And a fourth, caught while fixing the third:** `null * rate` is `0` and `null + 0` is `0` in JS, so
+an unknown payoff silently became a confident **$0.00 total-to-clear, minimum offer and suggested
+offer** one line below the fix. Derived money fields are now null when the payoff is unknown, and
+`fmtC` renders "—". The assumed-zero bug reappears wherever a null is allowed into arithmetic.
+
+### 28.3 Pins
+
+`test_payoff_parity.py` **22/22** (10 shapes × amount+label, plus external-collector agreement and
+zero pageerror). Frontend regressions green: `test_zero_balance_band` 18/18, `test_balance_card`
+17/17, `test_selection_stability` 7/7, `test_rep_sidebar` 9/9, `test_land_evidence_browser` 56/56.
+Engine regressions green: `test_payoff_total` 21/21, `test_acquisition` 148/148,
+`backend/test_acquisition_api` 52/52.

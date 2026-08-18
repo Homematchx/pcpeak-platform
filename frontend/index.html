@@ -1151,30 +1151,104 @@ function project(cobj) {
 //   verified. Only when NO live balance exists do we fall back to a §33.48 estimate from the
 //   filing amount grown by penalty/interest (labeled estimated).
 //   Tax-suit attorney fees (§33.48) are a SEPARATE, ESTIMATED line — never folded into the payoff.
-function calcPayoff(ex, dallasactBalance) {
+// Taxing units named as PLAINTIFFS in the petition that bill outside ACT. Membership comes from the
+// suit, never from the address — a Garland address may sit in Richardson or Dallas ISD, and Garland
+// ISD reaches beyond Garland city (design §19/§22). Mirrors jurisdictions.py's canonical names.
+var ACT_COLLECTED_UI = ["DALLAS COUNTY","DALLAS COLLEGE","PARKLAND HOSPITAL","SCHOOL EQUALIZATION",
+  "DALLAS COUNTY TAX OFFICE","TAX CERTIFICATES","CITY OF DALLAS","DALLAS ISD","CITY OF MESQUITE",
+  "MESQUITE ISD","CITY OF CEDAR HILL","CEDAR HILL ISD","CITY OF GRAND PRAIRIE","GRAND PRAIRIE ISD",
+  "CITY OF CARROLLTON","CITY OF FARMERS BRANCH","CITY OF IRVING","CITY OF RICHARDSON",
+  "CITY OF ROWLETT","CITY OF SEAGOVILLE","CITY OF WILMER","CITY OF HUTCHINS","TOWN OF ADDISON"];
+function canonCollector(name) {
+  if (!name) return "";
+  var n = String(name).toUpperCase()
+    .replace(/\s*[-–]?\s*\(?(?:TRACT|TR)\s*\d+\)?(?:\s*\(\s*\d{4}(?:\s*[-–]\s*\d{4})?\s*\))?\s*$/, "")
+    .replace(/\s*\(\s*\d{4}(?:\s*[-–]\s*\d{4})?\s*\)\s*$/, "")
+    .replace(/\s+N\/?K\/?A\s+.*$/, "").replace(/\s+/g, " ").trim().replace(/[.,]+$/, "");
+  return n.replace(/\bINDEPENDENT SCHOOL DISTRICT\b/, "ISD")
+          .replace(/^DALLAS COUNTY COMMUNITY COLLEGE DISTRICT$/, "DALLAS COLLEGE")
+          .replace(/^PARKLAND HOSPITAL DISTRICT$/, "PARKLAND HOSPITAL")
+          .replace(/^DALLAS COUNTY SCHOOL EQUALIZATION FUND$/, "SCHOOL EQUALIZATION").trim();
+}
+function collectorsNamedInSuit(c) {
+  var tb = c && c.tax_breakdown;
+  if (typeof tb === "string") { try { tb = JSON.parse(tb); } catch (e) { return []; } }
+  if (!Array.isArray(tb)) return [];
+  var out = [];
+  tb.forEach(function(row){
+    var n = canonCollector(row && row.entity);
+    if (n && ACT_COLLECTED_UI.indexOf(n) === -1 && out.indexOf(n) === -1) out.push(n);
+  });
+  return out.sort();
+}
+
+// ⚠ THIS FUNCTION MIRRORS `acquisition.tax_payoff()` AND MUST NEVER DRIFT FROM IT.
+// It has drifted TWICE: once before f8188d5 (fee-loaded + null live balance), and again when §26
+// wired collector balances into the engine and left this client path on the ACT scalar alone — 31
+// cases showing $307,863 less than the Acquisition tab, i.e. the platform quoting two payoffs for one
+// parcel. `test_payoff_parity.py` now runs BOTH implementations over the same case matrix and fails
+// on any divergence, so a third drift cannot ship silently. Change one, change the other, or the
+// parity test stops you.
+//
+// collectorBalances: {collector: amount} of VERIFIED balances from offices that bill OUTSIDE ACT
+// (Garland ISD, City of Garland, Richardson ISD, …). `unavailableCollectors`: named in the suit but
+// not retrieved — they contribute NOTHING and drop the label to estimated, never a silent $0.
+function calcPayoff(ex, dallasactBalance, collectorBalances, unavailableCollectors) {
   const filedAmt    = ex.totalDueAtFiling || 0;
   const hasLive     = dallasactBalance != null && dallasactBalance > 0;
   const hasJudgment = !!ex.judgmentDate;
+  const extVals     = Object.values(collectorBalances || {}).filter(v => typeof v === "number");
+  const external    = extVals.reduce((a, b) => a + b, 0);
+  const fetchedAny  = extVals.length > 0;          // a fetched ZERO is a fact, not an absence
+  const actKnown    = dallasactBalance != null;
+  const nMissing    = (unavailableCollectors || []).length;
+  const complete    = !nMissing && actKnown;
   let taxPayoff, payoffLabel, fallbackAccrued = 0;
   if (hasLive) {
-    taxPayoff   = Math.round(dallasactBalance);   // ACT current amount due — used as-is
-    payoffLabel = "verified";
+    // ACT live + every VERIFIED collector billing outside it.
+    taxPayoff   = Math.round(dallasactBalance + external);
+    payoffLabel = complete ? "verified" : "estimated";
+  } else if (fetchedAny) {
+    // ACT shows nothing but collectors were actually queried. Use the real figure — NOT an estimate
+    // from the filing amount — including when they sum to zero (verified "nothing owed here").
+    taxPayoff   = Math.round(external);
+    payoffLabel = complete ? "verified" : "estimated";
+  } else if (!(filedAmt > 0)) {
+    // NOTHING to compute from: no live balance, nothing fetched, no filing amount. The payoff is
+    // UNKNOWN and must say so — fabricating $0 here is the assumed-zero bug this arc exists to kill.
+    taxPayoff   = null;
+    payoffLabel = "unavailable";
   } else {
     let months = 0;
     if (ex.filedDate && filedAmt > 0) {
-      const f = new Date(ex.filedDate), n = new Date();
+      // Parse date-only as LOCAL. `new Date("2026-01-01")` is UTC midnight, which lands on the
+      // PREVIOUS day — and month — in US local time, inflating the accrual by a whole month. Same
+      // defect `fmt()` was fixed for in July; this consumer was missed. Caught by payoff parity.
+      var _m = String(ex.filedDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const f = _m ? new Date(+_m[1], +_m[2]-1, +_m[3]) : new Date(ex.filedDate), n = new Date();
       months = Math.max(0, (n.getFullYear()-f.getFullYear())*12 + (n.getMonth()-f.getMonth()));
     }
     fallbackAccrued = Math.round(filedAmt * (0.015 * months));
-    taxPayoff   = filedAmt + fallbackAccrued;     // no live balance — estimated from filing + P&I
+    // ⚠ NEVER fallback + external. totalDueAtFiling is the PETITION total and already includes every
+    // plaintiff collector, so combining them double-counts (9 of 63 cases measured). Reachable only
+    // when external is 0, so the two can never combine.
+    // Round the TOTAL, matching the engine — rounding the accrual first left a non-integer payoff.
+    taxPayoff   = Math.round(filedAmt + filedAmt * (0.015 * months));
     payoffLabel = "estimated";
   }
   const attyFeeRate  = hasJudgment ? 0.20 : 0.15;
-  const attyFees     = Math.round(taxPayoff * attyFeeRate);   // SEPARATE estimated line, until LGBS letter
-  const totalToClear = taxPayoff + attyFees;
+  // An UNKNOWN payoff must stay unknown all the way down. `null * rate` is 0 and `null + 0` is 0 in
+  // JS, so without this every derived line would render a confident $0.00 — the assumed-zero bug
+  // reappearing one line below the place it was just fixed.
+  const known        = taxPayoff !== null;
+  const attyFees     = known ? Math.round(taxPayoff * attyFeeRate) : null;   // SEPARATE estimated line
+  const totalToClear = known ? taxPayoff + attyFees : null;
   return {
     filedAmount:    filedAmt,
     hasLive:        hasLive,
+    external:       Math.round(external),
+    collectors:     collectorBalances || {},
+    unavailable:    unavailableCollectors || [],
     payoffLabel:    payoffLabel,
     fallbackAccrued:fallbackAccrued,
     taxPayoff:      taxPayoff,
@@ -1182,8 +1256,9 @@ function calcPayoff(ex, dallasactBalance) {
     attyFeeRate:    attyFeeRate,
     totalToClear:   totalToClear,
     hasJudgment:    hasJudgment,
-    minOffer:       Math.round(totalToClear * 1.05),
-    suggestedOffer: Math.round(totalToClear * 1.15),
+    // Offers derived from an unknown payoff are not offers. No number is safer than a wrong one.
+    minOffer:       known ? Math.round(totalToClear * 1.05) : null,
+    suggestedOffer: known ? Math.round(totalToClear * 1.15) : null,
   };
 }
 
@@ -1698,21 +1773,48 @@ function renderDetail(c) {
         ${(() => {
           var _pi = parseIntel(c.property_intel);
           var _liveBal = (_pi && _pi.current_tax_balance != null) ? _pi.current_tax_balance : null;
-          const po = calcPayoff(ex, _liveBal);
+          // Collectors that bill OUTSIDE ACT. `collector_balances` holds what an adapter actually
+          // retrieved; anything the petition named but we could not reach stays UNAVAILABLE and is
+          // shown as such — never folded in as zero.
+          var _cbRaw = (_pi && _pi.collector_balances) || {};
+          var _cb = {}, _cbMeta = {};
+          Object.keys(_cbRaw).forEach(function(k){
+            var v = _cbRaw[k];
+            if (k === "_rejected" || !v || typeof v !== "object" || typeof v.amount !== "number") return;
+            _cb[k] = v.amount; _cbMeta[k] = v;
+          });
+          var _named = collectorsNamedInSuit(c);
+          var _unavail = _named.filter(function(n){ return !(n in _cb); });
+          const po = calcPayoff(ex, _liveBal, _cb, _unavail);
           const chip = (l) => l === "verified"
             ? `<span style="font-size:9px;text-transform:uppercase;letter-spacing:.4px;background:rgba(34,197,94,.18);color:var(--green);padding:1px 5px;border-radius:4px;margin-left:4px">verified</span>`
             : `<span style="font-size:9px;text-transform:uppercase;letter-spacing:.4px;background:rgba(245,158,11,.18);color:var(--amber);padding:1px 5px;border-radius:4px;margin-left:4px">estimated</span>`;
           return `<div class="card">
             <div class="chd">
               <div class="ct">&#128181; Estimated Payoff Calculator</div>
-              <div class="cs">Tax payoff = ACT live balance (as-is) · §33.48 attorney fees estimated separately</div>
+              <div class="cs">Tax payoff = ACT live balance + every collector billing outside ACT · §33.48 attorney fees estimated separately</div>
             </div>
             <table style="width:100%;border-collapse:collapse;font-size:13px">
               <tbody>
                 <tr style="border-bottom:1px solid var(--border)">
-                  <td style="padding:8px 0;color:var(--text2)">Tax payoff — ${po.hasLive ? "ACT live balance (as-is)" : "est. from filing + P&I (no live balance)"}${chip(po.payoffLabel)}</td>
+                  <td style="padding:8px 0;color:var(--text2)">Tax payoff — ${po.external ? "ACT live + collectors billing outside ACT" : (po.hasLive ? "ACT live balance (as-is)" : "est. from filing + P&I (no live balance)")}${chip(po.payoffLabel)}</td>
                   <td style="text-align:right;font-family:var(--FM);font-weight:700">${fmtC(po.taxPayoff)}</td>
                 </tr>
+                ${(po.external || po.unavailable.length) ? `
+                <tr><td colspan="2" style="padding:0 0 6px">
+                  <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);padding:6px 0 4px">Per-collector breakdown</div>
+                  ${po.hasLive ? `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0 2px 10px;color:var(--text2)">
+                    <span>Dallas County (ACT) — county-side units</span><span style="font-family:var(--FM)">${fmtC(Math.round(_liveBal))}</span></div>` : ``}
+                  ${Object.keys(po.collectors).sort().map(function(k){ return `
+                    <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0 2px 10px;color:var(--text2)">
+                      <span>${k}${chip("verified")}</span>
+                      <span style="font-family:var(--FM)">${fmtC(Math.round(po.collectors[k]))}</span></div>`; }).join("")}
+                  ${po.unavailable.map(function(k){ return `
+                    <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0 2px 10px;color:var(--amber)">
+                      <span>${k} &mdash; named in the suit, balance NOT retrieved${chip("estimated")}</span>
+                      <span style="font-family:var(--FM)">unavailable</span></div>`; }).join("")}
+                  ${po.unavailable.length ? `<div class="alert al-w" style="margin:6px 0 0">&#9888; This payoff is a FLOOR — ${po.unavailable.length} named collector${po.unavailable.length>1?"s":""} could not be retrieved. Quantify before making an offer; an unretrieved collector is never $0.</div>` : ``}
+                </td></tr>` : ``}
                 <tr style="border-bottom:1px solid var(--border)">
                   <td style="padding:8px 0;color:var(--text2)">+ Tax-suit attorney fees (${Math.round(po.attyFeeRate*100)}% · §33.48, until LGBS letter)${chip("estimated")}</td>
                   <td style="text-align:right;font-family:var(--FM);color:var(--red)">+ ${fmtC(po.attyFees)}</td>

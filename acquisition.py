@@ -201,9 +201,15 @@ def tax_payoff(case: CaseInput, as_of: Optional[datetime.date] = None) -> dict:
     # true $25,749.87). Only `verified` external lines are summed; an `unavailable` one contributes
     # NOTHING and is reported through `completeness`, never silently as zero.
     lines = tax_payoff_lines(case)
-    external = sum(l["amount"] for l in lines["collectors"]
-                   if l["scope"] != "act" and l["amount"] is not None)
-    incomplete = bool(lines["completeness"]["unavailable_collectors"])
+    ext_lines = [l for l in lines["collectors"] if l["scope"] != "act"]
+    external = sum(l["amount"] for l in ext_lines if l["amount"] is not None)
+    # A collector that was FETCHED AND CAME BACK ZERO is a verified fact, not an absence — §25's
+    # whole point. Truthiness on the sum cannot tell the two apart, so track retrieval explicitly.
+    fetched_any = any(l["amount"] is not None for l in ext_lines)
+    act_known = isinstance(live, (int, float))
+    # Complete = every named collector retrieved AND ACT's own figure known. An unknown ACT balance
+    # cannot yield a verified TOTAL even when every external line came back.
+    incomplete = bool(lines["completeness"]["unavailable_collectors"]) or not act_known
     part = ("" if not incomplete else
             f" — FLOOR: excludes {len(lines['completeness']['unavailable_collectors'])} "
             f"unretrieved collector(s)")
@@ -216,9 +222,10 @@ def tax_payoff(case: CaseInput, as_of: Optional[datetime.date] = None) -> dict:
                             f"ACT{part}"}
         return {"amount": round(live), "label": label, "basis": "act_live_balance",
                 "note": "ACT current amount due — used as-is" + part}
-    if external:
-        # ACT shows nothing (or nothing yet) but a self-collecting district does. That figure is real
-        # and fetched; it must NOT be replaced by an estimate derived from the filing amount.
+    if fetched_any:
+        # ACT shows nothing (or nothing yet) but collectors were actually queried. Their figures are
+        # real and must NOT be replaced by an estimate derived from the filing amount — including when
+        # they sum to ZERO, which is a verified "nothing owed here", not an absence of data.
         return {"amount": round(external), "label": label, "basis": "collectors_outside_act",
                 "note": f"ACT balance ${live if live is not None else 0:,.0f}; "
                         f"${external:,.0f} owed to collectors billing outside ACT{part}"}
