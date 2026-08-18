@@ -96,8 +96,12 @@ async def main():
     from playwright.async_api import async_playwright
 
     src = HTML.read_text()
+    # §31 added a collector-corroboration branch to zeroIsContradicted, so its dependencies come too.
+    _i = src.index("var ACT_COLLECTED_UI")
     harness = "\n".join([
+        src[_i:src.index("];", _i) + 2],
         _fn("parseIntel"), _fn("caseTrack"), _fn("caseLiveBalance"),
+        _fn("canonCollector"), _fn("collectorsNamedInSuit"),
         _fn("zeroIsContradicted"), _fn("balanceBand"),
         "window.__band = function(c){ return balanceBand(c); };",
         "window.__contra = function(c){ return zeroIsContradicted(c); };",

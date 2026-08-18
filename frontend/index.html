@@ -1363,7 +1363,25 @@ function zeroIsContradicted(c) {
   if (!c) return false;
   var filed = c.total_due_filing;
   if (typeof filed !== "number" || filed <= 0) return false;   // no suit amount ⇒ nothing to contradict
-  return caseTrack(c) !== "dismissed_paid";                    // dismissal = collection stopped
+  if (caseTrack(c) === "dismissed_paid") return false;         // dismissal = collection stopped
+  // ── THE CONTRADICTION IS RESOLVED ONCE EVERY NAMED COLLECTOR HAS BEEN READ (§31) ──────────────
+  // §17.4 flagged an ACT $0 as UNCONFIRMED precisely because a collector billing outside ACT might
+  // be unread. That was the honest state when nobody had checked. Now the adapters have: if every
+  // collector the PETITION named was fetched and they sum to zero, the zero is CORROBORATED and the
+  // parcel is genuinely paid — the same fetched-vs-assumed distinction §25 established, applied to
+  // the band. Recorded in §17.5 as blocked-on-data; the data now exists.
+  // Read the PROMOTED columns, not the blob: the sidebar runs on the skeleton, where both
+  // property_intel and tax_breakdown are dropped. They are derived server-side by jurisdictions.py —
+  // the same module the payoff engine uses — so the band cannot disagree with the payoff about which
+  // collectors exist. (Falls back to the local parse on a detail/draft record that has the blob.)
+  var named = (typeof c.collectors_named === "number") ? c.collectors_named
+                                                       : collectorsNamedInSuit(c).length;
+  var got   = c.collectors_fetched;
+  var tot   = c.collector_fetched_total;
+  if (named > 0 && got === named && typeof tot === "number" && tot <= 0) return false;
+  // Nothing named outside ACT at all: ACT IS the whole picture, so its $0 is not contradicted by a
+  // collector — the suit amount alone is then the only tension, which §17.4 already judged.
+  return true;
 }
 
 // Deal-shape band from the live balance — the filter and any label share this one classifier.

@@ -1715,3 +1715,59 @@ gate** and is not batched here.
 `test_collectors_act.py` **25/25** — total-vs-current-year parsing, current+prior reconciliation, a
 fetched zero staying a fact, five fail-closed shapes, the instance path being registry data, identity
 guard and retry present, membership gating, and gds collectors not routed here.
+
+## 31. BUILT 2026-08-17 — the band becomes collector-aware (two gates), and BAND↔PAYOFF parity is enforced
+
+§17.4 flagged an ACT $0 as **UNCONFIRMED** because a collector billing outside ACT might be unread.
+That was the honest state when nobody had checked. The adapters have now checked — so on **11 cases**
+the band still said "Unconfirmed" while the payoff on the same parcel said a **verified $0**. Two
+consumers of collector data, one updated: the §28 defect at a third surface.
+
+### 31.1 Gate 1 (backend, inert) — promoted columns
+
+`balanceBand` runs on the SKELETON, which drops **both** `property_intel` and `tax_breakdown`, so it
+could not see collector coverage at all. Three columns promoted in the same lockstep as
+`current_tax_balance`: `collector_fetched_total`, `collectors_fetched`, and `collectors_named` —
+the last derived by **`jurisdictions.py`, the same module the payoff engine uses**, so the two
+surfaces can never disagree about *which* collectors exist.
+
+`_collector_subvalues` counts only entries with a real numeric amount: an unreachable collector stays
+out of the total, while a **fetched $0.00 IS counted** — that is exactly what lets the band say
+confirmed-paid. `(None, None)` when nothing was fetched keeps "never checked" distinct from
+"checked, zero".
+
+**A gap caught by verifying prod rather than assuming:** the columns went live and came up **all
+null**, because they only populate on a `create_case` write and no pre-existing row had been
+rewritten. The `current_tax_balance` promotion had an `init_db` backfill for exactly this; the
+collector columns needed the same. After it: **73 cases with `collectors_named` > 0, 47 with
+`collectors_fetched`.**
+
+### 31.2 Gate 2 (frontend) — the corroborated zero
+
+`zeroIsContradicted()` now returns false when **every collector the petition named has been fetched
+and they sum to zero** — the zero is corroborated, the parcel is genuinely paid. Everything else is
+unchanged: partially-checked, never-checked, and all-ACT parcels all stay UNCONFIRMED.
+
+**Blast radius: exactly 11 cases, all `unknown → zero`, nothing else moved** (bands before
+`unknown 80 / zero 38` → after `unknown 69 / zero 49`).
+
+### 31.3 THE GUARD — `test_band_payoff_parity.py`
+
+The band and the payoff are now two consumers of collector data, and nothing but a test stops them
+drifting again. The invariant:
+
+> `band == "zero"` ⟺ the payoff is a **VERIFIED $0**
+
+Eight synthetic shapes (corroborated / partially checked / never checked / real balance / all-ACT /
+dismissed / no suit amount) **plus a sweep of the entire real book** asserting no case disagrees —
+where 11 did before. The band now joins the enforced-parity family:
+
+| guard | question |
+|---|---|
+| §19 | is this a set? |
+| §28 | did every consumer of the payoff update? |
+| §29 | does absence survive arithmetic? |
+| **§31** | **do the band and the payoff agree on paid-vs-unconfirmed?** |
+
+`test_zero_balance_band.py`'s harness was extended for the new dependency (18/18 still green) — a
+reminder that extracting functions for a browser test couples the test to the artifact's call graph.
