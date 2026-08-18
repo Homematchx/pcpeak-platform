@@ -265,6 +265,96 @@ async def resolve_dcad_account(property_address, owner_name, browser):
     return "", "unresolved"
 
 
+def _money(cell):
+    """'$2,019.92' → 2019.92 · 'N/A' / '' → None. A dash or N/A is ABSENCE, never zero."""
+    if not cell:
+        return None
+    m = re.search(r'-?[\d,]+\.?\d*', cell.replace("$", ""))
+    if not m or cell.strip().upper() in ("N/A", "-", "--"):
+        return None
+    try:
+        return float(m.group(0).replace(",", ""))
+    except ValueError:
+        return None
+
+
+# DCAD's estimated-taxes block is a COLUMN-ORIENTED table: taxing units are COLUMNS, and each ROW is
+# one attribute of every unit. Rendered to text it looks like
+#
+#     \tCity\tSchool\tCounty\tCollege\tHospital\tSpecial District
+#     Taxing Jurisdiction\tGARLAND\tGARLAND ISD\tDALLAS COUNTY\tDALLAS COLLEGE\tPARKLAND HOSPITAL\tUNASSIGNED
+#     Tax Rate per $100\t$0.689746\t$1.1709\t$0.2155\t$0.106575\t$0.212\tN/A
+#     Estimated Taxes\t$2,019.92\t$3,428.98\t$631.09\t$312.10\t$620.84\tN/A
+#     Total Estimated Taxes:\t$7,012.94
+#
+# THE ORIGINAL PARSER READ IT AS ROWS. It scanned for `(DALLAS[A-Z\s]*|PARKLAND[A-Z\s]*|UNASSIGNED)`
+# followed by a dollar amount, which is wrong TWICE over:
+#   · a name/value pair never appears adjacently in a column table, so `[A-Z\s]*` ran across tabs and
+#     newlines and swallowed the WHOLE header row into one "entity";
+#   · and the alternation could only ever recognise units named DALLAS… or PARKLAND…, so GARLAND ISD,
+#     CITY OF GARLAND, RICHARDSON ISD and every other non-Dallas unit were invisible by construction.
+# The hardcoded names were the visible symptom; reading a column table as rows was the defect. Result
+# fleet-wide: `tax_rates` empty or malformed on essentially every parcel.
+_TAX_ROW_KEYS = {"": "categories", "taxing jurisdiction": "names",
+                 "tax rate per $100": "rates", "estimated taxes": "estimated",
+                 "taxable value": "taxable"}
+
+
+def parse_tax_jurisdictions(text: str) -> list:
+    """Per-parcel taxing units from DCAD's estimated-taxes table — names, rates, estimated amounts.
+
+    Reads the table BY COLUMN and is deliberately agnostic to which units appear, how many there are,
+    and what order they come in: a district this code has never heard of parses exactly like Dallas
+    ISD. That is the §19 requirement — coverage must follow the parcel, not a list we maintain."""
+    # ANCHOR to the estimated-taxes block first. Scanning the whole page let an unrelated line with
+    # an empty first cell (the Legal Desc "\tDeed Transfer Date: …" row) claim the category header
+    # slot — a real bug caught against the live page, and the reason this parse is scoped, not global.
+    body = (text or "").replace("\xa0", " ")
+    # Anchor on the SECTION HEADING ("Estimated Taxes (2026 Certified Values)"), not the bare words —
+    # the page's nav bar contains an "Estimated Taxes" link far above the table.
+    # "Estimated Taxes (2026 Certified Values)". The YEAR is what makes it unique: the bare words
+    # appear 7× per page (nav bar, "Notice Of Estimated Taxes (ENS*)", the disclaimer prose), and two
+    # of those survive a `\(` alone. Verified as the single match on both a Garland and a Dallas page.
+    head = re.search(r'Estimated Taxes\s*\(\s*\d{4}', body)
+    if not head:
+        return []
+    start = head.start()
+    end = body.find("Total Estimated Taxes", start)
+    section = body[start:end if end > start else start + 4000]
+
+    rows = {}
+    for line in section.splitlines():
+        if "\t" not in line:
+            continue
+        cells = [c.strip() for c in line.split("\t")]
+        key = cells[0].strip().rstrip(":").lower()
+        if key in _TAX_ROW_KEYS and _TAX_ROW_KEYS[key] not in rows:
+            rows[_TAX_ROW_KEYS[key]] = cells[1:]
+    names = rows.get("names")
+    if not names:
+        return []
+    cats, rates, est = rows.get("categories", []), rows.get("rates", []), rows.get("estimated", [])
+
+    def at(seq, i):
+        return seq[i] if i < len(seq) else ""
+
+    out = []
+    for i, raw in enumerate(names):
+        name = (raw or "").strip()
+        # UNASSIGNED is DCAD's empty-column placeholder (the "Special District" slot on a parcel with
+        # none). It is not a taxing unit and must not become one.
+        if not name or name.upper() == "UNASSIGNED":
+            continue
+        category = at(cats, i).strip()
+        # The City column carries the bare city name ("GARLAND", "DALLAS"); every other column is
+        # already the unit's full name. Normalise so downstream sees one spelling per unit.
+        entity = name if not category.lower().startswith("city") or name.upper().startswith("CITY") \
+            else f"CITY OF {name}"
+        out.append({"entity": entity.upper(), "category": category or None,
+                    "tax_rate": _money(at(rates, i)), "estimated_tax": _money(at(est, i))})
+    return out
+
+
 async def scrape_dcad(account_number: str, browser) -> dict:
     result = {
         # Valuation
@@ -474,10 +564,8 @@ async def scrape_dcad(account_number: str, browser) -> dict:
         total_est = find(r'Total Estimated Taxes[:\s]+\$?([\d,\.]+)', cast=float)
         result["estimated_annual_taxes"] = total_est
 
-        # Tax rates by jurisdiction
-        rate_rows = re.findall(r'(DALLAS[A-Z\s]*|PARKLAND[A-Z\s]*|UNASSIGNED)\s+\$([\d,\.]+)', text)
-        for entity, amount in rate_rows[:6]:
-            result["tax_rates"].append({"entity": entity.strip(), "estimated_tax": float(amount.replace(",",""))})
+        # Tax rates by jurisdiction — see parse_tax_jurisdictions(); the table is COLUMN-oriented.
+        result["tax_rates"] = parse_tax_jurisdictions(text)
 
         # SILENT-FAILURE GUARD. Everything above only records an error when an EXCEPTION is raised.
         # A DCAD page that loads but renders nothing parsable (render timeout, session hiccup, a

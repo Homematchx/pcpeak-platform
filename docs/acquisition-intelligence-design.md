@@ -1272,3 +1272,84 @@ Garland ISD + City of Garland + Richardson ISD + C-FB ISD, 118 of the 126 extern
 **irving_act**. Irving is one increment behind the interface, not a special case. Standalone and
 independent: the `property_intel.py:477` `DALLAS|PARKLAND` regex (sixth §19 instance) plus the §19 Q2
 guard extension for hardcoded jurisdiction names in a parser.
+
+## 24. BUILT 2026-08-17 — DCAD taxing-unit parse (sixth §19 instance) + the §19 Q2 extension
+
+Standalone gate, independent of the adapters. Ticketed as "the `DALLAS|PARKLAND` regex fix"; the
+investigation found the regex was the **symptom of a deeper defect**.
+
+### 24.1 The defect had two layers
+
+```python
+re.findall(r'(DALLAS[A-Z\s]*|PARKLAND[A-Z\s]*|UNASSIGNED)\s+\$([\d,\.]+)', text)
+```
+
+- **Symptom (the ticket):** the alternation can only recognise units named `DALLAS…` or `PARKLAND…`.
+  GARLAND ISD, CITY OF GARLAND, RICHARDSON ISD and every other non-Dallas unit were invisible **by
+  construction** — a local truth applied fleet-wide.
+- **Actual defect:** DCAD's table is **COLUMN-ORIENTED** — units are columns, each row is one
+  attribute of every unit — so a unit's name never sits adjacent to its own amount. `[A-Z\s]*` ran
+  across tabs and newlines and swallowed the whole header row into a single "entity". **No list of
+  jurisdiction names would have fixed this.** The captured layout:
+
+```
+ 	City	School	County	College	Hospital	Special District
+Taxing Jurisdiction	GARLAND	GARLAND ISD	DALLAS COUNTY	DALLAS COLLEGE	PARKLAND HOSPITAL	UNASSIGNED
+Tax Rate per $100	$0.689746	$1.1709	$0.2155	$0.106575	$0.212	N/A
+Estimated Taxes	$2,019.92	$3,428.98	$631.09	$312.10	$620.84	N/A
+Total Estimated Taxes:	$7,012.94
+```
+
+**MEASURED FLEET-WIDE: `tax_rates` was EMPTY on 223 and MALFORMED on 77 of 300 enriched cases —
+unusable on 100% of the book.** Not a Garland problem; the field never worked anywhere.
+
+### 24.2 The fix
+
+`property_intel.parse_tax_jurisdictions()` reads the table **by column**, agnostic to which units
+appear, how many, and in what order. Verified against **real captured DCAD pages** for a Garland and a
+Dallas parcel: 5 units each, names + categories + rates + amounts, and the parsed amounts **reconcile
+to the page's own Total to within a cent**. The rates independently corroborate the portals —
+`$1.1709` = the GISD portal's rate, `$0.689746` = the City of Garland portal's rate.
+
+Three anchoring bugs were found and fixed *against the live page*, each worth recording because each
+would have shipped silently: the words "Estimated Taxes" appear **7×** per page (nav bar, ENS link,
+disclaimer prose), `Estimated Taxes\s*\(` still matched "Notice Of Estimated Taxes (ENS*)", and an
+unrelated Legal-Desc row with an empty first cell hijacked the category header. The anchor is now
+`Estimated Taxes\s*\(\s*\d{4}` — verified as the single match on both pages.
+
+### 24.3 Two upsides beyond the ticket
+
+1. **DCAD is now an INDEPENDENT corroboration source for the petition's collector list** (§23). Pinned:
+   every collector the Garland petition named appears in DCAD's unit table, DCAD independently
+   identifies the same two external collectors, and a Dallas parcel yields none (no false alarm). It
+   also covers the 13 of 334 cases with no petition breakdown. *(This also resolves §21's one untested
+   candidate: DCAD **does** name the district — though §23's petition oracle remains primary, being
+   authoritative and requiring no scrape.)*
+2. `tax_rates` stops being malformed fleet-wide, on every parcel, not just Garland.
+
+### 24.4 §19 Q2 EXTENSION — and the discrimination it needed
+
+Q2 now guards **both** layers, in `test_set_invariance.py`:
+
+- **AST guard:** no parser in `property_intel.py` may match on hardcoded jurisdiction NAMES. It fired
+  immediately on a second site — and that one is a **false positive worth encoding**:
+  `CITY OF ([A-Z][A-Z ]+?)(?:,|\s+DALLAS|\s+TX|…)` uses "DALLAS" as a *delimiter* inside a
+  **non-capturing** group; it constrains nothing about which cities can be recognised. The old defect
+  had its names **inside the capture**. The guard therefore strips `(?:…)` groups before scanning —
+  names in a capture are the defect, names as delimiters are not. Both directions are pinned.
+- **Behavioural guard:** an invented district (`NOVUSVILLE ISD`) must parse like any other, and each
+  unit must take **its own column's** amount — a row-reading or name-list implementation fails both.
+
+### 24.5 Pins
+
+`test_dcad_jurisdictions.py` **25/25** (the units the old regex could never see; the old regex
+recovering nothing from a column table; column reordering; a never-seen district; a 2-column table;
+`N/A` → None while a real `$0.00` stays 0.0; UNASSIGNED is not a unit; fails closed on junk; the
+nav-bar anchor trap; petition corroboration). `test_set_invariance.py` **26 → 29**. Regressions green:
+`test_dcad_parse` 38/38, `test_jurisdictions` 46/46, `test_acquisition` 148/148,
+`backend/test_acquisition_api` 52/52, `test_comps` 111/111, `test_zero_balance_band` 18/18,
+`test_balance_card` 17/17.
+
+**Deploy note:** `property_intel.py` is a LOCAL scraping tool — it is **not imported by the web app**,
+so no served artifact changes and prod behaviour is unaffected until cases are re-enriched locally.
+The fingerprint check below proves that rather than assuming it.

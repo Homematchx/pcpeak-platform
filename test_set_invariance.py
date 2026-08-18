@@ -133,6 +133,66 @@ def q2_whose_truth():
     check("no_conveyance_path() hardcodes no city or county",
           not re.search(r'"(GARLAND|DALLAS|MESQUITE|IRVING)"', seg))
 
+    # ── Q2 EXTENSION (added after the sixth instance, design §24) ────────────────────────────────
+    # A PARSER may not decide what exists by naming it. The DCAD taxing-unit parser used
+    #   r'(DALLAS[A-Z\s]*|PARKLAND[A-Z\s]*|UNASSIGNED)\s+\$([\d,\.]+)'
+    # which could only ever see units named DALLAS… or PARKLAND… — and behind that symptom sat the
+    # real defect: it read a COLUMN-oriented table as rows. Both are guarded here.
+    pi_src = (ROOT / "property_intel.py").read_text()
+    import ast as _ast
+    JUR = re.compile(r"\b(DALLAS|PARKLAND|GARLAND|MESQUITE|IRVING|RICHARDSON|CARROLLTON|PLANO|"
+                     r"DUNCANVILLE|LANCASTER|DESOTO|CEDAR HILL)\b")
+    def _strip_noncapturing(pat):
+        """Drop (?:…) groups. A jurisdiction name there is a DELIMITER (e.g. stopping a city capture
+        before "DALLAS COUNTY") — it constrains nothing about which units can be recognised. The
+        defect is a name inside a CAPTURE, which is what decides what the parser is able to see."""
+        out, i, depth = [], 0, 0
+        while i < len(pat):
+            if pat.startswith("(?:", i):
+                depth += 1
+                i += 3
+                continue
+            if depth:
+                if pat[i] == "(":
+                    depth += 1
+                elif pat[i] == ")":
+                    depth -= 1
+                i += 1
+                continue
+            out.append(pat[i])
+            i += 1
+        return "".join(out)
+
+    offenders = []
+    for node in _ast.walk(_ast.parse(pi_src)):
+        # a regex literal that enumerates jurisdiction names in the part that decides what MATCHES
+        if isinstance(node, _ast.Call) and isinstance(getattr(node.func, "attr", None), str) \
+           and node.func.attr in ("findall", "search", "match", "finditer", "split", "sub"):
+            for a in node.args:
+                if isinstance(a, _ast.Constant) and isinstance(a.value, str) \
+                   and JUR.search(_strip_noncapturing(a.value)):
+                    offenders.append(f"{node.func.attr}({a.value[:44]!r}) @L{node.lineno}")
+    check("no parser in property_intel.py matches on hardcoded jurisdiction NAMES (AST)",
+          not offenders, "; ".join(offenders))
+
+    # …and the behavioural half: the parser must read the table BY COLUMN, so a district it has
+    # never heard of, in any column position, parses like any other. A name-list or row-reading
+    # implementation cannot pass this.
+    import property_intel as _pi
+    page = ("Estimated Taxes (2026 Certified Values)\n"
+            " \tCity\tSchool\tCounty\n"
+            "Taxing Jurisdiction\tNOVUSVILLE\tNOVUSVILLE ISD\tDALLAS COUNTY\n"
+            "Tax Rate per $100\t$0.5\t$1.4\t$0.2155\n"
+            "Estimated Taxes\t$100.00\t$200.00\t$300.00\n")
+    got = {r["entity"]: r["estimated_tax"] for r in _pi.parse_tax_jurisdictions(page)}
+    check("an invented district parses (coverage follows the parcel, not a name list)",
+          got.get("NOVUSVILLE ISD") == 200.0 and got.get("CITY OF NOVUSVILLE") == 100.0, str(got))
+    shuffled = page.replace("Estimated Taxes\t$100.00\t$200.00\t$300.00",
+                            "Estimated Taxes\t$300.00\t$200.00\t$100.00")
+    check("each unit takes ITS OWN column's amount (row-reading would not)",
+          {r["entity"]: r["estimated_tax"] for r in _pi.parse_tax_jurisdictions(shuffled)}
+          .get("CITY OF NOVUSVILLE") == 300.0)
+
 
 # ── Q3 — BLAST RADIUS MEASURED? Gate rates inside a declared envelope ────────────────────────────
 def q3_blast_radius():
