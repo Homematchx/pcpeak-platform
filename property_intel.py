@@ -596,6 +596,62 @@ async def scrape_dcad(account_number: str, browser) -> dict:
     return result
 
 
+_ACT_UNIT_HEADERS = {
+    "YEAR", "JURISDICTION", "BASE", "TAX DUE", "BASE TAX DUE", "TOTAL", "DUE", "TOTAL DUE",
+    "PENALTY, INTEREST, AND ACC* DUE", "TAXES DUE DETAIL BY JURISDICTION",
+    "* ADDITIONAL COLLECTION COSTS", "DALLAS COUNTY WEB SITE", "ACCOUNT NO.",
+}
+
+
+def parse_act_units(text: str):
+    """ACT's per-parcel jurisdiction coverage → (units | None, reason). §34.2.
+
+    THREE OUTCOMES, NEVER TWO. Verified against the live report for both shapes:
+
+      · rows render                 → (["DALLAS COLLEGE", …], "act_unit_list")
+      · body reads "No taxes due."  → (None, "no_unit_list_at_zero_balance")   ← NOT retryable
+      · anything else               → (None, "unrecognized_page")              ← retryable
+
+    ⚠ THE $0 CASE IS THE WHOLE POINT. ACT renders the table HEADERS and then "No taxes due." with no
+    jurisdiction rows whenever the balance is $0 — confirmed live on account 26485500040430000
+    (TX-26-00991). Returning `[]` there would say "ACT bills nothing on this parcel", which is
+    absence-as-a-value and would let a payoff read COMPLETE for a parcel whose coverage nobody ever
+    established. It returns None, and the reason records that a retry can never change it — unlike a
+    transport failure, which can."""
+    if not text:
+        return None, "unrecognized_page"
+    lines = [re.sub(r"\s+", " ", l).strip() for l in text.splitlines()]
+    lines = [l for l in lines if l]
+    body = " ".join(lines).upper()
+    if "TAXES DUE DETAIL BY JURISDICTION" not in body:
+        return None, "unrecognized_page"
+    units, seen = [], set()
+    for i, line in enumerate(lines):
+        up = line.upper().strip()
+        if (not up or "$" in up or up in _ACT_UNIT_HEADERS or up.startswith("ACCOUNT NO")
+                or re.fullmatch(r"\d{4}", up) or not re.match(r"^[A-Z]", up)):
+            continue
+        # A jurisdiction row is an ALL-CAPS name; the surrounding chrome is mixed case.
+        if not re.fullmatch(r"[A-Z0-9 .,&'\-/()]+", up) or up != line.strip():
+            continue
+        # ⚠ STRUCTURAL REQUIREMENT, NOT COSMETIC. An ALL-CAPS line is not enough: the page footer
+        # carries "DALLAS COUNTY TAX OFFICE", which looks exactly like a jurisdiction. Accepting it
+        # made the $0 parcel (TX-26-00991) return `act_unit_list` with one phantom unit instead of
+        # `no_unit_list_at_zero_balance` — i.e. it manufactured the very false-complete this function
+        # exists to prevent. A real jurisdiction row is FOLLOWED BY ITS DOLLAR AMOUNTS; chrome is not.
+        if not any(lines[j].lstrip().startswith("$") for j in range(i + 1, min(i + 4, len(lines)))):
+            continue
+        if up in seen:
+            continue
+        seen.add(up)
+        units.append(up)
+    if units:
+        return units, "act_unit_list"
+    if "NO TAXES DUE" in body:
+        return None, "no_unit_list_at_zero_balance"
+    return None, "unrecognized_page"
+
+
 async def scrape_dallas_act(account_number: str, browser) -> dict:
     result = {
         "current_balance": None,
@@ -604,6 +660,10 @@ async def scrape_dallas_act(account_number: str, browser) -> dict:
         "total_amount_due": None,
         "payment_history": [],
         "tax_by_year": [],
+        # §34 — ACT's OWN per-parcel unit coverage. None is UNKNOWN, never "ACT covers nothing";
+        # `act_units_reason` says WHICH kind of unknown, because one kind is retryable and one is not.
+        "act_units": None,
+        "act_units_reason": "not_attempted",
         "act_url": f"https://www.dallasact.com/act_webdev/dallas/showdetail2.jsp?can={account_number}&ownerno=0",
         "error": None
     }
@@ -697,6 +757,27 @@ async def scrape_dallas_act(account_number: str, browser) -> dict:
                     })
                 except Exception:
                     pass
+
+        # ── §34: ACT's OWN per-parcel UNIT COVERAGE ──────────────────────────────────────────────
+        # The independent authority §33 needs. The petition names PLAINTIFFS (a lower bound); this
+        # page states which units ACT actually bills for THIS parcel, so completeness can be PROVEN
+        # rather than assumed. Folded into enrichment (one more fetch on a page we already have a
+        # session for) rather than run as a fleet pass, so there is no staleness fork: it refreshes
+        # whenever the parcel is re-enriched.
+        try:
+            await page.goto(
+                "https://www.dallasact.com/act_webdev/dallas/reports/taxbyyearbyunit.jsp"
+                f"?can={account_number}&ownerno=0",
+                wait_until="domcontentloaded", timeout=30000
+            )
+            await asyncio.sleep(2)
+            units, reason = parse_act_units(await page.inner_text("body"))
+            result["act_units"], result["act_units_reason"] = units, reason
+        except Exception as e:
+            # A failed fetch is RETRYABLE unknown — categorically different from the $0 case below,
+            # and stored as such so nobody builds a retry loop that can never succeed (§34.2).
+            result["act_units"], result["act_units_reason"] = None, "fetch_failed"
+            result.setdefault("act_units_error", str(e))
 
     except Exception as e:
         result["error"] = str(e)
@@ -1061,6 +1142,10 @@ async def _enrich_single_account(account_number: str, address: str, browser,
         "prior_year_due": act.get("prior_year_due"),
         "payment_history": act.get("payment_history", []),
         "tax_by_year": act.get("tax_by_year", []),
+        # §34 — ACT's own per-parcel unit coverage. None is UNKNOWN COVERAGE, never "ACT bills
+        # nothing"; the reason distinguishes the permanent $0 case from a retryable failure.
+        "act_units": act.get("act_units"),
+        "act_units_reason": act.get("act_units_reason", "not_attempted"),
         # Analysis
         "distress": distress,
         "street_view_url": sv_url,
@@ -1124,6 +1209,24 @@ def _aggregate_multi_tract(results: list, account_numbers: list) -> dict:
     combined["tracts"] = valid  # full per-tract detail preserved for auditing
     combined["dcad_url"] = [r.get("dcad_url") for r in valid]
     combined["act_url"] = [r.get("act_url") for r in valid]
+    # §34 — UNIT COVERAGE ACROSS TRACTS IS ALL-OR-NOTHING. `combined` starts as a copy of the PRIMARY
+    # tract, which would let one tract's unit list speak for the whole parcel. Coverage is only known
+    # when EVERY tract reported one: a parcel whose tract 2 sits at $0 (no list) has unknown coverage
+    # overall, because a district could bill that tract and nothing would reveal it. Union when all
+    # are known; otherwise UNKNOWN, carrying the first unknown reason so the $0 case stays
+    # distinguishable from a fetch failure.
+    reasons = [r.get("act_units_reason") for r in valid]
+    if all(r.get("act_units") for r in valid):
+        merged = []
+        for r in valid:
+            for u in r["act_units"]:
+                if u not in merged:
+                    merged.append(u)
+        combined["act_units"], combined["act_units_reason"] = merged, "act_unit_list"
+    else:
+        combined["act_units"] = None
+        combined["act_units_reason"] = next(
+            (x for r, x in zip(valid, reasons) if not r.get("act_units")), "unrecognized_page")
     # Re-run distress analysis using the primary tract's full physical/payment
     # data (analyze_distress doesn't key off raw dollar totals directly, so
     # this stays accurate even though the dollar fields above are now summed).

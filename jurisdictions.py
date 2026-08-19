@@ -188,7 +188,7 @@ def collector_lines(tax_breakdown, act_balance=None, act_units=None, fetched=Non
     petition-filing amount standing in for a live one; `unavailable` for a named collector we cannot
     currently reach. An `unavailable` line NEVER contributes a number."""
     fetched = fetched or {}
-    act_units_c = {canonical(u) for u in (act_units or [])} or None
+    act_units_c = normalize_act_units(act_units)
     lines, seen = [], set()
 
     for row in petition_collectors(tax_breakdown):
@@ -258,6 +258,25 @@ def payoff_completeness(lines):
                           "collector set is UNVERIFIED"}
     return {"complete": True, "membership_verified": True, "unavailable_collectors": [],
             "reason": "every named collector accounted for, against a verified collector set"}
+
+
+def normalize_act_units(act_units):
+    """ACT's per-parcel unit coverage as a canonical SET, or None for UNKNOWN COVERAGE (§34.2).
+
+    ⚠ AN EMPTY LIST IS UNKNOWN, NOT "ACT COVERS NOTHING". ACT renders **no unit list at all** when a
+    parcel's balance is $0 (§17.5), so `[]` is the shape absence arrives in — and reading it as a
+    known-empty SET is `absence-treated-as-a-value`, §33's exact failure mode wearing the last costume
+    available to it. Downstream, `act_units_known` would flip True on an empty set and
+    `payoff_completeness` could then return `complete is True` for a parcel nobody ever established
+    coverage for.
+
+    This used to be `{canonical(u) for u in (act_units or [])} or None` inline — correct, but by
+    accident of `or None`, unpinned, and one refactor away from silently becoming false-complete.
+    It is a named function with its own test for that reason, not for tidiness."""
+    if act_units is None:
+        return None
+    canon = {c for c in (canonical(u) for u in act_units) if c}
+    return canon or None
 
 
 def payoff_is_complete(completeness) -> bool:
