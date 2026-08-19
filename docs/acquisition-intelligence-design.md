@@ -1975,3 +1975,131 @@ the DEFECT's own logic (`[teeth]`) and required to disagree with it — *a guard
 the bug reinstated is not a guard*. Rejected one teeth-check as theatre when truthiness and the
 correct reading agreed on every state; the defect was specifically `is not False`.
 `test_band_payoff_parity.py` 10 → **18/18**. All four prior families green.
+
+### 33.7 GROUND TRUTH — the petition declares the lower bound in its own words
+
+§33 is not an imposed assumption. The source document states it. Dallas tax petitions of the
+delimited template read:
+
+> **NOW COME(S) THE TAXING DISTRICTS SET OUT BELOW: GARLAND INDEPENDENT SCHOOL DISTRICT**
+> **ON BEHALF OF THEMSELVES AND ALL TAXING DISTRICTS FOR WHOM THEY COLLECT.**
+
+The named plaintiff sues *on behalf of districts it does not name*. So `tax_breakdown[].entity` — the
+membership oracle — is by the petition's own construction a **lower bound** on who levies, and any
+surface reading it as the complete set is contradicted by the instrument it came from. Verbatim from
+TX-26-00994 (a Garland ISD-only suit); the clause is boilerplate across that template.
+
+**Corollary, and the reason §33's conservatism is not over-caution:** a suit naming ONE district is
+not evidence that one district levies. It is evidence that one district *sued*, expressly for itself
+and for others unnamed.
+
+### 33.8 What the backfill established (2026-08-19) — and the coverage correction
+
+The union-merge backfill (`petition_union_backfill.py`) improved **0 of 329** cases; `pcpeak.db` is
+byte-unchanged. Deterministic re-parse of the local corpus recovers nothing the stored Claude
+extractions do not already hold. **That is the finding, not a failure of the run.**
+
+- **Union-only was load-bearing.** Overwrite would have SHRUNK 2 cases — TX-26-00899
+  (`PROPERTY RESEARCH FEE`) and TX-24-00092 (`CITY OF GARLAND UTILITY LIEN`).
+- **Three parser designs were rejected, each caught by dry-run before any write**: a prose regex whose
+  character class contained a space (swallowed counsel names, "improved" 327 of 329); the same plus
+  stopword trimming (minted `CITY OF DALLAS ACTIVE ATTORNEYS`); and a closed vocabulary over the whole
+  document (added `DALLAS COUNTY` to ~100 cases from **venue boilerplate** — `IN AND FOR DALLAS
+  COUNTY, TEXAS` — verified against TX-26-00994). The survivor also needed longest-match-**masking**:
+  without it `DALLAS COUNTY` matched inside `DALLAS COUNTY UTILITY & RECLAMATION DISTRICT`.
+- **A FABRICATED COLLECTOR IS WORSE THAN A MISSED ONE.** It becomes a permanent `unavailable` payoff
+  line for a debt that does not exist — the lower bound corrupted *upward*, the mirror of the defect
+  §33 closed.
+- **COVERAGE CORRECTION.** The earlier "~76% re-extractable without portal contact" was wrong. The
+  corpus is on disk (367 dockets / 352 petitions, 756MB) but only **~26%** carries the delimited
+  plaintiff list; the other 245 use a template where `ON BEHALF OF` belongs to the law-firm
+  authorization clause and no reliable delimiter exists. That readable subset is **already complete**.
+- **The 8 membership residuals are NOT resolved here.** All 8 use the second template and TX-26-00087
+  has no petition PDF at all. They require **Claude re-extraction** — the path that produced the
+  stored data — which is cost-gated and its own increment.
+
+## 34. SCOPE (NOT BUILT) — `act_units`: positive completeness, and the $0 blind spot
+
+§33 made completeness conservative: `complete` is `None` fleet-wide because `act_units` has no source.
+This increment gives it one — turning UNKNOWN into **proven complete** where ACT genuinely collects
+every unit. It is scoped here and **no code is written** until this is signed off.
+
+### 34.1 The source, and precisely what it does and does not yield
+
+`https://www.dallasact.com/act_webdev/dallas/reports/taxbyyearbyunit.jsp?can=<account>&ownerno=0`
+publishes ACT's own per-parcel unit breakdown — an INDEPENDENT authority, not the petition. §23 read
+it by hand for Garland parcel TX-23-02251 (CAD 26238500070260000): `DALLAS COLLEGE · DALLAS COUNTY ·
+PARKLAND HOSPITAL · SCHOOL EQUALIZATION` — no ISD, no city, which is exactly how that arc proved the
+ISD burden sat outside ACT.
+
+**Nothing fetches it today.** `property_intel` hits `taxbyyear.jsp` — the YEAR-level page, a
+different report — into `tax_by_year`. ⚠ Separately: `tax_by_year` is **nonempty on 0 of 300** enriched
+blobs, so that existing scrape is silently broken. Pre-existing, out of scope here, logged.
+
+### 34.2 ⚠ THE SHARP EDGE — a blank unit list at $0 is UNKNOWN, never "ACT is everything"
+
+§17.5 already established that ACT renders **"No taxes due." with NO unit list** exactly when the
+balance is $0. That is the single most dangerous input this increment can receive, because the
+tempting reading — *"ACT returned no extra units, so the set we hold is complete"* — is
+**absence-treated-as-a-value**, and it would re-open the precise false-complete §33 just closed. It
+would also wrongly corroborate the band's zero on the 11 cases §33 just moved to UNCONFIRMED.
+
+**The fetch therefore has THREE outcomes, never two, and they are stored distinguishably:**
+
+| ACT response | `act_units` | `membership_verified` | stored reason |
+|---|---|---|---|
+| unit list renders (N units) | `[names…]` | **True** | `act_unit_list` |
+| "No taxes due.", no list ($0 parcel) | `None` | **False** | `no_unit_list_at_zero_balance` |
+| fetch failed / blocked / timeout | `None` | **False** | `fetch_failed` |
+
+Rows 2 and 3 both yield UNKNOWN completeness → INDETERMINATE. **The reason is still recorded
+separately**, because they are different facts: row 3 is retryable, row 2 is a permanent property of
+the source at $0. Collapsing them into a bare `None` would lose that and invite someone to "fix" the
+$0 case with a retry loop that can never succeed.
+
+**Two invariants to pin as tests before any code ships:**
+1. A blank list at $0 must NOT produce `complete is True`, and must NOT flip any band to `zero`.
+2. An EMPTY list must never be passed through as an empty SET. Today `collector_lines` does
+   `{…} or None`, which collapses `[]` to `None` and happens to behave — but it is implicit and
+   unpinned. Make it explicit, or a refactor deletes the safety without anyone noticing.
+
+### 34.3 Population — what this can and cannot reach (measured, n=329)
+
+| ACT balance | cases | reachable by this increment? |
+|---|---|---|
+| **> $0** — unit list renders | **210 (63.8%)** | **YES** — completeness becomes provable |
+| **== $0** — no unit list (§17.5) | **88 (26.7%)** | **NO** — stays INDETERMINATE, permanently |
+| null / not captured | 31 (9.4%) | NO — no balance to query against |
+
+308 of 329 carry a stored DCAD account, which is the fetch key.
+
+**Ceiling: at most 210 of 329 (63.8%) can ever reach `complete is True` here** — and only those whose
+named collectors were ALSO all retrieved, so the real figure is lower and gated on the gds IP block
+clearing for the Garland-family parcels.
+
+**THE 11 BAND-FLIP CASES ARE ALL IN THE 88.** They have ACT $0 by definition, so this increment
+**cannot** resolve them — by construction, not by omission. They remain UNCONFIRMED until a source
+exists that states unit coverage independently of the balance. §17.5 already recorded the only known
+candidate — the per-unit levy — as **PDF-only**. Anyone reading this expecting `act_units` to close
+the zero-balance question should stop here: it closes the opposite population.
+
+**Checked and rejected as a fallback for the 88:** `payment_history` is nonempty on 296 of 300 blobs
+but its rows are `{date, amount, tax_year, payer}` — it names **no taxing unit**, so it cannot
+establish coverage.
+
+### 34.4 Non-goals
+No change to the money gate (§33.3 scope stands). No balance fetching — this is coverage only. No
+re-enabling of the `collector_set_unverified` gate; that decision is re-measured *after* this lands,
+when unverified is a minority (§33.3).
+
+### 34.5 Open decisions — sign-off needed before code
+1. **Where does it run?** Fleet pass (~308 fetches, one per account) vs on-demand at analysis time vs
+   folded into enrichment. Same scheduling/rate-limit question the standing-land-floors job has.
+2. **Staleness.** A parcel's unit set changes rarely but not never (annexation, district changes). TTL,
+   or re-fetch on re-enrichment?
+3. **Storage.** New `property_intel.act_units` + `act_units_reason`, or promoted columns like the §31
+   collector fields (the band reads the skeleton, so a promoted column is needed if the band is ever
+   to use this).
+4. **Does the band get to use it?** A parcel with a VERIFIED unit set and every collector retrieved at
+   $0 would be genuinely corroborated-paid — but that population is empty by construction (§34.3), so
+   this may be dead code on arrival. Decide deliberately rather than building it speculatively.
