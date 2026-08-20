@@ -2153,3 +2153,46 @@ names plaintiffs, not everyone who levies)`.
 `gate=no_agreed_price` cold, because no case carries an `agreed_price` until a rep enters one. Had
 closability been gated on membership, this sweep would have shown **0 flips and looked clean** while the
 seller-net gate was silently retired for every priced deal.
+
+### 33.10 ⚠ FLIP-COUNT RECONCILIATION — and a correction to my own local figure
+
+The acceptance test on a completeness guard is not "did it flip" but "does the count reconcile
+case-by-case": **more** flips than the trace predicted means a real false-complete nobody modelled;
+**fewer** means a consumer that is not reading the guard, i.e. honesty not reaching those cases. Both
+directions were checked as sets, not totals.
+
+**THE PREDICTED FIGURE OF 281 WAS MY OWN MEASUREMENT ERROR.** It was produced by reconstructing the
+pre-§33 label with a *formula* — `ESTIMATED if (unavailable or not act_known) else VERIFIED` — instead
+of the function's *branch structure*. Three of `tax_payoff`'s branches (`fallback_estimate`, the
+no-data branch) **hardcode** their label and never read the computed `label` variable at all, so §33
+is a structural no-op on them. The same reconstruction flaw was spotted earlier for two
+`verified→unavailable` rows and correctly discounted; it was not extended to the fallback branch, and
+that omission produced the inflated number.
+
+Counting only the three LABEL-BEARING bases (`act_live_balance`, `act_plus_collectors`,
+`collectors_outside_act`), the correct local prediction is **229**, not 281.
+
+| set | count |
+|---|---|
+| **L** — local predicted (branch-correct) | **229** |
+| **P** — prod observed | **186** |
+| `P \ L` — flipped but NOT predicted | **0** |
+| `L \ P` — predicted, archived on prod | **43** |
+| `L \ P` — predicted, absent from prod | **0** |
+| `L \ P` — **ACTIVE on prod and did not flip** | **0** |
+
+**229 = 186 + 43.** Closes exactly.
+
+`P \ L = 0` is the safety result: **nothing flipped that the trace did not model**, so there is no
+unmodelled consumer of `complete`. `active-and-did-not-flip = 0` is the other half: **every case
+§33 should have made honest, it made honest** — no consumer is failing to read the guard.
+
+The 32 cases that first appeared as an unexplained residual were investigated rather than assumed:
+prod's `owed_live` is `0.0` on all of them, identical to local, and their payoff basis is
+`fallback_estimate` — a branch whose label is hardcoded `ESTIMATED`. They were already honest before
+§33 and could not flip. That was a defect in the prediction, not in the deploy.
+
+**BAND, same treatment:** 11 predicted locally, **4 observed on prod**, and the missing 7 were each
+checked individually against `?include_archived=1` — **all 7 archived**, none absent, none active-and-
+unflipped. The 4 are exactly the non-archived subset, all `judged_pending` at $0, and §31 parity ties
+them: all 28 cases still banded `zero` are `dismissed_paid` or carry no suit amount.
