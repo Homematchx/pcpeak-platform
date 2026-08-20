@@ -53,12 +53,25 @@ construction, which is why it is stored distinctly from the retryable `fetch_fai
 - **`taxbyyear.jsp` scrape is silently broken** (`tax_by_year` nonempty on 0 of 300). Pre-existing,
   out of scope, logged so it is not rediscovered from scratch.
 
-**5. THE ONE OPEN OPERATIONAL THREAD — gds IP BLOCK.** texaspayments is refusing this host, so
-**Garland ISD · City of Garland · Richardson ISD · Carrollton-FB — 4 of the 5 mapped collectors —
-cannot take NEW balance fetches.** Stored balances are unaffected and failures degrade honestly to
-INDETERMINATE, so this costs **freshness, not correctness**. Remedy is operational — a different
-network, or `support@gdsincorporated.com` — **not code.** `irving_act` and all ACT/DCAD enrichment
-are unaffected.
+**5. gds IP BLOCK — ✅ CLEARED (verified 2026-08-19).** It had blocked Garland ISD · City of Garland ·
+Richardson ISD · Carrollton-FB — 4 of the 5 mapped collectors — from taking NEW balance fetches.
+
+**Verified with the REAL ADAPTER, not a proxy** — `collectors_gds.fetch_case_balances` against three
+Garland CADs: both collectors returned on every one, **zero `_portal_unavailable`, zero identity
+rejections**. A plain `GET` also returns HTTP 200 now, but that is exactly the §32.6 trap: the landing
+page answering proves nothing about the parcel-search flow the adapter drives. **If this appears to
+regress, re-test with `python3 collectors_gds.py <CAD>` — never with curl.**
+
+**⚠ REMAINING CAVEAT, HONEST STATE:** the **fetch path** is confirmed; **nonzero balances under real
+batch load are NOT yet confirmed** — all three probe parcels returned $0.00. The next real batch
+exercises that. If `_portal_unavailable` reappears mid-run it fails soft to INDETERMINATE and stops
+hammering, so a re-run later is safe.
+
+**Backlog it left:** 39 cases carry a named external collector never fetched, but only **20 cases are
+adapter-reachable** (`collector_backfill.eligible()` requires `platform in ADAPTERS`). The rest —
+Balch Springs, Duncanville, University Park, Highland Park, DeSoto, Sachse, the PIDs, a transferred
+tax lien — have **no adapter and stay `unavailable` by design**: coverage is defined by what the
+parcel owes, not by what we have integrated.
 
 ### STANDING OPERATIONAL LESSONS (process memory — each earned by a specific near-miss)
 
