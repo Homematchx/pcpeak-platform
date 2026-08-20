@@ -2103,3 +2103,53 @@ when unverified is a minority (§33.3).
 4. **Does the band get to use it?** A parcel with a VERIFIED unit set and every collector retrieved at
    $0 would be genuinely corroborated-paid — but that population is empty by construction (§34.3), so
    this may be dead code on arrival. Decide deliberately rather than building it speculatively.
+
+### 33.9 DEPLOYED + LIVE-VERIFIED 2026-08-19 (`c997dd1`) — its own gate, §34 deliberately held back
+
+`origin/main == origin/production == c997dd1`; feature branch ahead at `6943a7a` (backfill tool, docs,
+and §34 — **not** deployed, so the gate is exactly §33). No commit reorder was needed: §33 is the
+OLDEST of the new commits, so a plain FF to it ships the guard alone.
+
+**Fingerprints before → after, verified against the LIVE SERVED BYTES:**
+`frontend/index.html` `a14c1d1d75bb8a44` → **`b8f4e94682a4d084`** (the served sha matched its git blob
+exactly both before and after) · `acquisition.py` `07b2d8f011c54694` → **`7c280a66888f26d6`** ·
+`jurisdictions.py` `e580fa6abba347a9` → **`2bc71d28a7e02362`** · `backend/main.py`
+**`0821b3408b57b8e2` UNCHANGED**. Railway took ~60s to serve the new artifact; the poll waited it out
+rather than diagnosing (standing deploy-window lesson, which has now bitten twice).
+
+**PROD COUNTS ARE NOT THE LOCAL COUNTS, and the difference was predicted before deploying.** The local
+figures were 281 labels / 11 bands on 329 real-property cases *including archived and local-only held*;
+prod's working book is 252. The expected prod numbers were therefore derived from a **prod pre-deploy
+baseline through the real endpoint** — 186 cases labelled `verified`, 4 band candidates — and both were
+then confirmed exactly. Same denominator effect as §18 (10.8%→11.2%) and §17.4 (50→21).
+
+**FULL BEFORE/AFTER SWEEP, 252 cases through the live endpoint, 0 errors:**
+
+| measure | result | expected |
+|---|---|---|
+| payoff label `verified → estimated` | **186** | 186 ✓ |
+| payoff AMOUNTS moved | **0** | 0 — a LABEL fix, not arithmetic |
+| decision flips | **0** | 0 |
+| closability / gate flips | **0** | 0 — money gate reads RETRIEVAL |
+| `membership_verified` | **False on 252/252** | False (no `act_units` source yet) |
+
+**186 and not one more is the load-bearing number**: a higher count would have meant a consumer of
+`complete` the §33 trace missed.
+
+**BAND: 4 flips, computed by the SERVED frontend code against live prod skeletons** — TX-25-00591 ·
+TX-24-00090 · TX-23-02248 · TX-23-02239, all `judged_pending`, all balance $0. The other 7 of the local
+11 are **archived on prod** (verified individually via `?include_archived=1`), so the 4 are exactly the
+non-archived subset — not collateral. Full census `unknown 44 · low 108 · mid 59 · high 13 · zero 28`;
+**every one of the 28 still banded `zero` is `dismissed_paid` or has no suit amount**, so there was no
+blanket zero→unknown. Zero pageerrors.
+
+**Spot-checks (the three largest flipped payoffs, where a false `complete` costs most):** TX-23-00569
+$196,083 · TX-26-00041 $171,467 (`ACT $83,263 + $88,204 from collectors billing outside ACT`) ·
+TX-26-00076 $156,445 — each keeps its amount to the dollar, drops `verified` for `estimated`, and now
+carries `— FLOOR: every NAMED collector was read, but the collector set is UNVERIFIED (the petition
+names plaintiffs, not everyone who levies)`.
+
+**§33.3's money-gate reasoning is empirically confirmed by this sweep**: every case reads
+`gate=no_agreed_price` cold, because no case carries an `agreed_price` until a rep enters one. Had
+closability been gated on membership, this sweep would have shown **0 flips and looked clean** while the
+seller-net gate was silently retired for every priced deal.
