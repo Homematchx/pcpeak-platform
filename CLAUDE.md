@@ -5,6 +5,94 @@
 **GitHub:** Homematchx/pcpeak-platform
 **Working directory:** `~/Downloads/pcpeak_platform`
 
+## SESSION HANDOFF — 2026-08-19 (Garland/completeness arc CLOSED — §33 + §34 live)
+
+**Entry point only. Depth lives in [`docs/acquisition-intelligence-design.md`](docs/acquisition-intelligence-design.md)
+§33.7–33.10 and §34.6 — open those before changing anything in this area.**
+
+**1. ARC STATUS + REFS.** The Garland/completeness arc is closed and live.
+`origin/main == origin/production == 73b94e1`; feature branch at `adacea2` (docs ahead only).
+Deployed in two gates, in order — §33 the guard (`c997dd1`), then §34 the feeder (`73b94e1`) — each
+fingerprinted against the LIVE SERVED BYTES, each reconciled case-by-case.
+
+**2. SIX ENFORCED GUARD FAMILIES.** Each is pinned in CI against MANUFACTURED DRIFT (the test re-runs
+its claim against the defect's own logic and fails if the two agree), so the recurring defect fails a
+build instead of reaching a rep.
+
+| § | family | what it holds |
+|---|---|---|
+| §19 | set-integrity | is this a set? — position invariance, no plural input read at `[0]` |
+| §28 | payoff parity | client and engine cannot disagree about the payoff |
+| §29 | unknown-propagation | null stays "—", never $0; a verified $0 still renders $0.00 |
+| §31 | band ↔ payoff | the band reads the payoff verdict as source of truth |
+| §33 | completeness | `complete` is tri-state; `None` is NOT complete |
+| §34 | act_units | ACT's own unit report; a blank list at $0 is UNKNOWN, never "ACT is everything" |
+
+**⚠ THE SENTENCE TO INHERIT — every one of these exists because the SAME SHAPE recurred: A LOWER
+BOUND READ AS A COMPLETE SET.** Comma-joined DCAD account · `owners[0]` · lead defendant · zero→PAID ·
+`owner_defendant_mismatch` · petition membership. That shape is what predicts the seventh instance;
+when a new fact becomes a classification, ask whether the source can only ever establish a *minimum*.
+
+**3. COMPLETENESS SPLIT (prod, 252 active).** **144 verified-on-evidence · 51 `False` · 57 honestly
+`None`** — `True` was **0 fleet-wide** before this arc. **`None`-stays-`None` is CORRECT, not a gap:**
+ACT publishes no unit list at all when a parcel's balance is $0, so zero-balance parcels (e.g.
+TX-26-01093) stay UNKNOWN. No source we currently hold can close that blind spot; the per-unit levy
+is PDF-only. Do not "fix" it with a retry loop — `no_unit_list_at_zero_balance` is permanent by
+construction, which is why it is stored distinctly from the retryable `fetch_failed`.
+
+**4. NAMED RESIDUALS — bounded, not silent.**
+- **8 membership gaps** (empty `tax_breakdown`) need **Claude re-extraction**, cost-gated, its own
+  increment. **Do NOT re-attempt a deterministic re-parse** — it was built and measured: **0 of 329
+  improved**, only ~26% of the corpus carries a delimited plaintiff list, and that subset is already
+  complete. Three parser designs fabricated collectors before the closed-vocabulary one; the tool and
+  the reasons are in `petition_union_backfill.py`.
+- **15 parcels carry a stale NONZERO balance** where ACT now reports $0 (paid after enrichment).
+  **Staleness, not contamination** — site addresses verified matching.
+- **TX-26-00990's contamination record IN THIS FILE is itself stale** — its account now resolves to
+  the correct address. Verify before acting on that table.
+- **`taxbyyear.jsp` scrape is silently broken** (`tax_by_year` nonempty on 0 of 300). Pre-existing,
+  out of scope, logged so it is not rediscovered from scratch.
+
+**5. THE ONE OPEN OPERATIONAL THREAD — gds IP BLOCK.** texaspayments is refusing this host, so
+**Garland ISD · City of Garland · Richardson ISD · Carrollton-FB — 4 of the 5 mapped collectors —
+cannot take NEW balance fetches.** Stored balances are unaffected and failures degrade honestly to
+INDETERMINATE, so this costs **freshness, not correctness**. Remedy is operational — a different
+network, or `support@gdsincorporated.com` — **not code.** `irving_act` and all ACT/DCAD enrichment
+are unaffected.
+
+### STANDING OPERATIONAL LESSONS (process memory — each earned by a specific near-miss)
+
+These are not in any §-structured file and are the hardest thing to reconstruct from fresh context.
+
+- **Verify with the mechanism you already trust, not a convenient proxy.** A `curl` status code was
+  used to diagnose an adapter that drives a real browser; the machine was also out of disk, which
+  silently truncated the probe script to 0 bytes. Two faults, one wrong conclusion each way.
+- **Read the response BODY, not a grep count.** A mangled env token made every probe a silent 401
+  that `grep -c` scored as 0, reporting a good deploy as failed for ~4 minutes.
+- **Measure blast radius on the real book before shipping.** The count exposes an over-fire, never the
+  reasoning — a `generic` gate firing at 100% would have retired the GO verdict outright.
+- **A "0 flips" result means TRACE WHY before calling it success.** Sometimes it is a missing wire,
+  sometimes correct. A parity guard here went vacuously green because both sides of its comparison
+  went constant-False together.
+- **When a deploy is inert BY DESIGN, predict the zero and confirm it** — nonzero would mean something
+  unmodelled. An inert deploy is externally unobservable, so use a **one-case canary** as the proof.
+- **Check ground truth before accepting a fetch miss as final.** Transient failures recovered
+  $106,722.85 on a re-run.
+- **A diagnosis of a REMOTE fault from a LOCAL-ONLY symptom is suspect — check local first.**
+- **Corollary, turned inward:** the same discipline applies to your own measurements. The predicted
+  §33 flip count was wrong because it modelled a label as a *formula* instead of the function's
+  *branches*; the reconciliation, not the total, is what caught it.
+
+### GOLDEN SET (Stage 1 — must not regress)
+
+- **Grant St TX-25-00249 → NO-GO** — the money gate (`structurally_unclosable`).
+- **Addie Rd TX-23-00423 → GO** — signed $108K, **closing Aug 2026**. ⏰ **At closing, capture the
+  title company's ACTUAL §33.48 payoff demand and verify the attorney-fee estimator against it**; if
+  materially off the 20% assumption, recalibrate `tax_suit_atty_fee_rate` and RE-RUN Grant St, whose
+  NO-GO is fee-sensitive on the margin.
+- **Brown TX-26-01379 → GO-WITH-CONDITIONS** — the COUNTER-fixture: the record owner is joined to the
+  suit, so the title gate must NOT fire. Pinned as must-not-escalate.
+
 ## SESSION HANDOFF — 2026-07-28 (skeleton-cache succession + disposition/land/OOS/parser fixes)
 
 **Everything below is DEPLOYED + live-verified. All three origin refs at `e300722`
