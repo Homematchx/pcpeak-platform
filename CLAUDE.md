@@ -67,11 +67,20 @@ batch load are NOT yet confirmed** — all three probe parcels returned $0.00. T
 exercises that. If `_portal_unavailable` reappears mid-run it fails soft to INDETERMINATE and stops
 hammering, so a re-run later is safe.
 
-**Backlog it left:** 39 cases carry a named external collector never fetched, but only **20 cases are
-adapter-reachable** (`collector_backfill.eligible()` requires `platform in ADAPTERS`). The rest —
-Balch Springs, Duncanville, University Park, Highland Park, DeSoto, Sachse, the PIDs, a transferred
-tax lien — have **no adapter and stay `unavailable` by design**: coverage is defined by what the
-parcel owes, not by what we have integrated.
+**Backlog it left — three DIFFERENT numbers, do not conflate them:**
+- **80** cases are adapter-reachable and are what `collector_backfill.py` will query on a full run
+  (`eligible()` requires `platform in ADAPTERS` + a CAD). It re-fetches ALL of them, not just the
+  unfetched, so a full run refreshes the whole reachable set.
+- **8** cases actually have an adapter-backed collector *never fetched* — the genuinely fixable
+  backlog (`batch_census.py` reports this as `gds_unfetched`).
+- **39** cases carry *some* unfetched named external collector; the balance of them — Balch Springs,
+  Duncanville, University Park, Highland Park, DeSoto, Sachse, the PIDs, a transferred tax lien —
+  have **no adapter and stay `unavailable` by design**: coverage is defined by what the parcel owes,
+  not by what we have integrated.
+
+⚠ **`collector_backfill.py --dry-run` PRINTS ONLY THE FIRST 20 TARGETS** (`targets[:20]`) while its
+HEADER LINE carries the true count. Counting the printed lines gives 20 and is wrong — this is the
+"read the response body, not a grep count" lesson, and it has now caught someone twice.
 
 ### STANDING OPERATIONAL LESSONS (process memory — each earned by a specific near-miss)
 
