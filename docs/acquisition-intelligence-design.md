@@ -2196,3 +2196,56 @@ prod's `owed_live` is `0.0` on all of them, identical to local, and their payoff
 checked individually against `?include_archived=1` — **all 7 archived**, none absent, none active-and-
 unflipped. The 4 are exactly the non-archived subset, all `judged_pending` at $0, and §31 parity ties
 them: all 28 cases still banded `zero` are `dismissed_paid` or carry no suit amount.
+
+### 34.6 DEPLOYED + LIVE-VERIFIED 2026-08-19 (`73b94e1`) — reader first, then the field
+
+Two gates in strict order, on the §33-before-`act_units` principle: **deploy the reader, then land the
+field — never sync into an engine that cannot read it.**
+
+**GATE 1 — §34 code (`c997dd1` → `73b94e1`).** Served-artifact delta: `backend/main.py`
+`0821b3408b57b8e2` → **`c2036fbb10dc0d00`** · `jurisdictions.py` `2bc71d28a7e02362` →
+**`fecdf9133f84c175`** · `property_intel.py` `452efe44e539d3c6` → **`7bbfa45453784d3d`** ·
+`acquisition.py` **unchanged** · `frontend/index.html` **unchanged** — confirming no band path shipped,
+as scoped.
+
+**The predicted result of gate 1 was ZERO flips, stated BEFORE deploying**, because §34 is the reader
+and prod carried no `act_units` data. Observed: **0 label flips, 0 completeness flips, 0 decision
+flips.** Here 0 is the pass condition; a nonzero result would have meant something unmodelled. This is
+the inverse of the standing "0 flips → trace why" lesson: predict the zero, then confirm it.
+
+Because an inert deploy is externally unobservable, **a one-case CANARY was used as the proof**:
+`sync_all.py TX-23-00569` pushed a single parcel's `act_units`, and the engine immediately read it —
+which is the only evidence that could distinguish "§34 is live" from "§34 never deployed".
+
+**GATE 2 — the data (`sync_to_prod.py --update-existing`).** 328 refreshed, 0 created, 0 failed, 85
+events, reconciled. `prod_ready` satisfied by construction: every case was already live, so nothing was
+promoted.
+
+**RECONCILIATION — closes exactly, both directions:**
+
+| set | count |
+|---|---|
+| **L** local predicted `verified` | **168** |
+| **P** prod observed `verified` | **144** |
+| `P \ L` verified but NOT predicted | **0** |
+| `L \ P` archived on prod | **24** |
+| `L \ P` absent from prod | **0** |
+| `L \ P` **active and did not flip** | **0** |
+
+**168 = 144 + 24.** All 144 flips are `estimated → verified`; **0 decision flips**.
+
+Prod completeness after: **`True` 144 · `False` 51 · `None` 57**, labels `verified 144 · estimated 107
+· unavailable 1`. Before `act_units` existed, `True` was **0 fleet-wide**.
+
+**THE EMBLEM.** TX-23-00569 ran the whole arc: `verified` (asserted, unproven) → `estimated` (§33 made
+it honest) → **`verified` on evidence** (§34 proved it), $196,083 across six named units, reason *"every
+named collector accounted for, against a verified collector set"*. TX-26-00041 is the stronger case:
+$171,467 = **ACT $83,263 + $88,204 billed outside ACT**, now verified across six units including CITY
+OF IRVING and IRVING ISD — a payoff that the pre-§23 model would have reported as $83,263.
+
+**COUNTER-CASE HOLDS:** TX-26-01093 (`no_unit_list_at_zero_balance`) still reads `complete=None`,
+`membership_verified=False`. The $0 blind spot stayed a blind spot, which is the whole point.
+
+**3 payoff AMOUNTS moved** (TX-26-01388 $11,174→$3,174 · TX-26-01387 $14,491→$13,391 · TX-26-01372
+$26,308→$13,308). These are **data deltas from the property_intel refresh, not §34 logic** — local held
+fresher balances than prod. Noted so they are not misread as a completeness effect.
