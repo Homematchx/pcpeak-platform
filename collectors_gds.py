@@ -100,6 +100,42 @@ class PortalUnavailable(RuntimeError):
     parcel, and it must never be mistaken for one."""
 
 
+BLOCK_URL_MARKER = "/Error/WrongRequest"
+PROBE_AGENCY = "057909"          # any REAL agency page; the block only hits real portal pages
+
+
+def portal_blocked(agency: str = PROBE_AGENCY, timeout: float = 15.0):
+    """Is the portal refusing this host RIGHT NOW? -> (blocked: bool, detail: str). ~200ms, no browser.
+
+    WHY THIS EXISTS. The block is an application-level 302 to /Error/WrongRequest, and the site states
+    the reason itself: "You have been redirected to this page possibly due to your IP location."
+    Detecting that needed a full chromium launch and a per-case search flow — ~10s to learn something
+    a single GET answers instantly. That made polling for recovery expensive and testing a different
+    network slow, so neither happened often enough.
+
+    ⚠ THIS IS THE ONE SAFE USE OF A PLAIN GET HERE, AND ONLY BECAUSE IT CHECKS THE REDIRECT, NOT THE
+    STATUS. §32.6's trap was reading `200 OK` on the landing page as "portal healthy" — the error page
+    ITSELF returns 200. A cleared probe is necessary but NOT sufficient evidence the parcel-search
+    flow works; confirm with the real adapter (`python3 collectors_gds.py <CAD>`) before a batch.
+
+    Diagnostic worth keeping: a NONEXISTENT agency (e.g. /057124) returns a normal 404 even while
+    blocked, so the host is not firewalled — the server still processes requests. The refusal is
+    scoped to real portal pages, which is information the vendor can act on."""
+    import httpx
+    try:
+        r = httpx.get(f"{BASE}/{agency}", timeout=timeout, follow_redirects=True,
+                      headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                             "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                             "Chrome/124.0.0.0 Safari/537.36"})
+    except Exception as e:
+        return True, f"probe failed: {type(e).__name__}: {e}"
+    if BLOCK_URL_MARKER in str(r.url):
+        return True, f"redirected to {r.url} (site says: possibly due to your IP location)"
+    if r.status_code == 200 and len(r.text) > 10000:
+        return False, f"agency page served normally ({len(r.text)} bytes)"
+    return True, f"unexpected response: HTTP {r.status_code}, {len(r.text)} bytes -> {r.url}"
+
+
 async def _fetch_once(page, agency: str, cad: str) -> dict:
     try:
         await page.goto(f"{BASE}/{agency}", wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
@@ -178,7 +214,24 @@ async def fetch_case_balances(tax_breakdown, cad, browser, roster=None) -> dict:
     return await fetch_for_case(named, cad, browser, roster=roster)
 
 
-if __name__ == "__main__":  # manual probe: python3 collectors_gds.py <CAD>
+if __name__ == "__main__":  # manual probe: python3 collectors_gds.py <CAD>  |  --watch  |  --check
+    import sys as _sys
+    if len(_sys.argv) > 1 and _sys.argv[1] in ("--check", "--watch"):
+        import time as _t
+        _every = 300
+        while True:
+            _blocked, _why = portal_blocked()
+            _stamp = _t.strftime("%H:%M:%S")
+            print(f"[{_stamp}] {'BLOCKED ' if _blocked else 'REACHABLE'} — {_why}", flush=True)
+            if _sys.argv[1] == "--check":
+                _sys.exit(1 if _blocked else 0)
+            if not _blocked:
+                print("\n  Portal is answering again. CONFIRM with the real adapter before a batch —")
+                print("  a served landing page does NOT prove the parcel-search flow works (§32.6):")
+                print("      python3 collectors_gds.py 26238500070260000")
+                _sys.exit(0)
+            _t.sleep(_every)
+
     import json
     import sys
     from browser_env import chrome_path

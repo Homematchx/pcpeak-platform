@@ -141,6 +141,16 @@ def main():
     if a.limit:
         targets = targets[:a.limit]
     print(f"eligible cases (petition names a gds-reachable collector + a CAD on file): {len(targets)}")
+    # PRE-FLIGHT. One GET (~200ms) instead of launching chromium to discover the same thing 10s later
+    # and once per case. Cheap enough that there is no reason not to check first.
+    blocked, why = collectors_gds.portal_blocked()
+    print(f"  portal pre-flight: {'⛔ BLOCKED' if blocked else '✅ reachable'} — {why}")
+    if blocked and not a.dry_run:
+        print("\n  Refusing to start: every fetch would fail soft and write nothing useful.")
+        print("  Watch for recovery cheaply:  python3 collectors_gds.py --watch")
+        print("  When it clears, CONFIRM with the real adapter before a batch:")
+        print("      python3 collectors_gds.py 26238500070260000")
+        return
     if a.dry_run:
         SHOWN = 20
         for t in targets[:SHOWN]:
