@@ -101,10 +101,23 @@ class PortalUnavailable(RuntimeError):
 
 
 BLOCK_URL_MARKER = "/Error/WrongRequest"
-PROBE_AGENCY = "057909"          # any REAL agency page; the block only hits real portal pages
 
 
-def portal_blocked(agency: str = PROBE_AGENCY, timeout: float = 15.0):
+def _probe_agency():
+    """Any REAL agency id, taken from the ROSTER — never a literal.
+
+    The probe needs a genuine portal page (a nonexistent agency 404s instead of redirecting), but
+    writing one in as a constant is precisely the §19 Q2 defect the guard in `test_collectors_gds`
+    exists to catch — and it caught this function's first draft. The roster is the single source of
+    agency ids; a probe is not an exception to that."""
+    roster = jurisdictions.load_gds_roster() or {}
+    for agency in roster.values():
+        if agency:
+            return str(agency)
+    return None
+
+
+def portal_blocked(agency: str = None, timeout: float = 15.0):
     """Is the portal refusing this host RIGHT NOW? -> (blocked: bool, detail: str). ~200ms, no browser.
 
     WHY THIS EXISTS. The block is an application-level 302 to /Error/WrongRequest, and the site states
@@ -122,6 +135,9 @@ def portal_blocked(agency: str = PROBE_AGENCY, timeout: float = 15.0):
     blocked, so the host is not firewalled — the server still processes requests. The refusal is
     scoped to real portal pages, which is information the vendor can act on."""
     import httpx
+    agency = agency or _probe_agency()
+    if not agency:
+        return True, "no agency in the roster to probe with"
     try:
         r = httpx.get(f"{BASE}/{agency}", timeout=timeout, follow_redirects=True,
                       headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
