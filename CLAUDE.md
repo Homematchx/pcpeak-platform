@@ -53,34 +53,36 @@ construction, which is why it is stored distinctly from the retryable `fetch_fai
 - **`taxbyyear.jsp` scrape is silently broken** (`tax_by_year` nonempty on 0 of 300). Pre-existing,
   out of scope, logged so it is not rediscovered from scratch.
 
-**5. gds IP BLOCK — ✅ CLEARED (verified 2026-08-19).** It had blocked Garland ISD · City of Garland ·
-Richardson ISD · Carrollton-FB — 4 of the 5 mapped collectors — from taking NEW balance fetches.
+**5. gds IP BLOCK — ⚠ REGRESSED, BLOCKING AGAIN (2026-08-19, later).** It cleared, then came back.
 
-**Verified with the REAL ADAPTER, not a proxy** — `collectors_gds.fetch_case_balances` against three
-Garland CADs: both collectors returned on every one, **zero `_portal_unavailable`, zero identity
-rejections**. A plain `GET` also returns HTTP 200 now, but that is exactly the §32.6 trap: the landing
-page answering proves nothing about the parcel-search flow the adapter drives. **If this appears to
-regress, re-test with `python3 collectors_gds.py <CAD>` — never with curl.**
+**Timeline, because the shape of it matters:** verified CLEAR with the real adapter on 3 Garland
+parcels (both collectors returned, zero faults) → an 80-case `collector_backfill` run → **blocked
+again**. Every one of 16 new Garland/Richardson parcels now returns
+`https://www.texaspayments.com/Error/WrongRequest`, across all three agency codes (057120 · 057909 ·
+057916), and the SAME CAD that fetched cleanly an hour earlier now fails. **Plausible but UNPROVEN:
+the bulk run tripped rate-limiting into a re-block.** If that is right, a full-book run is itself the
+trigger and pacing/throttling is the fix, not just waiting.
 
-**⚠ REMAINING CAVEAT, HONEST STATE:** the **fetch path** is confirmed; **nonzero balances under real
-batch load are NOT yet confirmed** — all three probe parcels returned $0.00. The next real batch
-exercises that. If `_portal_unavailable` reappears mid-run it fails soft to INDETERMINATE and stops
-hammering, so a re-run later is safe.
+**Affected:** Garland ISD · City of Garland · Richardson ISD · Carrollton-FB — 4 of 5 mapped
+collectors. Stored balances unaffected; new fetches fail soft to `_portal_unavailable` →
+INDETERMINATE, never $0. Costs freshness, not correctness. Remedy is operational — different network,
+or `support@gdsincorporated.com`.
 
-**Backlog it left — three DIFFERENT numbers, do not conflate them:**
-- **80** cases are adapter-reachable and are what `collector_backfill.py` will query on a full run
-  (`eligible()` requires `platform in ADAPTERS` + a CAD). It re-fetches ALL of them, not just the
-  unfetched, so a full run refreshes the whole reachable set.
-- **8** cases actually have an adapter-backed collector *never fetched* — the genuinely fixable
-  backlog (`batch_census.py` reports this as `gds_unfetched`).
-- **39** cases carry *some* unfetched named external collector; the balance of them — Balch Springs,
-  Duncanville, University Park, Highland Park, DeSoto, Sachse, the PIDs, a transferred tax lien —
-  have **no adapter and stay `unavailable` by design**: coverage is defined by what the parcel owes,
-  not by what we have integrated.
+**⚠ TEST IT WITH THE ADAPTER, NEVER curl.** A plain `GET` returns HTTP 200 even while blocked — the
+landing page answers; the parcel-search flow is what refuses. `python3 collectors_gds.py <CAD>`.
 
-⚠ **`collector_backfill.py --dry-run` PRINTS ONLY THE FIRST 20 TARGETS** (`targets[:20]`) while its
-HEADER LINE carries the true count. Counting the printed lines gives 20 and is wrong — this is the
-"read the response body, not a grep count" lesson, and it has now caught someone twice.
+**Backlog — three DIFFERENT numbers, do not conflate them:**
+- **96** cases are adapter-reachable — what a full `collector_backfill` run queries (`eligible()`
+  requires `platform in ADAPTERS` + a CAD). It re-fetches ALL of them, not just the unfetched.
+- **17** cases have an adapter-backed collector *never fetched* — the genuinely fixable backlog
+  (`batch_census.py` reports it as `gds_unfetched`).
+- **39+** carry *some* unfetched named external collector; the rest — Balch Springs, Duncanville,
+  University Park, Highland Park, DeSoto, Sachse, the PIDs, a transferred tax lien — have **no
+  adapter and stay `unavailable` by design**.
+
+⚠ **`collector_backfill.py --dry-run` truncates its list to 20** while the HEADER carries the true
+count. Counting printed lines is wrong — that mistake has been made here twice. It now prints an
+explicit "… and N more NOT LISTED" line.
 
 ### STANDING OPERATIONAL LESSONS (process memory — each earned by a specific near-miss)
 

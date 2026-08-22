@@ -61,6 +61,7 @@ async def run(targets, write=True):
     from playwright.async_api import async_playwright
     conn = sqlite3.connect(DB)
     done = fetched = failed = 0
+    portal_down = False
     async with async_playwright() as p:
         browser = await p.chromium.launch(executable_path=chrome_path())
         try:
@@ -69,12 +70,25 @@ async def run(targets, write=True):
                 # case naming both a GDS office and an ACT district is served by both in one pass.
                 got = await collectors_gds.fetch_for_case(t["collectors"], t["cad"], browser)
                 got.update(collectors_act.fetch_for_case(t["collectors"], t["cad"]))
-                miss = [c for c in t["collectors"] if c not in got]
-                total = sum(v["amount"] for v in got.values())
-                print(f"  {t['case']:<14} cad={t['cad']}  fetched {len(got)}/{len(t['collectors'])}"
+                # §19 — SPLIT BY SHAPE BEFORE SUMMING. `got` carries collector dicts AND sentinel
+                # keys whose values are LISTS (`_portal_unavailable`, `_rejected`). Summing across
+                # `.values()` crashed here the first time a portal fault occurred, and would have
+                # mis-counted `fetched` even when it did not crash.
+                amounts = jurisdictions.collector_amounts(got)
+                sentinels = jurisdictions.collector_sentinels(got)
+                miss = [c for c in t["collectors"] if c not in amounts]
+                total = sum(amounts.values())
+                print(f"  {t['case']:<14} cad={t['cad']}  fetched {len(amounts)}/{len(t['collectors'])}"
                       f"  ${total:>12,.2f}" + (f"   UNAVAILABLE: {', '.join(miss)}" if miss else ""))
-                fetched += len(got)
+                for key, val in sentinels.items():
+                    print(f"      ⚠ {key}: {val}")
+                fetched += len(amounts)
                 failed += len(miss)
+                # An infrastructure fault is not a per-parcel negative. Grinding through the rest of
+                # the book against a portal that is refusing us produces nothing and risks deepening
+                # a rate-limit block, so stop and say so — the record already holds the fault.
+                # Write once, whatever happened — the sentinel is PART of the record (batch_census
+                # and the payoff surfaces both read it), so a fault is stored, not swallowed.
                 if write and got:
                     intel = t["intel"]
                     intel["collector_balances"] = {**(intel.get("collector_balances") or {}), **got}
@@ -82,11 +96,23 @@ async def run(targets, write=True):
                                  (json.dumps(intel), t["case"]))
                     conn.commit()
                 done += 1
+                # An infrastructure fault is not a per-parcel negative. Grinding through the rest of
+                # the book against a portal that is refusing us produces nothing and risks deepening
+                # a rate-limit block, so stop and say so.
+                if "_portal_unavailable" in sentinels:
+                    portal_down = True
+                    print(f"\n  ⛔ PORTAL REFUSING — {sentinels['_portal_unavailable']}")
+                    print("     Stopping. Balances already written are intact; unfetched collectors")
+                    print("     stay `unavailable` → INDETERMINATE, never $0. Safe to re-run later.")
+                    break
         finally:
             await browser.close()
     conn.close()
     print(f"\n  cases processed {done} · collector balances fetched {fetched} · "
           f"left UNAVAILABLE {failed}")
+    if portal_down:
+        print("  ⛔ RUN STOPPED EARLY on a portal fault — re-run when the portal is back.")
+        print("     Verify first with:  python3 collectors_gds.py <CAD>   (never curl — §32.6)")
 
 
 def main():
@@ -102,8 +128,14 @@ def main():
         targets = targets[:a.limit]
     print(f"eligible cases (petition names a gds-reachable collector + a CAD on file): {len(targets)}")
     if a.dry_run:
-        for t in targets[:20]:
+        SHOWN = 20
+        for t in targets[:SHOWN]:
             print(f"  {t['case']:<14} cad={t['cad']}  would query: {', '.join(t['collectors'])}")
+        if len(targets) > SHOWN:
+            # ⚠ Say the truncation out loud. Counting the PRINTED lines gives 20 and is wrong; the
+            # header above carries the real number. That exact mistake has been made here before.
+            print(f"  … and {len(targets) - SHOWN} more NOT LISTED — the count is the header line "
+                  f"above ({len(targets)}), not the number of lines printed.")
         print("  (dry run — nothing fetched, nothing written)")
         return
     asyncio.run(run(targets))

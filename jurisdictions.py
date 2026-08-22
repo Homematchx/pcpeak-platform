@@ -260,6 +260,39 @@ def payoff_completeness(lines):
             "reason": "every named collector accounted for, against a verified collector set"}
 
 
+# ── collector-payload shape (§19: is it a dict or a list?) ──────────────────────────────────────
+# An adapter returns {collector: {amount, account, …}} PLUS, conditionally, these two keys whose
+# values are LISTS, not collector entries:
+#   _rejected            identity-guard discards (returned CAD ≠ requested CAD)
+#   _portal_unavailable  infrastructure fault; the adapter stops rather than hammer a refusing portal
+# They are deliberately stored alongside the balances so the fault survives into the record — but any
+# consumer that walks `.values()` expecting a collector dict WILL break on them. That is not
+# hypothetical: `collector_backfill` summed `v["amount"]` across every value and died with
+# "list indices must be integers or slices, not str" the first time a portal fault occurred.
+SENTINEL_KEYS = frozenset({"_rejected", "_portal_unavailable"})
+
+
+def collector_amounts(payload) -> dict:
+    """{collector: amount} — REAL collector entries only, sentinels and malformed rows excluded.
+
+    The one reading of a collector payload, so no caller invents its own. Requires a dict WITH a
+    numeric `amount`: a fetched $0.00 is a fact and is kept; a sentinel list is not a collector and
+    is dropped."""
+    out = {}
+    for k, v in (payload or {}).items():
+        if k in SENTINEL_KEYS or not isinstance(v, dict):
+            continue
+        amt = v.get("amount")
+        if isinstance(amt, (int, float)):
+            out[k] = amt
+    return out
+
+
+def collector_sentinels(payload) -> dict:
+    """The non-collector diagnostics carried in the same mapping — surfaced, never silently dropped."""
+    return {k: v for k, v in (payload or {}).items() if k in SENTINEL_KEYS and v}
+
+
 def normalize_act_units(act_units):
     """ACT's per-parcel unit coverage as a canonical SET, or None for UNKNOWN COVERAGE (§34.2).
 
