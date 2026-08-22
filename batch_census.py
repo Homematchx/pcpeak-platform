@@ -45,6 +45,13 @@ def classify(pi, tb, comp):
         return "gds_unfetched" if reach else "no_adapter_by_design"
     if pi.get("act_units_reason") == "no_unit_list_at_zero_balance":
         return "zero_blind_spot"
+    # An ACT enrichment that TIMED OUT is a transient fetch miss, not a property of the parcel —
+    # "check ground truth before accepting a fetch miss as final". Named separately because it is
+    # RETRYABLE, and lumping it with the permanent causes is how recoverable debt gets written off.
+    if (pi.get("errors") or {}).get("act"):
+        return "act_fetch_failed"
+    if not isinstance(pi.get("current_tax_balance"), (int, float)):
+        return "no_act_balance"
     if not pi.get("act_units"):
         return "act_units_missing"
     return "other"
@@ -105,6 +112,8 @@ def main():
              "no_cad": "no resolvable DCAD account            -> resolve_backlog.py",
              "no_adapter_by_design": "collector has no adapter              -> by design",
              "act_units_missing": "act_units absent                      -> act_units_backfill.py",
+             "act_fetch_failed": "ACT enrichment FAILED/timed out        -> RETRYABLE, re-enrich",
+             "no_act_balance": "no live ACT balance captured          -> re-enrich / resolve account",
              "other": "unclassified                          -> investigate"}
     for k, v in causes.most_common():
         print(f"     {v:4d}  {LABEL.get(k, k)}")

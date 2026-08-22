@@ -1,0 +1,1209 @@
+✓ TWO_CAPTCHA_KEY loaded (len 32, src Anthropic_API_KEY.env)
+[23:47:56] Pattern: 'TX-26-015' -> 'TX-26-015**'
+[23:47:56] Searching portal: 'TX-26-015**'
+[23:48:01]   CAPTCHA detected...
+[23:48:01]   Solving CAPTCHA via 2Captcha...
+[23:48:02]   Waiting (ID:83627100014)...
+[23:48:07]   ✓ CAPTCHA solved (ID:83627100014)
+[23:48:08]   CAPTCHA solved!
+[23:48:11] Submit: CLICKED
+[23:48:19] Results ready
+[23:48:19]   hrefs captured: 10/10
+[23:48:19]   (6 business entities excluded by --individuals-only)
+[23:48:19] 
+[23:48:19] Page 1: 10 cases | 4 to process
+[23:48:19] [pg1 1/4] [IND] TX-26-01595 | WASHAM, CARL
+[23:48:19]   -> Clicking into TX-26-01595 | INDIVIDUAL | WASHAM, CARL
+[23:48:19]   Going to Search Results...
+[23:48:19]   Back to results: True
+[23:48:36]   Attempt 1: 1396 chars
+[23:48:36]   Click result: clicked-exact
+[23:48:38]   Attempt 2: 2859 chars
+[23:48:38]   Correct docket confirmed: TX-26-01595
+[23:48:38]   Docket: 2859 chars
+[23:48:38]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/14/2026 ORIGIN
+[23:48:38]   Downloading Original Petition...
+[23:48:42]   PDF saved (3748319 bytes) | text 8196 chars
+[23:48:42]   Running Claude extraction...
+[23:49:10]   Enriching property intel: 22051000520140000
+  [intel] Enriching 22051000520140000...
+  [intel] 22051000520140000 | MV: $199,270 | Balance: $28,954.11 | Distress: HIGH
+[23:49:22]   Intel saved: MV $199,270 | Balance $28,954.11
+[23:49:22]   Track: active [property_type=real]
+[23:49:22]   Generating memo...
+[23:49:37]   Saved TX-26-01595 | 727 Sun Valley Dr., Duncanville, TX 75116-2458 | $28,954
+[23:49:40] [pg1 2/4] [IND] TX-26-01597 | SMITH, JEREMY SHAFER
+[23:49:40]   -> Clicking into TX-26-01597 | INDIVIDUAL | SMITH, JEREMY SHAFER
+[23:49:40]   Going to Search Results...
+[23:49:40]   Back to results: True
+[23:49:57]   Attempt 1: 1410 chars
+[23:49:57]   Click result: clicked-exact
+[23:49:59]   Attempt 2: 2232 chars
+[23:49:59]   Correct docket confirmed: TX-26-01597
+[23:49:59]   Docket: 2232 chars
+[23:49:59]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/14/2026 ORIGIN
+[23:49:59]   Downloading Original Petition...
+[23:50:01]   PDF saved (2396302 bytes) | text 5312 chars
+[23:50:01]   Running Claude extraction...
+[23:50:23]   Enriching property intel: 00000737902000000
+  [intel] Enriching 00000737902000000...
+  [intel] 00000737902000000 | MV: $508,030 | Balance: $17,614.17 | Distress: MODERATE
+[23:50:34]   Intel saved: MV $508,030 | Balance $17,614.17
+[23:50:34]   Track: active [property_type=real]
+[23:50:34]   Generating memo...
+[23:50:50]   Saved TX-26-01597 | Lakeland Hills No. 1, Blk 4/7486, Lt 3, Dallas, TX | $16,109
+[23:50:53] [pg1 3/4] [EST] TX-26-01598 | THE UNKNOWN HEIRS, EXECUTORS, ADMINISTRATORS AND/OR LEGAL REPRESENTATIVES OF THE ESTATE OF ZEOLA P. MASSEY AS TRUSTEE OF THE ZEOLA P. MASSEY TRUST (IN REM ONLY)
+[23:50:53]   -> Clicking into TX-26-01598 | ESTATE | THE UNKNOWN HEIRS, EXECUTORS, ADMINISTRATORS AND/OR LEGAL REPRESENTATIVES OF THE ESTATE OF ZEOLA P. MASSEY AS TRUSTEE OF THE ZEOLA P. MASSEY TRUST (IN REM ONLY)
+[23:50:53]   Going to Search Results...
+[23:50:53]   Back to results: True
+[23:51:10]   Attempt 1: 1410 chars
+[23:51:10]   Click result: clicked-exact
+[23:51:12]   Attempt 2: 1951 chars
+[23:51:12]   Correct docket confirmed: TX-26-01598
+[23:51:12]   Docket: 1951 chars
+[23:51:12]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/14/2026 ORIGIN
+[23:51:12]   Downloading Original Petition...
+[23:51:14]   PDF saved (2559398 bytes) | text 5667 chars
+[23:51:14]   Running Claude extraction...
+[23:51:37]   Enriching property intel: 00000785905000000
+  [intel] Enriching 00000785905000000...
+  [intel] 00000785905000000 | MV: unknown | Balance: $8,667.69 | Distress: CRITICAL
+[23:51:49]   Intel saved: MV unknown | Balance $8,667.69
+[23:51:49]   Track: active [property_type=real]
+[23:51:49]   Generating memo...
+[23:52:06]   Saved TX-26-01598 | 13739 PEYTON DRIVE, DALLAS, TX 75240 | $14,871
+[23:52:09] [pg1 4/4] [IND] TX-26-01583 | COOPER, MARY ELLA
+[23:52:09]   -> Clicking into TX-26-01583 | INDIVIDUAL | COOPER, MARY ELLA
+[23:52:09]   Going to Search Results...
+[23:52:09]   Back to results: True
+[23:52:26]   Attempt 1: 1410 chars
+[23:52:26]   Click result: clicked-exact
+[23:52:28]   Attempt 2: 3376 chars
+[23:52:28]   Correct docket confirmed: TX-26-01583
+[23:52:28]   Docket: 3376 chars
+[23:52:28]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/13/2026 ORIGIN
+[23:52:28]   Downloading Original Petition...
+[23:52:31]   PDF saved (3687541 bytes) | text 8099 chars
+[23:52:31]   Running Claude extraction...
+[23:52:54]   Enriching property intel: 00000172870000000
+  [intel] Enriching 00000172870000000...
+  [intel] 00000172870000000 | MV: $109,270 | Balance: $14,862.07 | Distress: HIGH
+[23:53:06]   Intel saved: MV $109,270 | Balance $14,862.07
+[23:53:06]   Track: active [property_type=real]
+[23:53:06]   Generating memo...
+[23:53:22]   Saved TX-26-01583 | 3900 Waldron Ave., Dallas, TX 75215 | $14,832
+[23:53:31]   hrefs captured: 10/10
+[23:53:31]   (3 business entities excluded by --individuals-only)
+[23:53:31] 
+[23:53:31] Page 2: 10 cases | 7 to process
+[23:53:31] [pg2 1/7] [IND] TX-26-01585 | ROCHESTER, PHILLIP ALAN
+[23:53:31]   -> Clicking into TX-26-01585 | INDIVIDUAL | ROCHESTER, PHILLIP ALAN
+[23:53:31]   Going to Search Results...
+[23:53:31]   Back to results: True
+[23:53:48]   Attempt 1: 1267 chars
+[23:53:48]   Click result: clicked-exact
+[23:53:50]   Attempt 2: 3280 chars
+[23:53:50]   Correct docket confirmed: TX-26-01585
+[23:53:50]   Docket: 3280 chars
+[23:53:50]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/13/2026 ORIGIN
+[23:53:50]   Downloading Original Petition...
+[23:53:52]   PDF saved (3674750 bytes) | text 8073 chars
+[23:53:52]   Running Claude extraction...
+[23:54:15]   Enriching property intel: 38238750050200000
+  [intel] Enriching 38238750050200000...
+  [intel] 38238750050200000 | MV: $270,230 | Balance: $29,317.64 | Distress: CRITICAL
+[23:54:27]   Intel saved: MV $270,230 | Balance $29,317.64
+[23:54:27]   Track: active [property_type=real]
+[23:54:27]   Generating memo...
+[23:54:43]   Saved TX-26-01585 | 3627 Parkmont St., Mesquite, TX 75150-4244 | $29,318
+[23:54:46] [pg2 2/7] [IND] TX-26-01586 | TROY BERRY, A/K/A TROY D. BERRY, JR.
+[23:54:46]   -> Clicking into TX-26-01586 | INDIVIDUAL | TROY BERRY, A/K/A TROY D. BERRY, JR.
+[23:54:46]   Going to Search Results...
+[23:54:46]   Back to results: True
+[23:55:03]   Attempt 1: 1267 chars
+[23:55:03]   Click result: clicked-exact
+[23:55:05]   Attempt 2: 2110 chars
+[23:55:05]   Correct docket confirmed: TX-26-01586
+[23:55:05]   Docket: 2110 chars
+[23:55:05]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/13/2026 ORIGIN
+[23:55:05]   Downloading Original Petition...
+[23:55:08]   PDF saved (3487368 bytes) | text 7698 chars
+[23:55:08]   Running Claude extraction...
+[23:55:26]   Enriching property intel: 50030610010010000
+  [intel] Enriching 50030610010010000...
+  [intel] 50030610010010000 | MV: $237,030 | Balance: $6,611.21 | Distress: MODERATE
+[23:55:38]   Intel saved: MV $237,030 | Balance $6,611.21
+[23:55:38]   Track: active [property_type=real]
+[23:55:38]   Generating memo...
+[23:55:54]   Saved TX-26-01586 | 1218 Catherine Lane, Seagoville, TX (Dallas County) | $12,676
+[23:55:57] [pg2 3/7] [IND] TX-26-01587 | HAILEY, DOROTHY B.
+[23:55:57]   -> Clicking into TX-26-01587 | INDIVIDUAL | HAILEY, DOROTHY B.
+[23:55:57]   Going to Search Results...
+[23:55:57]   Back to results: True
+[23:56:14]   Attempt 1: 1267 chars
+[23:56:14]   Click result: clicked-exact
+[23:56:16]   Attempt 2: 4361 chars
+[23:56:16]   Correct docket confirmed: TX-26-01587
+[23:56:16]   Docket: 4361 chars
+[23:56:16]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/13/2026 ORIGIN
+[23:56:16]   Downloading Original Petition...
+[23:56:19]   PDF saved (3757525 bytes) | text 8260 chars
+[23:56:19]   Running Claude extraction...
+[23:56:45]   Enriching property intel: 00000716497000000
+  [intel] Enriching 00000716497000000...
+  [intel] 00000716497000000 | MV: $239,110 | Balance: $0.00 | Distress: MODERATE
+[23:56:56]   Intel saved: MV $239,110 | Balance $0.00
+[23:56:56]   Track: active [property_type=real]
+[23:56:56]   Generating memo...
+[23:57:11]   Saved TX-26-01587 | 10829 Sharondale Dr., Dallas, TX 75228-2444 | $26,179
+[23:57:14] [pg2 4/7] [IND] TX-26-01588 | CLARENCE C. ARMSTRONG, A/K/A CLARENCE C. ARMSTRONG, JR.
+[23:57:14]   -> Clicking into TX-26-01588 | INDIVIDUAL | CLARENCE C. ARMSTRONG, A/K/A CLARENCE C. ARMSTRONG, JR.
+[23:57:14]   Going to Search Results...
+[23:57:14]   Back to results: True
+[23:57:31]   Attempt 1: 1267 chars
+[23:57:31]   Click result: clicked-exact
+[23:57:33]   Attempt 2: 4283 chars
+[23:57:33]   Correct docket confirmed: TX-26-01588
+[23:57:33]   Docket: 4283 chars
+[23:57:33]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/13/2026 ORIGIN
+[23:57:33]   Downloading Original Petition...
+[23:57:36]   PDF saved (3616855 bytes) | text 7952 chars
+[23:57:36]   Running Claude extraction...
+[23:58:07]   Enriching property intel: 00000714235000000
+  [intel] Enriching 00000714235000000...
+  [intel] 00000714235000000 | MV: $285,520 | Balance: $18,878.20 | Distress: MODERATE
+[23:58:19]   Intel saved: MV $285,520 | Balance $18,878.20
+[23:58:19]   Track: active [property_type=real]
+[23:58:19]   Generating memo...
+[23:58:34]   Saved TX-26-01588 | 3120 Santa Teresa Avenue, Dallas, TX 75228-3402 | $18,064
+[23:58:37] [pg2 5/7] [IND] TX-26-01589 | BEANE, LINDA ANN
+[23:58:37]   -> Clicking into TX-26-01589 | INDIVIDUAL | BEANE, LINDA ANN
+[23:58:37]   Going to Search Results...
+[23:58:37]   Back to results: True
+[23:58:54]   Attempt 1: 1267 chars
+[23:58:54]   Click result: clicked-exact
+[23:58:56]   Attempt 2: 1842 chars
+[23:58:56]   Correct docket confirmed: TX-26-01589
+[23:58:56]   Docket: 1842 chars
+[23:58:56]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/13/2026 ORIGIN
+[23:58:56]   Downloading Original Petition...
+[23:58:58]   PDF saved (2573462 bytes) | text 5407 chars
+[23:58:58]   Running Claude extraction...
+[23:59:27]   ↳ Resolved DCAD account (address+owner agree): 0085790L000110000 (petition account was '')
+[23:59:27]   Enriching property intel: 0085790L000110000
+  [intel] Enriching 0085790L000110000...
+  [intel] 0085790L000110000 | MV: $747,460 | Balance: $10,163.97 | Distress: MODERATE
+[23:59:37]   Intel saved: MV $747,460 | Balance $10,163.97
+[23:59:37]   Track: active [property_type=real]
+[23:59:37]   Generating memo...
+[23:59:53]   Saved TX-26-01589 | 4115 MANOR VIEW LANE, CITY OF DALLAS, TEXAS | $10,075
+[23:59:56] [pg2 6/7] [IND] TX-26-01591 | GARCIA, JUAN
+[23:59:56]   -> Clicking into TX-26-01591 | INDIVIDUAL | GARCIA, JUAN
+[23:59:56]   Going to Search Results...
+[23:59:56]   Back to results: True
+[00:00:13]   Attempt 1: 1267 chars
+[00:00:14]   Click result: clicked-exact
+[00:00:16]   Attempt 2: 1592 chars
+[00:00:16]   Correct docket confirmed: TX-26-01591
+[00:00:16]   Docket: 1592 chars
+[00:00:16]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/13/2026 ORIGIN
+[00:00:16]   Downloading Original Petition...
+[00:00:18]   PDF saved (2483993 bytes) | text 5235 chars
+[00:00:18]   Running Claude extraction...
+[00:00:39]   ⚠ No account extracted; no corroborated DCAD match — needs manual lookup.
+[00:00:39]   Track: active [property_type=real]
+[00:00:39]   Generating memo...
+[00:00:55]   Saved TX-26-01591 |  | $9,747
+[00:00:58] [pg2 7/7] [IND] TX-26-01593 | HOWE, CLAUDIA M.
+[00:00:58]   -> Clicking into TX-26-01593 | INDIVIDUAL | HOWE, CLAUDIA M.
+[00:00:58]   Going to Search Results...
+[00:00:58]   Back to results: True
+[00:01:15]   Attempt 1: 1267 chars
+[00:01:15]   Click result: clicked-exact
+[00:01:21]   Attempt 2: 1550 chars
+[00:01:21]   Correct docket confirmed: TX-26-01593
+[00:01:21]   Docket: 1550 chars
+[00:01:21]   petition select: NO petition-type document found — recording none (not falling through)
+[00:01:21]   Running Claude extraction...
+[00:01:59]   ⚠ No account extracted; no corroborated DCAD match (uncorroborated candidate 38044100010220000) — needs manual lookup.
+[00:01:59]   Track: active [property_type=real]
+[00:01:59]   Generating memo...
+[00:02:13]   Saved TX-26-01593 | 3912 Tamarind Dr., Mesquite, TX 75150-3418 | $6,020
+[00:02:22]   hrefs captured: 10/10
+[00:02:22]   (4 business entities excluded by --individuals-only)
+[00:02:22] 
+[00:02:22] Page 3: 10 cases | 6 to process
+[00:02:22] [pg3 1/6] [IND] TX-26-01568 | GARZA, MARIA
+[00:02:22]   -> Clicking into TX-26-01568 | INDIVIDUAL | GARZA, MARIA
+[00:02:22]   Going to Search Results...
+[00:02:22]   Back to results: True
+[00:02:40]   Attempt 1: 1243 chars
+[00:02:40]   Click result: clicked-exact
+[00:02:42]   Attempt 2: 2800 chars
+[00:02:42]   Correct docket confirmed: TX-26-01568
+[00:02:42]   Docket: 2800 chars
+[00:02:42]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/12/2026 ORIGIN
+[00:02:42]   Downloading Original Petition...
+[00:02:48]   PDF saved (9701529 bytes) | text 23406 chars
+[00:02:48]   Running Claude extraction...
+[00:03:22]   Enriching property intel: 60123500010090000, 60123500010010000, 60123500010120000, 00000623422000000, 38121490000140000, 60123500010080000
+  [intel] Multi-tract petition detected — 6 accounts: 60123500010090000, 60123500010010000, 60123500010120000, 00000623422000000, 38121490000140000, 60123500010080000
+  [intel] Enriching 60123500010090000...
+  [intel] 60123500010090000 | MV: $70,000 | Balance: $7,738.45 | Distress: HIGH
+  [intel] Enriching 60123500010010000...
+  [intel] 60123500010010000 | MV: $70,500 | Balance: $14,563.68 | Distress: CRITICAL
+  [intel] Enriching 60123500010120000...
+  [intel] 60123500010120000 | MV: $70,000 | Balance: $26,926.50 | Distress: CRITICAL
+  [intel] Enriching 00000623422000000...
+  [intel] 00000623422000000 | MV: $148,010 | Balance: $9,989.36 | Distress: HIGH
+  [intel] Enriching 38121490000140000...
+  [intel] 38121490000140000 | MV: $164,920 | Balance: $91,008.09 | Distress: CRITICAL
+  [intel] Enriching 60123500010080000...
+  [intel] 60123500010080000 | MV: $225,980 | Balance: $102,023.83 | Distress: CRITICAL
+  [intel] 60123500010090000, 60123500010010000, 60123500010120000, 00000623422000000, 38121490000140000, 60123500010080000 | 6 tracts combined | MV: $749,410 | Balance: $252,249.91 | Distress: CRITICAL
+[00:04:34]   Intel saved: MV $749,410 | Balance $252,249.91
+[00:04:34]   Track: active [property_type=real]
+[00:04:34]   Generating memo...
+[00:04:51]   Saved TX-26-01568 | 709 Lakeside Rd., Balch Springs, TX 75181 | $7,738
+[00:04:54] [pg3 2/6] [IND] TX-26-01569 | HUERTA, SALUSTRIA HERNANDEZ
+[00:04:54]   -> Clicking into TX-26-01569 | INDIVIDUAL | HUERTA, SALUSTRIA HERNANDEZ
+[00:04:54]   Going to Search Results...
+[00:04:54]   Back to results: True
+[00:05:11]   Attempt 1: 1243 chars
+[00:05:11]   Click result: clicked-exact
+[00:05:15]   Attempt 2: 1769 chars
+[00:05:15]   Correct docket confirmed: TX-26-01569
+[00:05:15]   Docket: 1930 chars
+[00:05:15]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/12/2026 ORIGIN
+[00:05:15]   Downloading Original Petition...
+[00:05:18]   PDF saved (3538658 bytes) | text 7847 chars
+[00:05:18]   Running Claude extraction...
+[00:05:37]   Enriching property intel: 00000522079000000
+  [intel] Enriching 00000522079000000...
+  [intel] 00000522079000000 | MV: $324,940 | Balance: $16,894.27 | Distress: HIGH
+[00:05:48]   Intel saved: MV $324,940 | Balance $16,894.27
+[00:05:48]   Track: active [property_type=real]
+[00:05:48]   Generating memo...
+[00:06:03]   Saved TX-26-01569 | 9978 Bowman Blvd., Dallas, TX 75220-1610 | $16,894
+[00:06:06] [pg3 3/6] [IND] TX-26-01570 | MEDINA, JOSE CANDIDO
+[00:06:06]   -> Clicking into TX-26-01570 | INDIVIDUAL | MEDINA, JOSE CANDIDO
+[00:06:06]   Going to Search Results...
+[00:06:06]   Back to results: True
+[00:06:23]   Attempt 1: 1243 chars
+[00:06:23]   Click result: clicked-exact
+[00:06:25]   Attempt 2: 2158 chars
+[00:06:25]   Correct docket confirmed: TX-26-01570
+[00:06:25]   Docket: 2158 chars
+[00:06:25]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/12/2026 ORIGIN
+[00:06:25]   Downloading Original Petition...
+[00:06:28]   PDF saved (3718676 bytes) | text 8268 chars
+[00:06:28]   Running Claude extraction...
+[00:06:50]   Enriching property intel: 00000514624000000
+  [intel] Enriching 00000514624000000...
+  [intel] 00000514624000000 | MV: $128,070 | Balance: $16,143.94 | Distress: CRITICAL
+[00:07:01]   Intel saved: MV $128,070 | Balance $16,143.94
+[00:07:01]   Track: active [property_type=real]
+[00:07:01]   Generating memo...
+[00:07:17]   Saved TX-26-01570 | 5005 Bourquin St., Dallas, TX 75210-3046 | $18,034
+[00:07:20] [pg3 4/6] [IND] TX-26-01571 | SALINAS, FRANCES
+[00:07:20]   -> Clicking into TX-26-01571 | INDIVIDUAL | SALINAS, FRANCES
+[00:07:20]   Going to Search Results...
+[00:07:20]   Back to results: True
+[00:07:37]   Attempt 1: 1243 chars
+[00:07:37]   Click result: clicked-exact
+[00:07:39]   Attempt 2: 2156 chars
+[00:07:39]   Correct docket confirmed: TX-26-01571
+[00:07:39]   Docket: 2156 chars
+[00:07:39]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/12/2026 ORIGIN
+[00:07:39]   Downloading Original Petition...
+[00:07:41]   PDF saved (3657912 bytes) | text 8121 chars
+[00:07:41]   Running Claude extraction...
+[00:08:05]   Enriching property intel: 65156435020040000
+  [intel] Enriching 65156435020040000...
+  [intel] 65156435020040000 | MV: $149,860 | Balance: $15,517.75 | Distress: MODERATE
+[00:08:17]   Intel saved: MV $149,860 | Balance $15,517.75
+[00:08:17]   Track: active [property_type=real]
+[00:08:17]   Generating memo...
+[00:08:33]   Saved TX-26-01571 | 1520 Betty Ann Ln., Balch Springs, TX 75180-1004 | $15,518
+[00:08:36] [pg3 5/6] [IND] TX-26-01572 | WETZEL, STEVEN ROSS
+[00:08:36]   -> Clicking into TX-26-01572 | INDIVIDUAL | WETZEL, STEVEN ROSS
+[00:08:36]   Going to Search Results...
+[00:08:36]   Back to results: True
+[00:08:53]   Attempt 1: 1243 chars
+[00:08:53]   Click result: clicked-exact
+[00:08:55]   Attempt 2: 1708 chars
+[00:08:55]   Correct docket confirmed: TX-26-01572
+[00:08:55]   Docket: 1708 chars
+[00:08:55]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/12/2026 ORIGIN
+[00:08:55]   Downloading Original Petition...
+[00:08:56]   PDF saved (2537181 bytes) | text 5352 chars
+[00:08:56]   Running Claude extraction...
+[00:09:24]   ↳ Resolved DCAD account (address+owner agree): 26625040010200000 (petition account was '')
+[00:09:24]   Enriching property intel: 26625040010200000
+  [intel] Enriching 26625040010200000...
+  [intel] 26625040010200000 | MV: $391,620 | Balance: $2,986.71 | Distress: MODERATE
+[00:09:34]   Intel saved: MV $391,620 | Balance $2,986.71
+[00:09:34]   Track: active [property_type=real]
+[00:09:34]   Generating memo...
+[00:09:49]   Saved TX-26-01572 | 3014 Hibiscus Drive, City of Garland, Texas | $10,755
+[00:09:52] [pg3 6/6] [IND] TX-26-01573 | WREH, CHRISTOPHER D, II
+[00:09:52]   -> Clicking into TX-26-01573 | INDIVIDUAL | WREH, CHRISTOPHER D, II
+[00:09:52]   Going to Search Results...
+[00:09:52]   Back to results: True
+[00:10:09]   Attempt 1: 1243 chars
+[00:10:10]   Click result: clicked-exact
+[00:10:12]   Attempt 2: 1918 chars
+[00:10:12]   Correct docket confirmed: TX-26-01573
+[00:10:12]   Docket: 1918 chars
+[00:10:12]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/12/2026 ORIGIN
+[00:10:12]   Downloading Original Petition...
+[00:10:13]   PDF saved (2670939 bytes) | text 5591 chars
+[00:10:13]   Running Claude extraction...
+[00:10:44]   ↳ Resolved DCAD account (address+owner agree): 26125500040320000 (petition account was '')
+[00:10:44]   Enriching property intel: 26125500040320000
+  [intel] Enriching 26125500040320000...
+  [intel] 26125500040320000 | MV: $321,160 | Balance: $2,449.35 | Distress: MODERATE
+[00:10:55]   Intel saved: MV $321,160 | Balance $2,449.35
+[00:10:55]   Track: active [property_type=real]
+[00:10:55]   Generating memo...
+[00:11:11]   Saved TX-26-01573 | 217 WALLACE DRIVE, CITY OF GARLAND, TEXAS | $10,303
+[00:11:20]   hrefs captured: 10/10
+[00:11:20]   (1 business entities excluded by --individuals-only)
+[00:11:20] 
+[00:11:20] Page 4: 10 cases | 9 to process
+[00:11:20] [pg4 1/9] [IND] TX-26-01579 | ROY, SHARON KAY
+[00:11:20]   -> Clicking into TX-26-01579 | INDIVIDUAL | ROY, SHARON KAY
+[00:11:20]   Going to Search Results...
+[00:11:20]   Back to results: True
+[00:11:37]   Attempt 1: 1352 chars
+[00:11:37]   Click result: clicked-exact
+[00:11:45]   Attempt 2: 2014 chars
+[00:11:45]   Correct docket confirmed: TX-26-01579
+[00:11:45]   Docket: 2014 chars
+[00:11:45]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/12/2026 ORIGIN
+[00:11:45]   Downloading Original Petition...
+[00:11:47]   PDF saved (2805389 bytes) | text 5838 chars
+[00:11:47]   Running Claude extraction...
+[00:12:21]   ↳ Resolved DCAD account (address+owner agree): 26273900050110000 (petition account was '')
+[00:12:21]   Enriching property intel: 26273900050110000
+  [intel] Enriching 26273900050110000...
+  [intel] 26273900050110000 | MV: $303,000 | Balance: $2,889.73 | Distress: CRITICAL
+[00:12:32]   Intel saved: MV $303,000 | Balance $2,889.73
+[00:12:32]   Track: active [property_type=real]
+[00:12:32]   Generating memo...
+[00:12:48]   Saved TX-26-01579 | 2317 BAHAMAS DRIVE, GARLAND, TX | $9,666
+[00:12:51] [pg4 2/9] [IND] TX-26-01557 | JAIMES, FRANCISCO
+[00:12:51]   -> Clicking into TX-26-01557 | INDIVIDUAL | JAIMES, FRANCISCO
+[00:12:51]   Going to Search Results...
+[00:12:51]   Back to results: True
+[00:13:08]   Attempt 1: 1352 chars
+[00:13:08]   Click result: clicked-exact
+[00:13:10]   Attempt 2: 2189 chars
+[00:13:10]   Correct docket confirmed: TX-26-01557
+[00:13:10]   Docket: 2189 chars
+[00:13:10]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment TAX REAL PROPERTY 08/11/2026 ORIG
+[00:13:10]   Downloading Original Petition...
+[00:13:12]   PDF saved (3468823 bytes) | text 7672 chars
+[00:13:12]   Running Claude extraction...
+[00:13:34]   Enriching property intel: 00000551785000000
+  [intel] Enriching 00000551785000000...
+  [intel] 00000551785000000 | MV: $194,070 | Balance: $8,492.38 | Distress: MODERATE
+[00:13:45]   Intel saved: MV $194,070 | Balance $8,492.38
+[00:13:45]   Track: active [property_type=real]
+[00:13:45]   Generating memo...
+[00:14:00]   Saved TX-26-01557 | 6324 Godfrey Ave., Dallas, TX 75217-5030 | $11,595
+[00:14:03] [pg4 3/9] [IND] TX-26-01558 | GALINDO, JESUS P.
+[00:14:03]   -> Clicking into TX-26-01558 | INDIVIDUAL | GALINDO, JESUS P.
+[00:14:03]   Going to Search Results...
+[00:14:03]   Back to results: True
+[00:14:20]   Attempt 1: 1352 chars
+[00:14:20]   Click result: clicked-exact
+[00:14:22]   Attempt 2: 2078 chars
+[00:14:22]   Correct docket confirmed: TX-26-01558
+[00:14:22]   Docket: 2078 chars
+[00:14:22]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment TAX REAL PROPERTY 08/11/2026 ORIG
+[00:14:22]   Downloading Original Petition...
+[00:14:25]   PDF saved (3610505 bytes) | text 8023 chars
+[00:14:25]   Running Claude extraction...
+[00:14:43]   Enriching property intel: 00000546952000000
+  [intel] Enriching 00000546952000000...
+  [intel] 00000546952000000 | MV: $230,410 | Balance: $24,540.34 | Distress: HIGH
+[00:14:54]   Intel saved: MV $230,410 | Balance $24,540.34
+[00:14:54]   Track: active [property_type=real]
+[00:14:54]   Generating memo...
+[00:15:10]   Saved TX-26-01558 | 7830 Aurora Ave., Dallas, TX 75217-1685 | $24,540
+[00:15:13] [pg4 4/9] [IND] TX-26-01559 | RICHARDSON, BRYAN O'NEAL
+[00:15:13]   -> Clicking into TX-26-01559 | INDIVIDUAL | RICHARDSON, BRYAN O'NEAL
+[00:15:13]   Going to Search Results...
+[00:15:13]   Back to results: True
+[00:15:30]   Attempt 1: 1352 chars
+[00:15:30]   Click result: clicked-exact
+[00:15:32]   Attempt 2: 2245 chars
+[00:15:32]   Correct docket confirmed: TX-26-01559
+[00:15:32]   Docket: 2245 chars
+[00:15:32]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment TAX REAL PROPERTY 08/11/2026 ORIG
+[00:15:32]   Downloading Original Petition...
+[00:15:39]   PDF saved (3511468 bytes) | text 7848 chars
+[00:15:39]   Running Claude extraction...
+[00:15:57]   Enriching property intel: 00000544753000000
+  [intel] Enriching 00000544753000000...
+  [intel] 00000544753000000 | MV: $194,820 | Balance: $19,470.30 | Distress: HIGH
+[00:16:09]   Intel saved: MV $194,820 | Balance $19,470.30
+[00:16:09]   Track: active [property_type=real]
+[00:16:09]   Generating memo...
+[00:16:24]   Saved TX-26-01559 | 1924 Hillburn Dr., Dallas, TX 75217-1487 | $19,470
+[00:16:27] [pg4 5/9] [IND] TX-26-01560 | MOORING, WENDOLYN R.
+[00:16:27]   -> Clicking into TX-26-01560 | INDIVIDUAL | MOORING, WENDOLYN R.
+[00:16:27]   Going to Search Results...
+[00:16:27]   Back to results: True
+[00:16:44]   Attempt 1: 1352 chars
+[00:16:44]   Click result: clicked-exact
+[00:16:46]   Attempt 2: 2094 chars
+[00:16:46]   Correct docket confirmed: TX-26-01560
+[00:16:46]   Docket: 2094 chars
+[00:16:46]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment TAX REAL PROPERTY 08/11/2026 ORIG
+[00:16:46]   Downloading Original Petition...
+[00:16:49]   PDF saved (3568479 bytes) | text 7943 chars
+[00:16:49]   Running Claude extraction...
+[00:17:09]   Enriching property intel: 00000542368000000
+  [intel] Enriching 00000542368000000...
+  [intel] 00000542368000000 | MV: $177,620 | Balance: $17,331.80 | Distress: HIGH
+[00:17:21]   Intel saved: MV $177,620 | Balance $17,331.80
+[00:17:21]   Track: active [property_type=real]
+[00:17:21]   Generating memo...
+[00:17:36]   Saved TX-26-01560 | 2010 Gaylord Dr., Dallas, TX 75217-1405 | $17,332
+[00:17:39] [pg4 6/9] [IND] TX-26-01561 | CLEMENS, SCOTT J
+[00:17:39]   -> Clicking into TX-26-01561 | INDIVIDUAL | CLEMENS, SCOTT J
+[00:17:39]   Going to Search Results...
+[00:17:39]   Back to results: True
+[00:17:56]   Attempt 1: 1352 chars
+[00:17:56]   Click result: clicked-exact
+[00:17:58]   Attempt 2: 2086 chars
+[00:17:58]   Correct docket confirmed: TX-26-01561
+[00:17:58]   Docket: 2086 chars
+[00:17:58]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment TAX REAL PROPERTY 08/11/2026 ORIG
+[00:17:58]   Downloading Original Petition...
+[00:18:00]   PDF saved (4192554 bytes) | text 9574 chars
+[00:18:00]   Running Claude extraction...
+[00:18:22]   Enriching property intel: 00000536803000000
+  [intel] Enriching 00000536803000000...
+  [intel] 00000536803000000 | MV: $173,930 | Balance: $56,311.15 | Distress: HIGH
+[00:18:34]   Intel saved: MV $173,930 | Balance $56,311.15
+[00:18:34]   Track: active [property_type=real]
+[00:18:34]   Generating memo...
+[00:18:50]   Saved TX-26-01561 | 8136 S. Norvell Dr., Dallas, TX 75227-5407 | $56,311
+[00:18:53] [pg4 7/9] [IND] TX-26-01562 | TICAS, FREDY G.
+[00:18:53]   -> Clicking into TX-26-01562 | INDIVIDUAL | TICAS, FREDY G.
+[00:18:53]   Going to Search Results...
+[00:18:53]   Back to results: True
+[00:19:10]   Attempt 1: 1352 chars
+[00:19:10]   Click result: clicked-exact
+[00:19:12]   Attempt 2: 2662 chars
+[00:19:12]   Correct docket confirmed: TX-26-01562
+[00:19:12]   Docket: 2662 chars
+[00:19:12]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment TAX REAL PROPERTY 08/11/2026 ORIG
+[00:19:12]   Downloading Original Petition...
+[00:19:15]   PDF saved (3803870 bytes) | text 8405 chars
+[00:19:15]   Running Claude extraction...
+[00:19:38]   Enriching property intel: 00000536083000000
+  [intel] Enriching 00000536083000000...
+  [intel] 00000536083000000 | MV: $137,550 | Balance: $11,568.47 | Distress: MODERATE
+[00:19:49]   Intel saved: MV $137,550 | Balance $11,568.47
+[00:19:49]   Track: active [property_type=real]
+[00:19:49]   Generating memo...
+[00:20:05]   Saved TX-26-01562 | 2919 Don Street, Dallas, TX 75227-7004 | $11,568
+[00:20:08] [pg4 8/9] [IND] TX-26-01563 | MARK JOHN CAREY, INDIVIDUALLY AND D/B/A CAFE HUNAN
+[00:20:08]   -> Clicking into TX-26-01563 | INDIVIDUAL | MARK JOHN CAREY, INDIVIDUALLY AND D/B/A CAFE HUNAN
+[00:20:08]   Going to Search Results...
+[00:20:08]   Back to results: True
+[00:20:25]   Attempt 1: 1352 chars
+[00:20:25]   Click result: clicked-exact
+[00:20:27]   Attempt 2: 2136 chars
+[00:20:27]   Correct docket confirmed: TX-26-01563
+[00:20:27]   Docket: 2136 chars
+[00:20:27]   ⚑ BUSINESS PERSONAL PROPERTY suit — skip-record only (out of scope; no extraction/enrichment)
+[00:20:30] [pg4 9/9] [IND] TX-26-01564 | NOEL MARES, A/K/A NOEL MENDEZ MARES
+[00:20:30]   -> Clicking into TX-26-01564 | INDIVIDUAL | NOEL MARES, A/K/A NOEL MENDEZ MARES
+[00:20:30]   Going to Search Results...
+[00:20:30]   Back to results: True
+[00:20:47]   Attempt 1: 1352 chars
+[00:20:47]   Click result: clicked-exact
+[00:20:49]   Attempt 2: 5110 chars
+[00:20:49]   Correct docket confirmed: TX-26-01564
+[00:20:49]   Docket: 5110 chars
+[00:20:49]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/11/2026 ORIGIN
+[00:20:49]   Downloading Original Petition...
+[00:20:52]   PDF saved (4594643 bytes) | text 10225 chars
+[00:20:52]   Running Claude extraction...
+[00:21:24]   Enriching property intel: 00000536857000100
+  [intel] Enriching 00000536857000100...
+  [intel] 00000536857000100 | MV: $255,320 | Balance: $60,778.88 | Distress: MODERATE
+[00:21:35]   Intel saved: MV $255,320 | Balance $60,778.88
+[00:21:35]   Track: active [property_type=real]
+[00:21:35]   Generating memo...
+[00:21:51]   Saved TX-26-01564 | 3608 S. Buckner Blvd., Dallas, TX 75227-5452 | $60,779
+[00:22:00]   hrefs captured: 10/10
+[00:22:00]   (6 business entities excluded by --individuals-only)
+[00:22:00] 
+[00:22:00] Page 5: 10 cases | 4 to process
+[00:22:00] [pg5 1/4] [EST] TX-26-01565 | HEIRS AND UNKNOWN HEIRS OF LINDA M. NANEZ
+[00:22:00]   -> Clicking into TX-26-01565 | ESTATE | HEIRS AND UNKNOWN HEIRS OF LINDA M. NANEZ
+[00:22:00]   Going to Search Results...
+[00:22:00]   Back to results: True
+[00:22:17]   Attempt 1: 1379 chars
+[00:22:17]   Click result: clicked-exact
+[00:22:19]   Attempt 2: 1738 chars
+[00:22:19]   Correct docket confirmed: TX-26-01565
+[00:22:19]   Docket: 1738 chars
+[00:22:19]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/11/2026 ORIGIN
+[00:22:19]   Downloading Original Petition...
+[00:22:21]   PDF saved (2620353 bytes) | text 5530 chars
+[00:22:21]   Running Claude extraction...
+[00:22:45]   ⚠ No account extracted; no corroborated DCAD match — needs manual lookup.
+[00:22:45]   Track: active [property_type=real]
+[00:22:45]   Generating memo...
+[00:22:59]   Saved TX-26-01565 |  | $18,283
+[00:23:02] [pg5 2/4] [EST] TX-26-01567 | HEIRS AND UNKNOWN HEIRS OF PAUL WILBUR LEEDS
+[00:23:02]   -> Clicking into TX-26-01567 | ESTATE | HEIRS AND UNKNOWN HEIRS OF PAUL WILBUR LEEDS
+[00:23:02]   Going to Search Results...
+[00:23:02]   Back to results: True
+[00:23:19]   Attempt 1: 1379 chars
+[00:23:19]   Click result: clicked-exact
+[00:23:23]   Attempt 2: 2831 chars
+[00:23:23]   Correct docket confirmed: TX-26-01567
+[00:23:23]   Docket: 2831 chars
+[00:23:23]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/11/2026 ORIGIN
+[00:23:23]   Downloading Original Petition...
+[00:23:26]   PDF saved (3477905 bytes) | text 7338 chars
+[00:23:26]   Running Claude extraction...
+[00:24:02]   ⚠ No account extracted; no corroborated DCAD match (uncorroborated candidate 26447560060160000) — needs manual lookup.
+[00:24:02]   Track: active [property_type=real]
+[00:24:02]   Generating memo...
+[00:24:17]   Saved TX-26-01567 | 7118 Lochalmers Lane, Garland, TX 75043 | $8,396
+[00:24:20] [pg5 3/4] [IND] TX-26-01505 | GRANT, JEFFREY
+[00:24:20]   -> Clicking into TX-26-01505 | INDIVIDUAL | GRANT, JEFFREY
+[00:24:20]   Going to Search Results...
+[00:24:20]   Back to results: True
+[00:24:37]   Attempt 1: 1379 chars
+[00:24:37]   Click result: clicked-exact
+[00:24:39]   Attempt 2: 2232 chars
+[00:24:39]   Correct docket confirmed: TX-26-01505
+[00:24:39]   Docket: 2232 chars
+[00:24:39]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[00:24:39]   Downloading Original Petition...
+[00:24:42]   PDF saved (4033469 bytes) | text 9081 chars
+[00:24:42]   Running Claude extraction...
+[00:25:04]   Enriching property intel: 00000148438000000
+  [intel] Enriching 00000148438000000...
+  [intel] 00000148438000000 | MV: $66,040 | Balance: $9,802.36 | Distress: CRITICAL
+[00:25:16]   Intel saved: MV $66,040 | Balance $9,802.36
+[00:25:16]   Track: active [property_type=real]
+[00:25:16]   Generating memo...
+[00:25:31]   Saved TX-26-01505 | 2701 Warren Avenue, Dallas, TX 75215 | $9,802
+[00:25:34] [pg5 4/4] [IND] TX-26-01507 | SMITH, CALVIN
+[00:25:34]   -> Clicking into TX-26-01507 | INDIVIDUAL | SMITH, CALVIN
+[00:25:34]   Going to Search Results...
+[00:25:34]   Back to results: True
+[00:25:51]   Attempt 1: 1379 chars
+[00:25:51]   Click result: clicked-exact
+[00:25:53]   Attempt 2: 4680 chars
+[00:25:53]   Correct docket confirmed: TX-26-01507
+[00:25:53]   Docket: 4893 chars
+[00:25:53]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[00:25:53]   Downloading Original Petition...
+[00:25:56]   PDF saved (4100945 bytes) | text 9082 chars
+[00:25:56]   Running Claude extraction...
+[00:26:27]   Enriching property intel: 00000759505000000
+  [intel] Enriching 00000759505000000...
+  [intel] 00000759505000000 | MV: $60,000 | Balance: $11,273.55 | Distress: CRITICAL
+[00:26:39]   Intel saved: MV $60,000 | Balance $11,273.55
+[00:26:39]   Track: active [property_type=real]
+[00:26:39]   Generating memo...
+[00:26:54]   Saved TX-26-01507 | 4640 Luzon Street, Dallas, TX 75216 | $11,274
+[00:27:03]   hrefs captured: 10/10
+[00:27:03]   (5 business entities excluded by --individuals-only)
+[00:27:03] 
+[00:27:03] Page 6: 10 cases | 5 to process
+[00:27:03] [pg6 1/5] [IND] TX-26-01513 | SALGADO, ALBERTO
+[00:27:03]   -> Clicking into TX-26-01513 | INDIVIDUAL | SALGADO, ALBERTO
+[00:27:03]   Going to Search Results...
+[00:27:03]   Back to results: True
+[00:27:20]   Attempt 1: 1228 chars
+[00:27:20]   Click result: clicked-exact
+[00:27:28]   Attempt 2: 2552 chars
+[00:27:28]   Correct docket confirmed: TX-26-01513
+[00:27:28]   Docket: 2552 chars
+[00:27:28]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[00:27:28]   Downloading Original Petition...
+[00:27:30]   PDF saved (3058818 bytes) | text 7768 chars
+[00:27:30]   Running Claude extraction...
+[00:27:49]   Enriching property intel: 00000348877000000
+  [intel] Enriching 00000348877000000...
+  [intel] 00000348877000000 | MV: $180,300 | Balance: $6,791.92 | Distress: HIGH
+[00:28:01]   Intel saved: MV $180,300 | Balance $6,791.92
+[00:28:01]   Track: active [property_type=real]
+[00:28:01]   Generating memo...
+[00:28:16]   Saved TX-26-01513 | 4319 Lakehurst Ct., Dallas, TX 75211-3282 | $6,792
+[00:28:19] [pg6 2/5] [IND] TX-26-01518 | CORTEZ, DIANNA R.
+[00:28:19]   -> Clicking into TX-26-01518 | INDIVIDUAL | CORTEZ, DIANNA R.
+[00:28:19]   Going to Search Results...
+[00:28:19]   Back to results: True
+[00:28:36]   Attempt 1: 1228 chars
+[00:28:36]   Click result: clicked-exact
+[00:28:38]   Attempt 2: 2083 chars
+[00:28:38]   Correct docket confirmed: TX-26-01518
+[00:28:38]   Docket: 2083 chars
+[00:28:38]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[00:28:38]   Downloading Original Petition...
+[00:28:41]   PDF saved (3308986 bytes) | text 8000 chars
+[00:28:41]   Running Claude extraction...
+[00:29:00]   Enriching property intel: 00000462295000000
+  [intel] Enriching 00000462295000000...
+  [intel] 00000462295000000 | MV: $244,940 | Balance: $9,166.00 | Distress: LOW
+[00:29:11]   Intel saved: MV $244,940 | Balance $9,166.00
+[00:29:11]   Track: active [property_type=real]
+[00:29:11]   Generating memo...
+[00:29:26]   Saved TX-26-01518 | 3306 Brandon St., Dallas, TX 75211-5913 | $9,166
+[00:29:29] [pg6 3/5] [IND] TX-26-01519 | HATHAWAY, ALICE
+[00:29:29]   -> Clicking into TX-26-01519 | INDIVIDUAL | HATHAWAY, ALICE
+[00:29:29]   Going to Search Results...
+[00:29:29]   Back to results: True
+[00:29:46]   Attempt 1: 1228 chars
+[00:29:46]   Click result: clicked-exact
+[00:29:48]   Attempt 2: 2211 chars
+[00:29:48]   Correct docket confirmed: TX-26-01519
+[00:29:48]   Docket: 2211 chars
+[00:29:48]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[00:29:48]   Downloading Original Petition...
+[00:29:50]   PDF saved (3086873 bytes) | text 7744 chars
+[00:29:50]   Running Claude extraction...
+[00:30:15]   Enriching property intel: 00000464539000000
+  [intel] Enriching 00000464539000000...
+  [intel] 00000464539000000 | MV: $227,210 | Balance: $9,637.05 | Distress: CRITICAL
+[00:30:27]   Intel saved: MV $227,210 | Balance $9,637.05
+[00:30:27]   Track: active [property_type=real]
+[00:30:27]   Generating memo...
+[00:30:42]   Saved TX-26-01519 | 2921 Poinsettia Dr., Dallas, TX 75211-8834 | $9,637
+[00:30:45] [pg6 4/5] [IND] TX-26-01520 | CASTILLEJA, MATTHEW
+[00:30:45]   -> Clicking into TX-26-01520 | INDIVIDUAL | CASTILLEJA, MATTHEW
+[00:30:45]   Going to Search Results...
+[00:30:45]   Back to results: True
+[00:31:02]   Attempt 1: 1228 chars
+[00:31:02]   Click result: clicked-exact
+[00:31:04]   Attempt 2: 2507 chars
+[00:31:04]   Correct docket confirmed: TX-26-01520
+[00:31:04]   Docket: 2507 chars
+[00:31:04]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[00:31:04]   Downloading Original Petition...
+[00:31:07]   PDF saved (3186561 bytes) | text 8846 chars
+[00:31:07]   Running Claude extraction...
+[00:31:30]   Enriching property intel: 00000466558000000
+  [intel] Enriching 00000466558000000...
+  [intel] 00000466558000000 | MV: $247,650 | Balance: $9,689.23 | Distress: HIGH
+[00:31:42]   Intel saved: MV $247,650 | Balance $9,689.23
+[00:31:42]   Track: active [property_type=real]
+[00:31:42]   Generating memo...
+[00:31:57]   Saved TX-26-01520 | 2637 Poinsettia Dr., Dallas, TX 75211-9125 | $9,689
+[00:32:00] [pg6 5/5] [IND] TX-26-01521 | LAZARO, RAFAEL
+[00:32:00]   -> Clicking into TX-26-01521 | INDIVIDUAL | LAZARO, RAFAEL
+[00:32:00]   Going to Search Results...
+[00:32:00]   Back to results: True
+[00:32:17]   Attempt 1: 1228 chars
+[00:32:17]   Click result: clicked-exact
+[00:32:25]   Attempt 2: 2181 chars
+[00:32:25]   Correct docket confirmed: TX-26-01521
+[00:32:25]   Docket: 2181 chars
+[00:32:25]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[00:32:25]   Downloading Original Petition...
+[00:32:27]   PDF saved (3149693 bytes) | text 7689 chars
+[00:32:27]   Running Claude extraction...
+[00:32:47]   Enriching property intel: 00000471460000000
+  [intel] Enriching 00000471460000000...
+  [intel] 00000471460000000 | MV: $245,480 | Balance: $6,503.00 | Distress: MODERATE
+[00:32:58]   Intel saved: MV $245,480 | Balance $6,503.00
+[00:32:58]   Track: active [property_type=real]
+[00:32:58]   Generating memo...
+[00:33:13]   Saved TX-26-01521 | 2930 Grayson Dr., Dallas, TX 75224-3406 | $6,503
+[00:33:22]   hrefs captured: 10/10
+[00:33:22]   (4 business entities excluded by --individuals-only)
+[00:33:22] 
+[00:33:22] Page 7: 10 cases | 6 to process
+[00:33:22] [pg7 1/6] [IND] TX-26-01522 | GRIFFIN, LEWIS
+[00:33:22]   -> Clicking into TX-26-01522 | INDIVIDUAL | GRIFFIN, LEWIS
+[00:33:22]   Going to Search Results...
+[00:33:22]   Back to results: True
+[00:33:39]   Attempt 1: 1349 chars
+[00:33:39]   Click result: clicked-exact
+[00:33:41]   Attempt 2: 2152 chars
+[00:33:41]   Correct docket confirmed: TX-26-01522
+[00:33:41]   Docket: 2152 chars
+[00:33:41]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[00:33:41]   Downloading Original Petition...
+[00:33:44]   PDF saved (3637743 bytes) | text 7977 chars
+[00:33:44]   Running Claude extraction...
+[00:34:05]   Enriching property intel: 38050500020140000
+  [intel] Enriching 38050500020140000...
+  [intel] 38050500020140000 | MV: $334,280 | Balance: $27,453.75 | Distress: CRITICAL
+[00:34:16]   Intel saved: MV $334,280 | Balance $27,453.75
+[00:34:16]   Track: active [property_type=real]
+[00:34:16]   Generating memo...
+[00:34:32]   Saved TX-26-01522 | 4857 Preston Trail Dr., Mesquite, TX 75150-1132 | $27,454
+[00:34:35] [pg7 2/6] [IND] TX-26-01525 | MARDI GRAS DAIQUIRI
+[00:34:35]   -> Clicking into TX-26-01525 | INDIVIDUAL | MARDI GRAS DAIQUIRI
+[00:34:35]   Going to Search Results...
+[00:34:35]   Back to results: True
+[00:34:52]   Attempt 1: 1349 chars
+[00:34:52]   Click result: clicked-exact
+[00:34:54]   Attempt 2: 2089 chars
+[00:34:54]   Correct docket confirmed: TX-26-01525
+[00:34:54]   Docket: 2089 chars
+[00:34:54]   ⚑ BUSINESS PERSONAL PROPERTY suit — skip-record only (out of scope; no extraction/enrichment)
+[00:34:57] [pg7 3/6] [IND] TX-26-01527 | JOSE LOUIS ORNELAS, A/K/A JOSE LOIS ORNELAS A/K/A JOSE LUIS ORNELAS
+[00:34:57]   -> Clicking into TX-26-01527 | INDIVIDUAL | JOSE LOUIS ORNELAS, A/K/A JOSE LOIS ORNELAS A/K/A JOSE LUIS ORNELAS
+[00:34:57]   Going to Search Results...
+[00:34:57]   Back to results: True
+[00:35:14]   Attempt 1: 1349 chars
+[00:35:14]   Click result: clicked-exact
+[00:35:16]   Attempt 2: 2766 chars
+[00:35:16]   Correct docket confirmed: TX-26-01527
+[00:35:16]   Docket: 2766 chars
+[00:35:16]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[00:35:16]   Downloading Original Petition...
+[00:35:19]   PDF saved (4095356 bytes) | text 9159 chars
+[00:35:19]   Running Claude extraction...
+[00:35:43]   Enriching property intel: 00000690457000000
+  [intel] Enriching 00000690457000000...
+  [intel] 00000690457000000 | MV: $110,000 | Balance: $18,647.02 | Distress: CRITICAL
+[00:35:56]   Intel saved: MV $110,000 | Balance $18,647.02
+[00:35:56]   Track: active [property_type=real]
+[00:35:56]   Generating memo...
+[00:36:13]   Saved TX-26-01527 | 4885 Bernal Dr., Dallas, TX 75212 | $18,647
+[00:36:16] [pg7 4/6] [IND] TX-26-01528 | SAMUEL LOZANO, A/K/A SAMUEL LOZANO, JR.
+[00:36:16]   -> Clicking into TX-26-01528 | INDIVIDUAL | SAMUEL LOZANO, A/K/A SAMUEL LOZANO, JR.
+[00:36:16]   Going to Search Results...
+[00:36:16]   Back to results: True
+[00:36:57]   Attempt 1: 1349 chars
+[00:37:00]   Click result: clicked-exact
+[00:37:03]   Attempt 2: 1898 chars
+[00:37:03]   Correct docket confirmed: TX-26-01528
+[00:37:04]   Docket: 2071 chars
+[00:37:04]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[00:37:04]   Downloading Original Petition...
+[00:37:10]   PDF saved (3436209 bytes) | text 7596 chars
+[00:37:10]   Running Claude extraction...
+[07:21:17]   Extraction failed for TX-26-01528
+[07:21:20] [pg7 5/6] [IND] TX-26-01529 | 2247 MONITOR STREET CORPORATION
+[07:21:20]   -> Clicking into TX-26-01529 | INDIVIDUAL | 2247 MONITOR STREET CORPORATION
+[07:21:20]   Going to Search Results...
+[07:21:22]   Back to results: True
+[07:21:40]   Attempt 1: 1349 chars
+[07:21:41]   Click result: clicked-exact
+[07:21:44]   Attempt 2: 2101 chars
+[07:21:44]   Correct docket confirmed: TX-26-01529
+[07:21:45]   Docket: 2267 chars
+[07:21:45]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:21:45]   Downloading Original Petition...
+[07:22:06]   PDF saved (4044340 bytes) | text 8798 chars
+[07:22:07]   Running Claude extraction...
+[07:23:17]   Enriching property intel: 00000502573000000
+  [intel] Enriching 00000502573000000...
+  [intel] 00000502573000000 | MV: $1,750,000 | Balance: unknown | Distress: LOW
+[07:24:45]   Intel saved: MV $1,750,000 | Balance unknown
+[07:24:45]   Track: active [property_type=real]
+[07:24:45]   Generating memo...
+[07:25:01]   Saved TX-26-01529 | 2247 Monitor St., Dallas, TX 75207-6203 | $112,728
+[07:25:04] [pg7 6/6] [IND] TX-26-01531 | ICENHOWER, GEORGE NOLAN, Jr
+[07:25:04]   -> Clicking into TX-26-01531 | INDIVIDUAL | ICENHOWER, GEORGE NOLAN, Jr
+[07:25:04]   Going to Search Results...
+[07:25:04]   Back to results: True
+[07:25:22]   Attempt 1: 1349 chars
+[07:25:22]   Click result: clicked-exact
+[07:25:24]   Attempt 2: 2318 chars
+[07:25:24]   Correct docket confirmed: TX-26-01531
+[07:25:24]   Docket: 2318 chars
+[07:25:24]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:25:24]   Downloading Original Petition...
+[07:25:27]   PDF saved (4209531 bytes) | text 9373 chars
+[07:25:27]   Running Claude extraction...
+[07:25:52]   Enriching property intel: 00000629257000000
+  [intel] Enriching 00000629257000000...
+  [intel] 00000629257000000 | MV: $183,030 | Balance: $23,988.96 | Distress: MODERATE
+[07:26:04]   Intel saved: MV $183,030 | Balance $23,988.96
+[07:26:04]   Track: active [property_type=real]
+[07:26:04]   Generating memo...
+[07:26:19]   Saved TX-26-01531 | 2727 North Prairie Creek Road, Dallas, TX 75227-8008 | $23,989
+[07:26:28]   hrefs captured: 10/10
+[07:26:28]   (3 business entities excluded by --individuals-only)
+[07:26:28] 
+[07:26:28] Page 8: 10 cases | 7 to process
+[07:26:28] [pg8 1/7] [IND] TX-26-01532 | ROPER, CALVIN
+[07:26:28]   -> Clicking into TX-26-01532 | INDIVIDUAL | ROPER, CALVIN
+[07:26:28]   Going to Search Results...
+[07:26:28]   Back to results: True
+[07:26:46]   Attempt 1: 1279 chars
+[07:26:46]   Click result: clicked-exact
+[07:26:48]   Attempt 2: 2374 chars
+[07:26:48]   Correct docket confirmed: TX-26-01532
+[07:26:48]   Docket: 2374 chars
+[07:26:48]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:26:48]   Downloading Original Petition...
+[07:26:50]   PDF saved (3679042 bytes) | text 8100 chars
+[07:26:50]   Running Claude extraction...
+[07:27:15]   Enriching property intel: 00000510262000000
+  [intel] Enriching 00000510262000000...
+  [intel] 00000510262000000 | MV: $131,800 | Balance: $8,833.32 | Distress: CRITICAL
+[07:27:26]   Intel saved: MV $131,800 | Balance $8,833.32
+[07:27:26]   Track: active [property_type=real]
+[07:27:26]   Generating memo...
+[07:27:41]   Saved TX-26-01532 | 3114 Prosperity Ave., Dallas, TX 75216-4831 | $8,833
+[07:27:44] [pg8 2/7] [IND] TX-26-01533 | PATINO, JESSIE
+[07:27:44]   -> Clicking into TX-26-01533 | INDIVIDUAL | PATINO, JESSIE
+[07:27:44]   Going to Search Results...
+[07:27:44]   Back to results: True
+[07:28:01]   Attempt 1: 1279 chars
+[07:28:01]   Click result: clicked-exact
+[07:28:03]   Attempt 2: 1958 chars
+[07:28:03]   Correct docket confirmed: TX-26-01533
+[07:28:03]   Docket: 1958 chars
+[07:28:03]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:28:03]   Downloading Original Petition...
+[07:28:05]   PDF saved (3131689 bytes) | text 7624 chars
+[07:28:05]   Running Claude extraction...
+[07:28:23]   Enriching property intel: 60123500010400000
+  [intel] Enriching 60123500010400000...
+  [intel] 60123500010400000 | MV: $70,000 | Balance: $4,599.41 | Distress: HIGH
+[07:28:34]   Intel saved: MV $70,000 | Balance $4,599.41
+[07:28:34]   Track: active [property_type=real]
+[07:28:34]   Generating memo...
+[07:28:50]   Saved TX-26-01533 | 420 Lawrence Drive, Balch Springs, TX 75181 | $4,599
+[07:28:53] [pg8 3/7] [IND] TX-26-01534 | RIVERA, JUAN
+[07:28:53]   -> Clicking into TX-26-01534 | INDIVIDUAL | RIVERA, JUAN
+[07:28:53]   Going to Search Results...
+[07:28:53]   Back to results: True
+[07:29:10]   Attempt 1: 1279 chars
+[07:29:10]   Click result: clicked-exact
+[07:29:12]   Attempt 2: 1829 chars
+[07:29:12]   Correct docket confirmed: TX-26-01534
+[07:29:12]   Docket: 1829 chars
+[07:29:12]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:29:12]   Downloading Original Petition...
+[07:29:14]   PDF saved (3508361 bytes) | text 7779 chars
+[07:29:14]   Running Claude extraction...
+[07:29:35]   Enriching property intel: 00000682423000000
+  [intel] Enriching 00000682423000000...
+  [intel] 00000682423000000 | MV: $193,830 | Balance: $10,539.76 | Distress: CRITICAL
+[07:29:47]   Intel saved: MV $193,830 | Balance $10,539.76
+[07:29:47]   Track: active [property_type=real]
+[07:29:47]   Generating memo...
+[07:30:01]   Saved TX-26-01534 | 3202 Bernal Dr., Dallas, TX 75212-1443 | $10,540
+[07:30:04] [pg8 4/7] [IND] TX-26-01535 | SANDERS, VELMA REE
+[07:30:04]   -> Clicking into TX-26-01535 | INDIVIDUAL | SANDERS, VELMA REE
+[07:30:04]   Going to Search Results...
+[07:30:04]   Back to results: True
+[07:30:21]   Attempt 1: 1279 chars
+[07:30:21]   Click result: clicked-exact
+[07:30:23]   Attempt 2: 2837 chars
+[07:30:23]   Correct docket confirmed: TX-26-01535
+[07:30:23]   Docket: 2837 chars
+[07:30:23]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:30:23]   Downloading Original Petition...
+[07:30:27]   PDF saved (3295974 bytes) | text 8453 chars
+[07:30:27]   Running Claude extraction...
+[07:30:51]   Enriching property intel: 00000507451000000
+  [intel] Enriching 00000507451000000...
+  [intel] 00000507451000000 | MV: $165,260 | Balance: $21,412.47 | Distress: CRITICAL
+[07:31:03]   Intel saved: MV $165,260 | Balance $21,412.47
+[07:31:03]   Track: active [property_type=real]
+[07:31:03]   Generating memo...
+[07:31:18]   Saved TX-26-01535 | 2738 Wilhurt Ave., Dallas, TX 75216-6516 | $21,412
+[07:31:21] [pg8 5/7] [IND] TX-26-01536 | TURNER, J. SCOTT
+[07:31:21]   -> Clicking into TX-26-01536 | INDIVIDUAL | TURNER, J. SCOTT
+[07:31:21]   Going to Search Results...
+[07:31:21]   Back to results: True
+[07:31:38]   Attempt 1: 1279 chars
+[07:31:38]   Click result: clicked-exact
+[07:31:40]   Attempt 2: 2169 chars
+[07:31:40]   Correct docket confirmed: TX-26-01536
+[07:31:40]   Docket: 2169 chars
+[07:31:40]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:31:40]   Downloading Original Petition...
+[07:31:43]   PDF saved (3467787 bytes) | text 7741 chars
+[07:31:43]   Running Claude extraction...
+[07:32:04]   Enriching property intel: 38142900030050000
+  [intel] Enriching 38142900030050000...
+  [intel] 38142900030050000 | MV: $252,990 | Balance: $16,909.50 | Distress: MODERATE
+[07:32:15]   Intel saved: MV $252,990 | Balance $16,909.50
+[07:32:15]   Track: active [property_type=real]
+[07:32:15]   Generating memo...
+[07:32:31]   Saved TX-26-01536 | 1316 Grinnel Drive, Mesquite, TX 75150 | $16,910
+[07:32:34] [pg8 6/7] [IND] TX-26-01537 | ETHERINE GADDIS, A/K/A ETHER GADDIS
+[07:32:34]   -> Clicking into TX-26-01537 | INDIVIDUAL | ETHERINE GADDIS, A/K/A ETHER GADDIS
+[07:32:34]   Going to Search Results...
+[07:32:34]   Back to results: True
+[07:32:51]   Attempt 1: 1279 chars
+[07:32:51]   Click result: clicked-exact
+[07:32:53]   Attempt 2: 2644 chars
+[07:32:53]   Correct docket confirmed: TX-26-01537
+[07:32:53]   Docket: 2644 chars
+[07:32:53]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:32:53]   Downloading Original Petition...
+[07:32:56]   PDF saved (3212030 bytes) | text 9012 chars
+[07:32:56]   Running Claude extraction...
+[07:33:21]   Enriching property intel: 00000505786000000
+  [intel] Enriching 00000505786000000...
+  [intel] 00000505786000000 | MV: $155,820 | Balance: $16,941.31 | Distress: HIGH
+[07:33:36]   Intel saved: MV $155,820 | Balance $16,941.31
+[07:33:36]   Track: active [property_type=real]
+[07:33:36]   Generating memo...
+[07:33:51]   Saved TX-26-01537 | 2641 Leacrest Dr., Dallas, TX 75216-5825 | $17,143
+[07:33:54] [pg8 7/7] [IND] TX-26-01538 | MCMILLAN, DERRICK
+[07:33:54]   -> Clicking into TX-26-01538 | INDIVIDUAL | MCMILLAN, DERRICK
+[07:33:54]   Going to Search Results...
+[07:33:54]   Back to results: True
+[07:34:11]   Attempt 1: 1279 chars
+[07:34:11]   Click result: clicked-exact
+[07:34:13]   Attempt 2: 3655 chars
+[07:34:13]   Correct docket confirmed: TX-26-01538
+[07:34:13]   Docket: 3655 chars
+[07:34:13]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:34:13]   Downloading Original Petition...
+[07:34:16]   PDF saved (3973032 bytes) | text 9270 chars
+[07:34:16]   Running Claude extraction...
+[07:34:50]   Enriching property intel: 00000498094000000
+  [intel] Enriching 00000498094000000...
+  [intel] 00000498094000000 | MV: $380,410 | Balance: $28,241.90 | Distress: MODERATE
+[07:35:02]   Intel saved: MV $380,410 | Balance $28,241.90
+[07:35:02]   Track: active [property_type=real]
+[07:35:02]   Generating memo...
+[07:35:18]   Saved TX-26-01538 | 6838 Cliffwood Drive, Dallas, TX 75237-2828 | $28,242
+[07:35:27]   hrefs captured: 10/10
+[07:35:27]   (4 business entities excluded by --individuals-only)
+[07:35:27] 
+[07:35:27] Page 9: 10 cases | 6 to process
+[07:35:27] [pg9 1/6] [IND] TX-26-01545 | PINA, JORGE
+[07:35:27]   -> Clicking into TX-26-01545 | INDIVIDUAL | PINA, JORGE
+[07:35:27]   Going to Search Results...
+[07:35:27]   Back to results: True
+[07:35:44]   Attempt 1: 1323 chars
+[07:35:44]   Click result: clicked-exact
+[07:35:46]   Attempt 2: 2053 chars
+[07:35:46]   Correct docket confirmed: TX-26-01545
+[07:35:46]   Docket: 2053 chars
+[07:35:46]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:35:46]   Downloading Original Petition...
+[07:35:51]   PDF saved (3610824 bytes) | text 8033 chars
+[07:35:51]   Running Claude extraction...
+[07:36:09]   Enriching property intel: 00000444679000000
+  [intel] Enriching 00000444679000000...
+  [intel] 00000444679000000 | MV: $188,670 | Balance: $14,862.43 | Distress: MODERATE
+[07:36:22]   Intel saved: MV $188,670 | Balance $14,862.43
+[07:36:22]   Track: active [property_type=real]
+[07:36:22]   Generating memo...
+[07:36:37]   Saved TX-26-01545 | 4107 Whitworth Street, Dallas, TX 75227-3955 | $14,862
+[07:36:40] [pg9 2/6] [IND] TX-26-01546 | PIERCE, SAM, Jr
+[07:36:40]   -> Clicking into TX-26-01546 | INDIVIDUAL | PIERCE, SAM, Jr
+[07:36:40]   Going to Search Results...
+[07:36:40]   Back to results: True
+[07:36:57]   Attempt 1: 1323 chars
+[07:36:57]   Click result: clicked-exact
+[07:36:59]   Attempt 2: 2063 chars
+[07:36:59]   Correct docket confirmed: TX-26-01546
+[07:36:59]   Docket: 2063 chars
+[07:36:59]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:36:59]   Downloading Original Petition...
+[07:37:02]   PDF saved (3626976 bytes) | text 7980 chars
+[07:37:02]   Running Claude extraction...
+[07:37:24]   Enriching property intel: 00000448909000000
+  [intel] Enriching 00000448909000000...
+  [intel] 00000448909000000 | MV: $200,100 | Balance: $18,091.15 | Distress: HIGH
+[07:37:36]   Intel saved: MV $200,100 | Balance $18,091.15
+[07:37:36]   Track: active [property_type=real]
+[07:37:36]   Generating memo...
+[07:37:51]   Saved TX-26-01546 | 4513 Underwood Street, Dallas, TX 75216-7252 | $18,091
+[07:37:54] [pg9 3/6] [IND] TX-26-01547 | WHITE, RUTHIE NELSON
+[07:37:54]   -> Clicking into TX-26-01547 | INDIVIDUAL | WHITE, RUTHIE NELSON
+[07:37:54]   Going to Search Results...
+[07:37:54]   Back to results: True
+[07:38:11]   Attempt 1: 1323 chars
+[07:38:11]   Click result: clicked-exact
+[07:38:13]   Attempt 2: 2203 chars
+[07:38:13]   Correct docket confirmed: TX-26-01547
+[07:38:13]   Docket: 2203 chars
+[07:38:13]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/10/2026 ORIGIN
+[07:38:13]   Downloading Original Petition...
+[07:38:16]   PDF saved (3567236 bytes) | text 7943 chars
+[07:38:16]   Running Claude extraction...
+[07:38:40]   Enriching property intel: 00000455326000000
+  [intel] Enriching 00000455326000000...
+  [intel] 00000455326000000 | MV: $303,440 | Balance: $9,648.58 | Distress: HIGH
+[07:38:51]   Intel saved: MV $303,440 | Balance $9,648.58
+[07:38:51]   Track: active [property_type=real]
+[07:38:51]   Generating memo...
+[07:39:07]   Saved TX-26-01547 | 2122 Cedar Crest Blvd., Dallas, TX 75203-4316 | $25,477
+[07:39:10] [pg9 4/6] [IND] TX-26-01548 | SERGIO GARZA, SR., A/K/A JOSE SERGIO GARZA
+[07:39:10]   -> Clicking into TX-26-01548 | INDIVIDUAL | SERGIO GARZA, SR., A/K/A JOSE SERGIO GARZA
+[07:39:10]   Going to Search Results...
+[07:39:10]   Back to results: True
+[07:39:27]   Attempt 1: 1323 chars
+[07:39:27]   Click result: clicked-exact
+[07:39:29]   Attempt 2: 4399 chars
+[07:39:29]   Correct docket confirmed: TX-26-01548
+[07:39:29]   Docket: 4399 chars
+[07:39:29]   petition select: NO petition-type document found — recording none (not falling through)
+[07:39:29]   Running Claude extraction...
+[07:39:57]   ⚠ No account extracted; no corroborated DCAD match — needs manual lookup.
+[07:39:57]   Track: active [property_type=real]
+[07:39:57]   Generating memo...
+[07:40:12]   Saved TX-26-01548 |  | $0
+[07:40:15] [pg9 5/6] [IND] TX-26-01550 | HUGO CASAS. INDIVIDUALLY AND DOING BUISNESS AS LOS PRIMOS BODY SHOP
+[07:40:15]   -> Clicking into TX-26-01550 | INDIVIDUAL | HUGO CASAS. INDIVIDUALLY AND DOING BUISNESS AS LOS PRIMOS BODY SHOP
+[07:40:15]   Going to Search Results...
+[07:40:15]   Back to results: True
+[07:40:33]   Attempt 1: 1323 chars
+[07:40:33]   Click result: clicked-exact
+[07:40:35]   Attempt 2: 2334 chars
+[07:40:35]   Correct docket confirmed: TX-26-01550
+[07:40:35]   Docket: 2334 chars
+[07:40:35]   ⚑ BUSINESS PERSONAL PROPERTY suit — skip-record only (out of scope; no extraction/enrichment)
+[07:40:38] [pg9 6/6] [IND] TX-26-01551 | D.R.G. HOUSES INCORPORATED
+[07:40:38]   -> Clicking into TX-26-01551 | INDIVIDUAL | D.R.G. HOUSES INCORPORATED
+[07:40:38]   Going to Search Results...
+[07:40:38]   Back to results: True
+[07:40:55]   Attempt 1: 1323 chars
+[07:40:55]   Click result: clicked-exact
+[07:40:57]   Attempt 2: 3188 chars
+[07:40:57]   Correct docket confirmed: TX-26-01551
+[07:40:57]   Docket: 3188 chars
+[07:40:57]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment TAX REAL PROPERTY 08/10/2026 ORIG
+[07:40:57]   Downloading Original Petition...
+[07:40:59]   PDF saved (3032076 bytes) | text 8360 chars
+[07:40:59]   Running Claude extraction...
+[07:41:30]   Enriching property intel: 280436400F0050000
+  [intel] Enriching 280436400F0050000...
+  [intel] 280436400F0050000 | MV: $354,710 | Balance: $24,832.97 | Distress: HIGH
+[07:41:41]   Intel saved: MV $354,710 | Balance $24,832.97
+[07:41:41]   Track: active [property_type=real]
+[07:41:41]   Generating memo...
+[07:41:57]   Saved TX-26-01551 | 1307 Sequoia Dr., Grand Prairie, TX 75052-6825 | $24,833
+[07:42:06]   hrefs captured: 10/10
+[07:42:06]   (5 business entities excluded by --individuals-only)
+[07:42:06] 
+[07:42:06] Page 10: 10 cases | 5 to process
+[07:42:06] [pg10 1/5] [IND] TX-26-01552 | ROSS, ANDREA
+[07:42:06]   -> Clicking into TX-26-01552 | INDIVIDUAL | ROSS, ANDREA
+[07:42:06]   Going to Search Results...
+[07:42:06]   Back to results: True
+[07:42:23]   Attempt 1: 1303 chars
+[07:42:23]   Click result: clicked-exact
+[07:42:25]   Attempt 2: 2753 chars
+[07:42:25]   Correct docket confirmed: TX-26-01552
+[07:42:25]   Docket: 2753 chars
+[07:42:25]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment TAX REAL PROPERTY 08/10/2026 ORIG
+[07:42:25]   Downloading Original Petition...
+[07:42:28]   PDF saved (4109077 bytes) | text 9087 chars
+[07:42:28]   Running Claude extraction...
+[07:42:52]   Enriching property intel: 00000611491000000
+  [intel] Enriching 00000611491000000...
+  [intel] 00000611491000000 | MV: $241,590 | Balance: $19,317.28 | Distress: HIGH
+[07:43:04]   Intel saved: MV $241,590 | Balance $19,317.28
+[07:43:04]   Track: active [property_type=real]
+[07:43:04]   Generating memo...
+[07:43:19]   Saved TX-26-01552 | 5706 Glen Forest Ln., Dallas, TX 75241 | $19,317
+[07:43:22] [pg10 2/5] [IND] TX-26-01553 | GARCIA, ELEODORO GARCIA
+[07:43:22]   -> Clicking into TX-26-01553 | INDIVIDUAL | GARCIA, ELEODORO GARCIA
+[07:43:22]   Going to Search Results...
+[07:43:23]   Back to results: True
+[07:43:40]   Attempt 1: 1303 chars
+[07:43:40]   Click result: clicked-exact
+[07:43:42]   Attempt 2: 2155 chars
+[07:43:42]   Correct docket confirmed: TX-26-01553
+[07:43:42]   Docket: 2155 chars
+[07:43:42]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment TAX REAL PROPERTY 08/10/2026 ORIG
+[07:43:42]   Downloading Original Petition...
+[07:43:45]   PDF saved (3321425 bytes) | text 9025 chars
+[07:43:45]   Running Claude extraction...
+[07:44:08]   Enriching property intel: 36000500380040000
+  [intel] Enriching 36000500380040000...
+  [intel] 36000500380040000 | MV: $26,500 | Balance: $5,795.48 | Distress: CRITICAL
+[07:44:19]   Intel saved: MV $26,500 | Balance $5,795.48
+[07:44:19]   Track: active [property_type=real]
+[07:44:19]   Generating memo...
+[07:44:35]   Saved TX-26-01553 | 215 W. Main St., Lancaster, TX 75146 | $5,795
+[07:44:38] [pg10 3/5] [IND] TX-26-01554 | MEZA, JESSICA
+[07:44:38]   -> Clicking into TX-26-01554 | INDIVIDUAL | MEZA, JESSICA
+[07:44:38]   Going to Search Results...
+[07:44:38]   Back to results: True
+[07:44:55]   Attempt 1: 1303 chars
+[07:44:55]   Click result: clicked-exact
+[07:44:57]   Attempt 2: 1946 chars
+[07:44:57]   Correct docket confirmed: TX-26-01554
+[07:44:57]   Docket: 1946 chars
+[07:44:57]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment TAX REAL PROPERTY 08/10/2026 ORIG
+[07:44:57]   Downloading Original Petition...
+[07:45:00]   PDF saved (3139621 bytes) | text 7762 chars
+[07:45:00]   Running Claude extraction...
+[07:45:17]   Enriching property intel: 00000163129000000
+  [intel] Enriching 00000163129000000...
+  [intel] 00000163129000000 | MV: $292,260 | Balance: $27,222.93 | Distress: CRITICAL
+[07:45:29]   Intel saved: MV $292,260 | Balance $27,222.93
+[07:45:29]   Track: active [property_type=real]
+[07:45:29]   Generating memo...
+[07:45:44]   Saved TX-26-01554 | 5330 Garland Ave., Dallas, TX 75223-1874 | $27,223
+[07:45:47] [pg10 4/5] [IND] TX-26-01501 | RODRIGUEZ, RAY I.
+[07:45:47]   -> Clicking into TX-26-01501 | INDIVIDUAL | RODRIGUEZ, RAY I.
+[07:45:47]   Going to Search Results...
+[07:45:47]   Back to results: True
+[07:46:04]   Attempt 1: 1303 chars
+[07:46:04]   Click result: clicked-exact
+[07:46:06]   Attempt 2: 2320 chars
+[07:46:06]   Correct docket confirmed: TX-26-01501
+[07:46:06]   Docket: 2320 chars
+[07:46:06]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY 08/07/2026 ORIGIN
+[07:46:06]   Downloading Original Petition...
+[07:46:08]   PDF saved (3341877 bytes) | text 8287 chars
+[07:46:08]   Running Claude extraction...
+[07:46:29]   Enriching property intel: 28097500250280000
+  [intel] Enriching 28097500250280000...
+  [intel] 28097500250280000 | MV: unknown | Balance: $15,949.41 | Distress: CRITICAL
+[07:46:40]   Intel saved: MV unknown | Balance $15,949.41
+[07:46:40]   Track: active [property_type=real]
+[07:46:40]   Generating memo...
+[07:46:56]   Saved TX-26-01501 | 618 Sparks St., Grand Prairie, TX 75051-3937 | $15,387
+[07:46:59] [pg10 5/5] [IND] TX-26-01504 | EMAN, TSEGAI D.
+[07:46:59]   -> Clicking into TX-26-01504 | INDIVIDUAL | EMAN, TSEGAI D.
+[07:46:59]   Going to Search Results...
+[07:46:59]   Back to results: True
+[07:47:16]   Attempt 1: 1303 chars
+[07:47:16]   Click result: clicked-exact
+[07:47:18]   Attempt 2: 3321 chars
+[07:47:18]   Correct docket confirmed: TX-26-01504
+[07:47:18]   Docket: 3321 chars
+[07:47:18]   petition select:  View Document View Document ORIGINAL PETITION View Document ORIGINAL PETITION Comment - REAL PROPERTY (2 SOS; 5 CIT) 08
+[07:47:18]   Downloading Original Petition...
+[07:47:23]   PDF saved (7144598 bytes) | text 17473 chars
+[07:47:23]   Running Claude extraction...
+[07:47:57]   ↳ Resolved DCAD account (address+owner agree): 42047700020310000 (petition account was '')
+[07:47:57]   Enriching property intel: 42047700020310000
+  [intel] Enriching 42047700020310000...
+  [intel] 42047700020310000 | MV: $515,250 | Balance: $0.00 | Distress: LOW
+[07:48:08]   Intel saved: MV $515,250 | Balance $0.00
+[07:48:08]   Track: active [property_type=real]
+[07:48:08]   Generating memo...
+[07:48:24]   Saved TX-26-01504 | 1115 Kenshir Ln., Richardson, TX 75081 | $8,520
+[07:48:33]   hrefs captured: 10/10
+[07:48:33] Pagination stalled — done
+[07:48:33] 
+[07:48:33] =======================================================
+[07:48:33] COMPLETE
+[07:48:33]   Found:     100
+[07:48:33]   New:       58 scraped + saved (of which BPP skip-records: 3)
+[07:48:33]   Reused:    0 already captured today (not re-scraped)
+[07:48:33]   Business:  41 excluded (--individuals-only)
+[07:48:33]   Closed:    0 excluded (--open-only mode)
+[07:48:33]   Errors:    1
+[07:48:33]   reconcile: 58+0+0+41+0+1 = 100 vs Found 100  OK
+SCRAPE_SUMMARY {"found": 100, "processed": 58, "reused": 0, "skip_existing": 0, "business": 41, "closed": 0, "errors": 1, "bpp": 3}
+[07:48:33]   ✔ DCAD account resolved from address/owner: 5
+[07:48:33]   ⚠ Account needs manual lookup: 5 (0 invalid, 5 missing)
+[07:48:33] =======================================================
+[07:48:33] Go to taxforeclosureanalyzer.com and click Sync
