@@ -57,7 +57,17 @@ def eligible(conn, only=None):
     return out
 
 
-async def run(targets, write=True):
+# PACING. The portal re-blocked this host after an 80-case run — ~136 fetches over ~10 unbroken
+# minutes from one IP. Concurrency was already 1, so volume is the variable, and the only lever was
+# `--limit`. This is a DELIBERATE inter-case delay: the in-fetch sleeps are page-load waits, not
+# politeness. Default is conservative because the cost of being slow is minutes and the cost of being
+# fast is a multi-hour block on 4 of 5 mapped collectors.
+# ⚠ WE DO NOT KNOW THE ACTUAL LIMIT. One data point (80 cases → blocked) is not a rate model, so
+# treat any cadence as a hypothesis and keep batches small enough that being wrong is cheap.
+DEFAULT_DELAY_S = 4.0
+
+
+async def run(targets, write=True, delay=DEFAULT_DELAY_S):
     from playwright.async_api import async_playwright
     conn = sqlite3.connect(DB)
     done = fetched = failed = 0
@@ -84,9 +94,6 @@ async def run(targets, write=True):
                     print(f"      ⚠ {key}: {val}")
                 fetched += len(amounts)
                 failed += len(miss)
-                # An infrastructure fault is not a per-parcel negative. Grinding through the rest of
-                # the book against a portal that is refusing us produces nothing and risks deepening
-                # a rate-limit block, so stop and say so — the record already holds the fault.
                 # Write once, whatever happened — the sentinel is PART of the record (batch_census
                 # and the payoff surfaces both read it), so a fault is stored, not swallowed.
                 if write and got:
@@ -105,6 +112,10 @@ async def run(targets, write=True):
                     print("     Stopping. Balances already written are intact; unfetched collectors")
                     print("     stay `unavailable` → INDETERMINATE, never $0. Safe to re-run later.")
                     break
+                # Space the requests out. Skipped after the final target so a run does not end on a
+                # pointless wait.
+                if delay and t is not targets[-1]:
+                    await asyncio.sleep(delay)
         finally:
             await browser.close()
     conn.close()
@@ -120,6 +131,9 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--case")
+    ap.add_argument("--delay", type=float, default=DEFAULT_DELAY_S,
+                    help=f"seconds between CASES (default {DEFAULT_DELAY_S}). Raise it if the "
+                         f"portal blocks; 0 disables pacing entirely (not advised).")
     a = ap.parse_args()
     conn = sqlite3.connect(DB)
     targets = eligible(conn, only=a.case)
@@ -138,7 +152,9 @@ def main():
                   f"above ({len(targets)}), not the number of lines printed.")
         print("  (dry run — nothing fetched, nothing written)")
         return
-    asyncio.run(run(targets))
+    est = len(targets) * (a.delay + 6)
+    print(f"  pacing: {a.delay}s between cases → rough ETA {est/60:.0f} min for {len(targets)} case(s)")
+    asyncio.run(run(targets, delay=a.delay))
 
 
 if __name__ == "__main__":
