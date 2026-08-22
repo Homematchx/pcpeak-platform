@@ -596,6 +596,29 @@ async def scrape_dcad(account_number: str, browser) -> dict:
     return result
 
 
+# THE payoff figure. `current_tax_balance` is this and nothing else, so the pattern lives in ONE
+# place — `scrape_dallas_act` and any backfill that re-reads the same page must not drift apart.
+ACT_TOTAL_DUE_RE = r'Total Amount Due[:\s]+\$?([\d,\.]+)'
+
+
+def parse_act_balance(text: str):
+    """ACT's Total Amount Due for a parcel, or None if the page does not state one.
+
+    None means UNKNOWN — the page did not answer — and is NOT the same fact as 0.00, which is ACT
+    affirmatively saying nothing is owed (§29). Callers must preserve that distinction: a silent
+    fetch miss stored as 0.00 is a fabricated payoff, and stored as None on a parcel ACT reports at
+    0.00 is knowledge thrown away."""
+    if not text:
+        return None
+    m = re.search(ACT_TOTAL_DUE_RE, text, re.IGNORECASE)
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
 _ACT_UNIT_HEADERS = {
     "YEAR", "JURISDICTION", "BASE", "TAX DUE", "BASE TAX DUE", "TOTAL", "DUE", "TOTAL DUE",
     "PENALTY, INTEREST, AND ACC* DUE", "TAXES DUE DETAIL BY JURISDICTION",
@@ -695,7 +718,9 @@ async def scrape_dallas_act(account_number: str, browser) -> dict:
         result["current_levy"] = find(r'Current Tax Levy[:\s]+\$?([\d,\.]+)', cast=float)
         result["current_balance"] = find(r'Current Amount Due[:\s]+\$?([\d,\.]+)', cast=float)
         result["prior_year_due"] = find(r'Prior Year Amount Due[:\s]+\$?([\d,\.]+)', cast=float)
-        result["total_amount_due"] = find(r'Total Amount Due[:\s]+\$?([\d,\.]+)', cast=float)
+        # Same pattern as parse_act_balance() — shared constant so the scraper and any backfill
+        # that re-reads this page can never disagree about what the payoff figure is.
+        result["total_amount_due"] = find(ACT_TOTAL_DUE_RE, cast=float)
 
         # Payment history
         await page.goto(

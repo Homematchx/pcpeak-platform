@@ -38,13 +38,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import httpx
-from property_intel import parse_act_units
+from property_intel import parse_act_balance, parse_act_units
 
 ROOT = Path(__file__).parent
 DB = ROOT / "data" / "db" / "pcpeak.db"
 BASE_WHERE = "property_type IS NOT 'personal' AND case_track IS NOT 'personal_property'"
 URL = ("https://www.dallasact.com/act_webdev/dallas/reports/taxbyyearbyunit.jsp"
        "?can={acct}&ownerno=0")
+DETAIL_URL = ("https://www.dallasact.com/act_webdev/dallas/showdetail2.jsp"
+              "?can={acct}&ownerno=0")
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
 ACCT_RE = re.compile(r"^[0-9A-Z]{17}$")
 
@@ -58,6 +60,22 @@ def html_to_text(html: str) -> str:
 
 def accounts_of(raw) -> list:
     return [a for a in (x.strip().upper() for x in str(raw or "").split(",")) if ACCT_RE.match(a)]
+
+
+def fetch_balance(acct: str, client):
+    """ACT's Total Amount Due for one account, or None if the page does not state one.
+
+    ⚠ FILL-ONLY-WHEN-NULL, NEVER OVERWRITE. A stored balance was captured by the real enrichment
+    pass; this is a lighter-weight re-read, so it may miss where the full scrape succeeded. Letting
+    it overwrite would let a parse miss erase a good figure — absence beating knowledge, which is the
+    inverse of the defect this codebase keeps closing. It only ever fills a NULL."""
+    try:
+        r = client.get(DETAIL_URL.format(acct=acct), timeout=40, headers=UA, follow_redirects=True)
+        if r.status_code != 200:
+            return None
+        return parse_act_balance(html_to_text(r.text))
+    except Exception:
+        return None
 
 
 def fetch_units(acct: str, client) -> tuple:
@@ -119,31 +137,37 @@ def main():
     def one(item):
         cn, accts, bal = item
         u, why = resolve_case(accts, client)
-        return cn, u, why, bal
+        # SILENT-MISS RECOVERY. A NULL balance records no error and no tool looked for it — that is
+        # how $112,727.66 on TX-26-01529 sat invisible on a live case. Only NULLs are probed, and a
+        # found value is a FILL, never an overwrite.
+        found_bal = None
+        if not isinstance(bal, (int, float)):
+            found_bal = fetch_balance(accts[0], client)
+        return cn, u, why, bal, found_bal
 
     done = 0
     with cf.ThreadPoolExecutor(max_workers=args.workers) as ex:
-        for cn, u, why, bal in ex.map(one, work):
-            out[cn] = (u, why, bal)
+        for cn, u, why, bal, found_bal in ex.map(one, work):
+            out[cn] = (u, why, bal, found_bal)
             done += 1
             if done % 50 == 0:
                 print(f"  … {done}/{len(work)}  ({time.time()-t0:.0f}s)", flush=True)
 
     import collections
-    census = collections.Counter(why for _, why, _ in out.values())
+    census = collections.Counter(why for _, why, _, _ in out.values())
     print(f"\nfetched {len(out)} in {time.time()-t0:.0f}s\n")
     print("OUTCOME CENSUS:")
     for why, n in census.most_common():
         print(f"   {n:4d}  {why}")
 
     # The §34.2 cross-check: the $0 reason must land on $0 parcels and nowhere else.
-    mism = [(cn, why, bal) for cn, (u, why, bal) in out.items()
+    mism = [(cn, why, bal) for cn, (u, why, bal, _) in out.items()
             if why == "no_unit_list_at_zero_balance" and isinstance(bal, (int, float)) and bal > 0]
     print(f"\n'no_unit_list_at_zero_balance' on a parcel with a NONZERO stored balance: {len(mism)}"
           + ("  <-- investigate" if mism else "  (consistent)"))
     for m in mism[:6]:
         print("   ", m)
-    got = [(cn, u) for cn, (u, why, _) in out.items() if why == "act_unit_list"]
+    got = [(cn, u) for cn, (u, why, _, _) in out.items() if why == "act_unit_list"]
     print(f"\nparcels with a real unit list: {len(got)}")
     if got:
         sizes = collections.Counter(len(u) for _, u in got)
@@ -151,12 +175,21 @@ def main():
         names = collections.Counter(n for _, u in got for n in u)
         print("   most common units:", names.most_common(8))
 
+    recov = [(cn, fb) for cn, (_, _, bal, fb) in out.items()
+             if fb is not None and not isinstance(bal, (int, float))]
+    print(f"\n  SILENT-MISS BALANCES RECOVERED (stored NULL, ACT states a figure): {len(recov)}")
+    money = sum(v for _, v in recov)
+    for cn, v in sorted(recov, key=lambda x: -x[1])[:12]:
+        print(f"     {cn:14s} ${v:,.2f}" + ("   <-- a real debt that was invisible" if v > 0 else
+                                            "   (verified $0 — knowledge we had thrown away)"))
+    print(f"     total recovered: ${money:,.2f}")
+
     if not args.write:
         print("\nDRY RUN — nothing written. Re-run with --write to merge.")
         return
 
     n = 0
-    for cn, (u, why, _) in out.items():
+    for cn, (u, why, _, fb) in out.items():
         row = con.execute("SELECT property_intel FROM cases WHERE case_number=?", (cn,)).fetchone()
         try:
             pi = json.loads(row["property_intel"] or "{}")
@@ -165,6 +198,9 @@ def main():
         # MERGE, never replace: only these two keys are touched.
         pi["act_units"] = u          # None stays None — never [] (§34.2)
         pi["act_units_reason"] = why
+        # FILL ONLY. Guarded again at the write so the rule holds even if the caller changes.
+        if fb is not None and not isinstance(pi.get("current_tax_balance"), (int, float)):
+            pi["current_tax_balance"] = fb
         con.execute("UPDATE cases SET property_intel=? WHERE case_number=?", (json.dumps(pi), cn))
         n += 1
     con.commit()
