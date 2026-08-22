@@ -54,6 +54,17 @@ def eligible(conn, only=None):
                  if (jurisdictions.resolve_collector(n, roster=roster) or {}).get("platform") in REACHABLE]
         if reach:
             out.append({"case": cn, "cad": cad, "collectors": reach, "intel": intel})
+    # ORDER BY NEED, NOT BY ROWID. `--limit N` slices this list, so its order decides what a paced
+    # batch actually accomplishes. Measured: a 20-case run fetched 29 balances and moved the census
+    # by ZERO, because all 20 were already complete and NONE of the 23 cases missing a collector were
+    # in the first 20 — five paced sessions would have elapsed before touching the real backlog.
+    # Cases still missing an adapter-backed collector now sort first; the rest are refreshes.
+    def _still_missing(t):
+        cb = (t["intel"].get("collector_balances") or {})
+        have = {k for k, v in cb.items()
+                if isinstance(v, dict) and isinstance(v.get("amount"), (int, float))}
+        return any(c not in have for c in t["collectors"])
+    out.sort(key=lambda t: (not _still_missing(t), t["case"]))
     return out
 
 
