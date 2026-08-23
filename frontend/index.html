@@ -372,11 +372,11 @@ body{font-family:var(--FB);background:var(--bg);color:var(--text);line-height:1.
           </select>
         </div>
         <div style="display:flex;gap:5px;flex-wrap:wrap" id="city-filter-bar">
-          <button onclick="filterCity('')" class="city-pill on" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">All</button>
-          <button onclick="filterCity('dallas')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Dallas</button>
-          <button onclick="filterCity('garland')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Garland</button>
-          <button onclick="filterCity('carrollton')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Carrollton</button>
-          <button onclick="filterCity('plano')" class="city-pill" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer">Plano</button>
+          <!-- City pills are BUILT FROM THE BOOK at render time (renderCityPills), not hardcoded.
+               The hardcoded set was Dallas/Garland/Carrollton/PLANO — and Plano is in Collin County,
+               so it matched 0 cases, while Mesquite (24), Irving (9) and Rowlett (8) had real volume
+               and no pill at all. A filter list that does not come from the data drifts away from it. -->
+          <span id="city-pills"></span>
           <button id="estate-toggle" onclick="toggleEstate()" title="Show only estate / heirs cases" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid #5b2a86;background:var(--surface);color:#5b2a86;cursor:pointer">&#9906; Estate</button>
         </div>
       </div>
@@ -2357,17 +2357,59 @@ function repReassign(fromId, toValue){
     .then(function(){ renderRepMgr(); renderList(); refreshOpenRepSelect(); });
 }
 
-function filterCity(city) {
-  document.querySelectorAll('.city-pill').forEach(function(p){
-    p.style.background = 'var(--surface)';
-    p.style.color = 'var(--text2)';
-    p.style.borderColor = 'var(--border2)';
+// ── CITY comes from the ADDRESS, because the `city` column does not carry it ────────────────────
+// Measured on the live book: `city` is the string "dallas" on ALL 339 cases — a default from
+// platformToV3 (`pc.city || "dallas"`) that nothing ever populates. So the filter compared every
+// case to "dallas": clicking Dallas matched everything (looking like no filter at all) and clicking
+// any other city matched nothing. The real city is only ever in `property_address`.
+function cityOf(c) {
+  var ex = c && c.extracted ? c.extracted : {};
+  var a = ex.propertyAddress || c.property_address || "";
+  if (!a) return null;
+  var A = a.toUpperCase();
+  // "…, City of Rowlett, Texas" — the petition's own phrasing, checked first because it is explicit.
+  var m = A.match(/CITY OF\s+([A-Z][A-Z .'\-]+?)\s*(?:,|$)/);
+  if (m) return m[1].trim();
+  // else the segment immediately before the state token: "2334 Pine St., DALLAS, TX 75215"
+  var parts = A.split(",").map(function (p) { return p.trim(); });
+  for (var i = 1; i < parts.length; i++) {
+    if (/^(TX|TEXAS)\b/.test(parts[i])) {
+      var prev = parts[i - 1].replace(/\bCOUNTY\b/, "").trim();
+      if (prev && !/^\d/.test(prev)) return prev;
+    }
+  }
+  return null;
+}
+
+// Pills built from the data, newest counts every render. A city with no cases gets no pill, so the
+// bar cannot advertise a filter that returns an empty list.
+function renderCityPills() {
+  var host = document.getElementById("city-pills");
+  if (!host) return;
+  var counts = {};
+  (window.cases || []).forEach(function (c) {
+    var k = cityOf(c);
+    if (k) counts[k] = (counts[k] || 0) + 1;
   });
-  event.target.style.background = 'var(--accent)';
-  event.target.style.color = '#fff';
-  event.target.style.borderColor = 'var(--accent)';
-  window._cityFilter = city;
+  var top = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; }).slice(0, 7);
+  var base = "font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer";
+  var on = "font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer";
+  var cur = window._cityFilter || "";
+  var html = '<button onclick="filterCity(\'\')" class="city-pill" style="' + (cur ? base : on) + '">All</button>';
+  top.forEach(function (k) {
+    var sel = cur === k;
+    html += '<button onclick="filterCity(' + JSON.stringify(k).replace(/"/g, "&quot;") + ')" class="city-pill" style="' +
+            (sel ? on : base) + '">' + k.charAt(0) + k.slice(1).toLowerCase() + ' <span style="opacity:.7">' + counts[k] + '</span></button>';
+  });
+  host.innerHTML = html;
+}
+
+function filterCity(city) {
+  // Toggle off when the active pill is clicked again — otherwise the only way back to "All" is a
+  // separate button, and a filter you cannot clear from where you set it reads as broken.
+  window._cityFilter = (window._cityFilter === city) ? "" : city;
   window._page = 1;
+  renderCityPills();
   renderList();
 }
 
@@ -2732,7 +2774,9 @@ function getFilteredCases(){
     var ds = c.disposition_state || "active";
     if ((window._dview||"active") === "watching") { if (ds !== "watching") return false; }
     else if (ds === "watching") return false;
-    if(window._cityFilter && (c.city||"dallas")!==window._cityFilter) return false;
+    // Compare against the address-derived city (cityOf), NOT `c.city` — that column is
+    // the literal "dallas" on every case and made this predicate a no-op or a wipe-out.
+    if(window._cityFilter && cityOf(c)!==window._cityFilter) return false;
     if(f.complexity && (ex.complexity||"medium")!==f.complexity) return false;
     if(f.stage && caseStage(ex)!==f.stage) return false;
     if(f.account && caseAccountStatus(c)!==f.account) return false;
@@ -2801,6 +2845,7 @@ function renderList() {
   const pageEl = document.getElementById("cpage");
   updateHdr();
   refreshRepFilterOptions();
+  renderCityPills();   // counts come from the current book, so they follow a sync
   if (!cases.length) {
     cnt.textContent = "0 saved";
     list.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:6px 0">No cases yet.</div>`;
@@ -2833,7 +2878,7 @@ function renderList() {
       <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:${acqDot};border-radius:3px 0 0 3px"></div>
       <div class="cchip-b">
         <div class="cchip-n">${ex.caseNumber||"Untitled"}</div>
-        <div style="font-size:12px;font-weight:500;color:var(--text);margin-top:1px">${ex.propertyAddress?ex.propertyAddress.split(",")[0]:ex.defendant||""}</div>
+        <div style="font-size:12px;font-weight:500;color:var(--text);margin-top:1px">${ex.propertyAddress||ex.defendant||""}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:1px">${ex.defendant||""}</div>
         <div class="cchip-m" style="margin-top:5px">
           <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:${acq.bg};color:${acq.color};border:1px solid ${acq.border}">${acq.icon} ${acq.label}</span>
