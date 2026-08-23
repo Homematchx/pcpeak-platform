@@ -59,13 +59,14 @@ def eligible(conn, only=None):
     # by ZERO, because all 20 were already complete and NONE of the 23 cases missing a collector were
     # in the first 20 — five paced sessions would have elapsed before touching the real backlog.
     # Cases still missing an adapter-backed collector now sort first; the rest are refreshes.
-    def _still_missing(t):
-        cb = (t["intel"].get("collector_balances") or {})
-        have = {k for k, v in cb.items()
-                if isinstance(v, dict) and isinstance(v.get("amount"), (int, float))}
-        return any(c not in have for c in t["collectors"])
-    out.sort(key=lambda t: (not _still_missing(t), t["case"]))
+    out.sort(key=lambda t: (not still_missing(t), t["case"]))
     return out
+
+
+def still_missing(t) -> bool:
+    """Does this case lack a STORED balance for any adapter-backed collector it names?"""
+    have = jurisdictions.collector_amounts(t["intel"].get("collector_balances"))
+    return any(c not in have for c in t["collectors"])
 
 
 # PACING. The portal re-blocked this host after an 80-case run — ~136 fetches over ~10 unbroken
@@ -164,6 +165,10 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--case")
+    ap.add_argument("--refresh", action="store_true",
+                    help="ALSO re-fetch collectors already stored. Off by default: the portal "
+                         "rate-limits per IP at roughly 60-80 case-fetches, and re-reading balances "
+                         "we already hold is what keeps spending that budget for nothing.")
     ap.add_argument("--delay", type=float, default=DEFAULT_DELAY_S,
                     help=f"seconds between CASES (default {DEFAULT_DELAY_S}). Raise it if the "
                          f"portal blocks; 0 disables pacing entirely (not advised).")
@@ -171,6 +176,17 @@ def main():
     conn = sqlite3.connect(DB)
     targets = eligible(conn, only=a.case)
     conn.close()
+    # DEFAULT TO WHAT IS MISSING. Measured the hard way: a full 102-case run fetched 74 balances,
+    # tripped the block at case 72, and moved the census by ZERO — the 3 genuinely-missing cases were
+    # tried first and failed, then it re-read 99 cases already on file. The portal budget is the
+    # scarce resource (~60-80 case-fetches per IP), so spending it on data we hold is the whole
+    # problem. `--refresh` opts back in when a deliberate re-read is actually wanted.
+    if not a.refresh:
+        before = len(targets)
+        targets = [t for t in targets if still_missing(t)]
+        if before != len(targets):
+            print(f"  missing-only: {len(targets)} of {before} need a fetch "
+                  f"({before - len(targets)} already on file — use --refresh to re-read them)")
     if a.limit:
         targets = targets[:a.limit]
     print(f"eligible cases (petition names a gds-reachable collector + a CAD on file): {len(targets)}")
