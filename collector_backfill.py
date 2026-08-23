@@ -97,7 +97,13 @@ async def run(targets, write=True, delay=DEFAULT_DELAY_S):
                 # mis-counted `fetched` even when it did not crash.
                 amounts = jurisdictions.collector_amounts(got)
                 sentinels = jurisdictions.collector_sentinels(got)
-                miss = [c for c in t["collectors"] if c not in amounts]
+                # UNAVAILABLE means "we hold no balance for this collector", NOT "this pass missed
+                # it". The run re-fetches everything, so a collector fetched in an EARLIER pass is
+                # still held — the merge preserves it. Comparing against this fetch alone reported 5
+                # unavailable when only 3 were genuinely missing, which makes a healthy run look
+                # worse than it is and invites chasing misses that are not there.
+                held = jurisdictions.collector_amounts(t["intel"].get("collector_balances"))
+                miss = [c for c in t["collectors"] if c not in amounts and c not in held]
                 total = sum(amounts.values())
                 print(f"  {t['case']:<14} cad={t['cad']}  fetched {len(amounts)}/{len(t['collectors'])}"
                       f"  ${total:>12,.2f}" + (f"   UNAVAILABLE: {', '.join(miss)}" if miss else ""))

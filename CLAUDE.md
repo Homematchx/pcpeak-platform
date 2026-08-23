@@ -53,36 +53,35 @@ construction, which is why it is stored distinctly from the retryable `fetch_fai
 - **`taxbyyear.jsp` scrape is silently broken** (`tax_by_year` nonempty on 0 of 300). Pre-existing,
   out of scope, logged so it is not rediscovered from scratch.
 
-**5. gds IP BLOCK — ⚠ REGRESSED, BLOCKING AGAIN (2026-08-19, later).** It cleared, then came back.
+**5. gds BLOCK — ⚠ VOLUME-TRIGGERED PER IP, and the site's stated reason is MISLEADING.**
 
-**Timeline, because the shape of it matters:** verified CLEAR with the real adapter on 3 Garland
-parcels (both collectors returned, zero faults) → an 80-case `collector_backfill` run → **blocked
-again**. Every one of 16 new Garland/Richardson parcels now returns
-`https://www.texaspayments.com/Error/WrongRequest`, across all three agency codes (057120 · 057909 ·
-057916), and the SAME CAD that fetched cleanly an hour earlier now fails. **Plausible but UNPROVEN:
-the bulk run tripped rate-limiting into a re-block.** If that is right, a full-book run is itself the
-trigger and pacing/throttling is the fix, not just waiting.
+**The evidence, gathered by experiment rather than inference:**
+- Home IP: clean → ~80-case run → BLOCKED.
+- Phone hotspot (different IP, different carrier): clean → confirmed the real parcel-search flow
+  worked, not just the landing page → ~60 cases across three paced batches → **BLOCKED TOO**.
 
-**Affected:** Garland ISD · City of Garland · Richardson ISD · Carrollton-FB — 4 of 5 mapped
-collectors. Stored balances unaffected; new fetches fail soft to `_portal_unavailable` →
-INDETERMINATE, never $0. Costs freshness, not correctness. Remedy is operational — different network,
-or `support@gdsincorporated.com`.
+**So it is CUMULATIVE VOLUME PER IP, not geography.** The error page says *"possibly due to your IP
+location"*, which is what §32.6 recorded and what sent two sessions chasing networks and geo-fencing.
+The block followed us to a new IP at a similar request count, and `--delay 6` slowed the burst rate
+without changing the total. **Pacing is not the lever; TOTAL REQUESTS PER IP is.** Roughly 60–80
+case-fetches (~100–140 requests) appears to be the threshold, but that is 2 data points, not a model.
 
-**⚠ TEST IT WITH THE ADAPTER, NEVER curl.** A plain `GET` returns HTTP 200 even while blocked — the
-landing page answers; the parcel-search flow is what refuses. `python3 collectors_gds.py <CAD>`.
+**⚠ TEST WITH THE ADAPTER, NEVER curl** — a plain GET of the landing page returns 200 while blocked.
+`python3 collectors_gds.py --check` is safe BECAUSE it inspects the REDIRECT, not the status.
+Diagnostic worth keeping: a nonexistent agency (`/057124`) returns a normal 404 even while blocked, so
+the host is **not firewalled** — only real portal pages refuse. That is concrete detail for the vendor.
 
-**Backlog — three DIFFERENT numbers, do not conflate them:**
-- **96** cases are adapter-reachable — what a full `collector_backfill` run queries (`eligible()`
-  requires `platform in ADAPTERS` + a CAD). It re-fetches ALL of them, not just the unfetched.
-- **17** cases have an adapter-backed collector *never fetched* — the genuinely fixable backlog
-  (`batch_census.py` reports it as `gds_unfetched`).
-- **39+** carry *some* unfetched named external collector; the rest — Balch Springs, Duncanville,
-  University Park, Highland Park, DeSoto, Sachse, the PIDs, a transferred tax lien — have **no
-  adapter and stay `unavailable` by design**.
+**Tooling now in place, so a block costs nothing:**
+- `collectors_gds.py --check` (~200ms, exit code) · `--watch` (polls, says when it clears)
+- `collector_backfill.py` **pre-flights** and refuses to start when blocked — caught this exact
+  recurrence and wasted zero work
+- fail-fast mid-run on `_portal_unavailable`, and stale sentinels clear on the next successful pass
 
-⚠ **`collector_backfill.py --dry-run` truncates its list to 20** while the HEADER carries the true
-count. Counting printed lines is wrong — that mistake has been made here twice. It now prints an
-explicit "… and N more NOT LISTED" line.
+**REAL REMEDY IS THE VENDOR**, `support@gdsincorporated.com` — a workaround IP just moves the counter.
+
+**Backlog: only 3 cases still lack a stored adapter-backed collector** (TX-24-00099 CITY OF GARLAND;
+TX-26-01607 + TX-26-01637 RICHARDSON ISD). The hotspot batches recovered **$215,395.27 across 18
+cases** before the block, taking verified-complete 218 → 232 and `gds_unfetched` 23 → 3.
 
 ### STANDING OPERATIONAL LESSONS (process memory — each earned by a specific near-miss)
 
