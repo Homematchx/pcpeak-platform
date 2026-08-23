@@ -97,40 +97,71 @@ def _pick_residential(cands):
     return res[0]["acct"] if len(res) == 1 else ""
 
 
-async def _address_search(browser, num, street, city):
+async def _retrying(fn, attempts: int = 3, pause: float = 2.0):
+    """Run a DCAD search, retrying while it comes back empty.
+
+    ⚠ WHY THIS EXISTS — EMPTY AND FAILED WERE THE SAME VALUE. Both searches ended in
+    `except Exception: return []`, and a merely SLOW page also yields `[]` without raising. So a
+    transient failure was indistinguishable from "this parcel is not in DCAD", and the caller wrote
+    the second conclusion. Measured: `413 W. Carolyn Drive, Garland` — an account we already hold and
+    had been fetching collector balances against all day — returned 0 hits, then returned the correct
+    account 26485500040430000 on a straight re-run minutes later. `resolve_backlog` had just written
+    off 19 cases as "no DCAD candidate found" on exactly this signal.
+
+    Same treatment `collectors_gds.fetch_one` already had, and for the same reason: fail-soft is the
+    right FINAL state, but accepting a transient failure AS final silently discards real parcels."""
+    for i in range(max(1, attempts)):
+        try:
+            got = await fn()
+        except Exception:
+            got = []
+        if got:
+            return got
+        if i + 1 < attempts:
+            await asyncio.sleep(pause)
+    return []
+
+
+async def _address_search(browser, num, street, city, attempts: int = 3):
     """DCAD address search -> [{acct,row}] (row text carries the OWNER name)."""
-    ctx = await browser.new_context(); p = await ctx.new_page()
-    try:
-        await p.goto("https://www.dallascad.org/SearchAddr.aspx", timeout=40000, wait_until="domcontentloaded")
-        await p.wait_for_timeout(800)
-        await p.fill("#txtAddrNum", num)
-        await p.fill("#txtStName", street)
-        if city:
-            try: await p.select_option("#listCity", label=city)
-            except Exception: pass
-        await p.click("#cmdSubmit")
-        await p.wait_for_timeout(2200)
-        return await _dcad_results(p)
-    except Exception:
-        return []
-    finally:
-        await ctx.close()
+    async def once():
+        ctx = await browser.new_context(); p = await ctx.new_page()
+        try:
+            await p.goto("https://www.dallascad.org/SearchAddr.aspx", timeout=40000,
+                         wait_until="domcontentloaded")
+            await p.wait_for_timeout(800)
+            await p.fill("#txtAddrNum", num)
+            await p.fill("#txtStName", street)
+            if city:
+                try: await p.select_option("#listCity", label=city)
+                except Exception: pass
+            await p.click("#cmdSubmit")
+            await p.wait_for_timeout(2200)
+            return await _dcad_results(p)
+        finally:
+            await ctx.close()
+    return await _retrying(once, attempts=attempts)
 
 
-async def _owner_search(browser, query):
-    """DCAD owner search -> [{acct,row}] (row text carries the property ADDRESS)."""
-    ctx = await browser.new_context(); p = await ctx.new_page()
-    try:
-        await p.goto("https://www.dallascad.org/SearchOwner.aspx", timeout=40000, wait_until="domcontentloaded")
-        await p.wait_for_timeout(800)
-        await p.fill("#txtOwnerName", query)
-        await p.click("#cmdSubmit")
-        await p.wait_for_timeout(2200)
-        return await _dcad_results(p)
-    except Exception:
-        return []
-    finally:
-        await ctx.close()
+async def _owner_search(browser, query, attempts: int = 3):
+    """DCAD owner search -> [{acct,row}] (row text carries the property ADDRESS).
+
+    Retried for the same reason as the address search — see `_retrying`. This one feeds the
+    corroboration guard, so a transient empty here does not just lose a candidate, it can turn a
+    resolvable account into an UNCORROBORATED one and hold it out of the book."""
+    async def once():
+        ctx = await browser.new_context(); p = await ctx.new_page()
+        try:
+            await p.goto("https://www.dallascad.org/SearchOwner.aspx", timeout=40000,
+                         wait_until="domcontentloaded")
+            await p.wait_for_timeout(800)
+            await p.fill("#txtOwnerName", query)
+            await p.click("#cmdSubmit")
+            await p.wait_for_timeout(2200)
+            return await _dcad_results(p)
+        finally:
+            await ctx.close()
+    return await _retrying(once, attempts=attempts)
 
 
 # ── Corroboration guard ───────────────────────────────────────
