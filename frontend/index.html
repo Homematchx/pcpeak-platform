@@ -2429,28 +2429,71 @@ function collectorLink(v) {
   return null;
 }
 
+// Known non-Dallas collector portals, keyed by the CITY on the property address. This is a
+// NAVIGATION aid, not a payoff claim: it opens a page for a human to read. It deliberately does NOT
+// assert that the district is owed — that remains membership-before-balance, from the petition only
+// (§19 Q2: a Garland address can sit in Richardson ISD, so geography must never drive a BALANCE).
+// Without it there was no way to check a non-Dallas collector from the profile at all, which meant
+// re-scraping to answer "did they pay?".
+var CITY_PORTALS = {
+  "IRVING":     [{label: "Irving Tax", act: "irving"}],
+  "GARLAND":    [{label: "Garland ISD Tax", gds: "057909"}, {label: "City of Garland Tax", gds: "057120"}],
+  "RICHARDSON": [{label: "Richardson ISD Tax", gds: "057916"}],
+  "ROWLETT":    [{label: "Garland ISD Tax", gds: "057909"}],
+  "CARROLLTON": [{label: "Carrollton-FB ISD Tax", gds: "057916"}],
+  "SACHSE":     [{label: "Garland ISD Tax", gds: "057909"}]
+};
+
+function collectorLink(v) {
+  if (!v || !v.agency) return null;
+  if (v.source === "irving_act" && v.cad)
+    return "https://actweb.acttax.com/act_webdev/" + v.agency + "/showdetail2.jsp?can=" + v.cad + "&ownerno=0";
+  if (v.source === "gds") return "https://www.texaspayments.com/" + v.agency;
+  return null;
+}
+
 function collectorButtons(c) {
+  var ex = c.extracted || {};
   var pi = parseIntel(c.property_intel);
   var cb = (pi && pi.collector_balances) || {};
-  var out = "";
+  var acct = (ex.accountNumber || "").split(/[,;]/)[0].trim();
+  var out = "", shown = {};
+  var S = "font-family:var(--FB);font-size:12px;font-weight:600;padding:6px 12px;border-radius:var(--rs);text-decoration:none;";
+  var HOT = S + "border:1px solid #b45309;background:#fff7ed;color:#7c2d12";
+  var COOL = S + "border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-weight:500";
+
+  // 1. Collectors we HAVE a live balance for — amount on the button, read-date in the tooltip.
   Object.keys(cb).sort().forEach(function (k) {
     var v = cb[k];
     if (k.charAt(0) === "_" || !v || typeof v !== "object" || typeof v.amount !== "number") return;
-    var url = collectorLink(v);
-    var amt = "$" + Math.round(v.amount).toLocaleString();
-    var acct = v.account ? " · acct " + v.account : "";
-    var age = v.fetched_at ? " · read " + String(v.fetched_at).slice(0, 10) : " · read date unknown";
-    var deep = (v.source === "irving_act");
-    var tip = ((deep ? "Live balance from " + k + " — opens THIS parcel on their site"
-                     : "Live balance from " + k + " — opens their portal; search by account" + acct +
-                       " (no per-parcel link exists)") + age +
-               ". A payment posted after that date will not be reflected here until re-fetched."
-              ).replace(/"/g, "&quot;");
-    var style = "font-family:var(--FB);font-size:12px;font-weight:600;padding:6px 12px;border-radius:var(--rs);" +
-                "border:1px solid #b45309;background:#fff7ed;color:#7c2d12;text-decoration:none";
-    if (url) out += '<a href="' + url + '" target="_blank" title="' + tip + '" style="' + style + '">' +
-                    k + " " + amt + (deep ? " &#8599;" : " &#8599;") + "</a>";
-    else out += '<span title="' + tip + '" style="' + style + ';cursor:default">' + k + " " + amt + "</span>";
+    var url = collectorLink(v), amt = "$" + Math.round(v.amount).toLocaleString();
+    var age = v.fetched_at ? "read " + String(v.fetched_at).slice(0, 10) : "read date unknown";
+    var tip = ((v.source === "irving_act" ? "Live balance from " + k + " — opens THIS parcel"
+                                          : "Live balance from " + k + " — opens their portal; search account " + (v.account || "?")) +
+               " · " + age + ". A payment posted after that will not show here until re-fetched.").replace(/"/g, "&quot;");
+    if (url) shown[url] = 1;   // dedup by URL, not label: the fetched key is "IRVING ISD" while the
+                               // city-portal label is "Irving Tax" — same page, two names, so a
+                               // label-keyed guard rendered both and offered the portal twice.
+    out += url ? '<a href="' + url + '" target="_blank" title="' + tip + '" style="' + HOT + '">' + k + " " + amt + ' &#8599;</a>'
+               : '<span title="' + tip + '" style="' + HOT + ';cursor:default">' + k + " " + amt + '</span>';
+  });
+
+  // 2. The parcel's CITY has a known collector portal we have NOT read. This is the case that had
+  //    nothing at all before: TX-26-01644 sits in Irving, Dallas ACT says $0.00, and there was no
+  //    way to open Irving's page. Labelled "check" and carrying NO amount, because we have not read
+  //    one — showing a figure we do not have is the fabricated-value pattern this codebase strips.
+  var city = (cityOf(c) || "").toUpperCase();
+  (CITY_PORTALS[city] || []).forEach(function (p) {
+    var url = p.act && acct
+        ? "https://actweb.acttax.com/act_webdev/" + p.act + "/showdetail2.jsp?can=" + acct + "&ownerno=0"
+        : (p.gds ? "https://www.texaspayments.com/" + p.gds : null);
+    if (!url || shown[url]) return;
+    shown[url] = 1;
+    var tip = (p.label + " — NOT yet read for this parcel. " +
+               (p.act ? "Opens this parcel on their site." : "Opens their portal; search by DCAD account " + (acct || "—") + ".") +
+               " Dallas ACT does not cover this collector, so a $0 there does not mean paid.").replace(/"/g, "&quot;");
+    out += '<a href="' + url + '" target="_blank" title="' + tip + '" style="' + COOL + '">' +
+           p.label + ' <span style="opacity:.6">check</span> &#8599;</a>';
   });
   return out;
 }

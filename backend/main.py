@@ -1438,8 +1438,39 @@ def _propose_for(db, case_number, case):
                                       "case_track": track, "balance": bal}
 
     # Real 0.0 only — an unknown balance must never read as paid.
+    #
+    # …AND THE PAYOFF MUST ACTUALLY BE COMPLETE (§33). `bal` is the ACT scalar alone. On a parcel
+    # whose ISD or city collects its own taxes, ACT reads $0.00 while the debt sits elsewhere:
+    # TX-26-01644 (Irving) showed ACT $0.00 against a $52,552 suit and this rule proposed
+    # PAID IN FULL for it. That is the same "$0 means paid" inference §17.4 and §33 removed from the
+    # band and the payoff label — this reader was simply never wired to the verdict.
+    # Gate on the ENGINE's completeness, so the flag cannot disagree with the payoff about whether
+    # the money is accounted for: one producer, many readers.
     if bal is not None and bal == 0.0:
-        return "paid_in_full", {"reason": "ACT live balance is zero", "balance": bal}
+        try:
+            _pi = json.loads(case.get("property_intel") or "{}")
+        except Exception:
+            _pi = {}
+        _filed = case.get("total_due_filing") or 0
+        _named = [c["collector"] for c in
+                  jurisdictions.petition_collectors(case.get("tax_breakdown"))]
+        _ext = [n for n in _named
+                if (jurisdictions.resolve_collector(n) or {}).get("scope") != "act"]
+        _fetched = jurisdictions.collector_amounts(_pi.get("collector_balances"))
+        _unaccounted = [n for n in _ext if n not in _fetched]
+        _why = None
+        if _unaccounted:
+            _why = "a named collector outside ACT was never retrieved: " + ", ".join(_unaccounted)
+        elif any(v > 0 for v in _fetched.values()):
+            _why = "a collector outside ACT reports a balance owing"
+        elif not _named and _filed > 0:
+            _why = ("no collector membership was extracted, and the suit claims "
+                    f"${_filed:,.0f} — ACT alone cannot say this is paid")
+        if _why:
+            # NOT a proposal. Recorded here rather than silently skipped so the reason is legible.
+            return None
+        return "paid_in_full", {"reason": "ACT live balance is zero and no collector outside ACT is "
+                                          "unaccounted for", "balance": bal}
 
     # A completed sale, not an ORDER of sale (which is only authorization and is the single
     # most common docket line on the platform). NOTE: the live corpus currently contains ZERO
