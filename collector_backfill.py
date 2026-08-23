@@ -107,9 +107,25 @@ async def run(targets, write=True, delay=DEFAULT_DELAY_S):
                 failed += len(miss)
                 # Write once, whatever happened — the sentinel is PART of the record (batch_census
                 # and the payoff surfaces both read it), so a fault is stored, not swallowed.
-                if write and got:
+                # A stale diagnostic must clear even when THIS pass fetched nothing: the fact it
+                # asserts ("the portal refused us") is disproved by having reached the portal at all,
+                # and an empty result is a per-parcel miss, not a refusal. Gating the clear on `got`
+                # left TX-26-01600 flagged as faulted while holding a live $18,599.03 balance.
+                stale = [k for k in jurisdictions.SENTINEL_KEYS
+                         if k in (t["intel"].get("collector_balances") or {}) and k not in got]
+                if write and (got or stale):
                     intel = t["intel"]
-                    intel["collector_balances"] = {**(intel.get("collector_balances") or {}), **got}
+                    merged = {**(intel.get("collector_balances") or {}), **got}
+                    # CLEAR STALE DIAGNOSTICS. `{**stored, **got}` preserves a sentinel forever,
+                    # because a SUCCESSFUL fetch simply has no sentinel key to overwrite it with.
+                    # Measured: TX-26-01600 carried `_portal_unavailable` from the blocked run while
+                    # also holding a freshly-fetched RICHARDSON ISD $18,599.03, so the census reported
+                    # a portal fault that no longer existed. A diagnostic must describe the LATEST
+                    # attempt; one that outlives its truth is worse than none, because it is believed.
+                    for key in jurisdictions.SENTINEL_KEYS:
+                        if key not in got:
+                            merged.pop(key, None)
+                    intel["collector_balances"] = merged
                     conn.execute("UPDATE cases SET property_intel=? WHERE case_number=?",
                                  (json.dumps(intel), t["case"]))
                     conn.commit()
