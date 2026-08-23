@@ -1674,6 +1674,7 @@ function renderDetail(c) {
                + abtn("Tax by Year", function(a){return "https://www.dallasact.com/act_webdev/dallas/reports/taxbyyear.jsp?can="+a+"&ownerno=0";})
                + abtn("Payment History", function(a){return "https://www.dallasact.com/act_webdev/dallas/reports/paymentinfo.jsp?can="+a+"&ownerno=0";});
         })()}
+        ${collectorButtons(c)}
         ${ex.propertyAddress?`<a href="https://www.google.com/maps/search/${encodeURIComponent(ex.propertyAddress)}" target="_blank" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surface);color:var(--text);text-decoration:none">Street View</a>`:""}
         <button onclick="openDispose('${c.id}')" title="Archive with a disposition — never deletes; reversible and logged" style="font-family:var(--FB);font-size:12px;font-weight:500;padding:6px 12px;border-radius:var(--rs);cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text3)">&#128452; Dispose&hellip;</button>
         ${(function(){
@@ -2405,6 +2406,53 @@ function renderCityPills() {
             (sel ? on : base) + '">' + k.charAt(0) + k.slice(1).toLowerCase() + ' <span style="opacity:.7">' + counts[k] + '</span></button>';
   });
   host.innerHTML = html;
+}
+
+// ── COLLECTORS THAT BILL OUTSIDE DALLAS ACT — their own page, and their own live balance ────────
+// The Dallas ACT buttons above only reach dallasact.com. On a parcel whose ISD or city collects its
+// own taxes, that page is not where the money is: Dallas ACT read $0.00 on TX-26-01644 while the
+// suit claims $52,552, because Irving bills separately. Until now those balances existed only in
+// the Financials tab and their portals were not reachable from the profile at all — so confirming a
+// PAYMENT meant re-scraping, which is the thing this is meant to avoid.
+//
+// Deep-linkable where the platform allows it:
+//   irving_act  a plain ACT instance — stable per-parcel URL, `agency` IS the instance path
+//   gds         session-based search, NO stable per-parcel URL (design §17), so the button opens
+//               the agency page and the collector's own ACCOUNT NUMBER is shown for the lookup.
+//               Advertising a deep link that cannot exist would be worse than one honest hop.
+function collectorLink(v) {
+  if (!v || !v.agency) return null;
+  if (v.source === "irving_act" && v.cad)
+    return "https://actweb.acttax.com/act_webdev/" + v.agency + "/showdetail2.jsp?can=" + v.cad + "&ownerno=0";
+  if (v.source === "gds")
+    return "https://www.texaspayments.com/" + v.agency;
+  return null;
+}
+
+function collectorButtons(c) {
+  var pi = parseIntel(c.property_intel);
+  var cb = (pi && pi.collector_balances) || {};
+  var out = "";
+  Object.keys(cb).sort().forEach(function (k) {
+    var v = cb[k];
+    if (k.charAt(0) === "_" || !v || typeof v !== "object" || typeof v.amount !== "number") return;
+    var url = collectorLink(v);
+    var amt = "$" + Math.round(v.amount).toLocaleString();
+    var acct = v.account ? " · acct " + v.account : "";
+    var age = v.fetched_at ? " · read " + String(v.fetched_at).slice(0, 10) : " · read date unknown";
+    var deep = (v.source === "irving_act");
+    var tip = ((deep ? "Live balance from " + k + " — opens THIS parcel on their site"
+                     : "Live balance from " + k + " — opens their portal; search by account" + acct +
+                       " (no per-parcel link exists)") + age +
+               ". A payment posted after that date will not be reflected here until re-fetched."
+              ).replace(/"/g, "&quot;");
+    var style = "font-family:var(--FB);font-size:12px;font-weight:600;padding:6px 12px;border-radius:var(--rs);" +
+                "border:1px solid #b45309;background:#fff7ed;color:#7c2d12;text-decoration:none";
+    if (url) out += '<a href="' + url + '" target="_blank" title="' + tip + '" style="' + style + '">' +
+                    k + " " + amt + (deep ? " &#8599;" : " &#8599;") + "</a>";
+    else out += '<span title="' + tip + '" style="' + style + ';cursor:default">' + k + " " + amt + "</span>";
+  });
+  return out;
 }
 
 function filterCity(city) {

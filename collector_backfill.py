@@ -16,6 +16,7 @@ TWO RULES IT WILL NOT BREAK
 """
 import argparse
 import asyncio
+import datetime
 import json
 import sqlite3
 import sys
@@ -81,6 +82,7 @@ DEFAULT_DELAY_S = 4.0
 
 async def run(targets, write=True, delay=DEFAULT_DELAY_S):
     from playwright.async_api import async_playwright
+    _now = datetime.datetime.now().isoformat(timespec="seconds")
     conn = sqlite3.connect(DB)
     done = fetched = failed = 0
     portal_down = False
@@ -122,7 +124,14 @@ async def run(targets, write=True, delay=DEFAULT_DELAY_S):
                          if k in (t["intel"].get("collector_balances") or {}) and k not in got]
                 if write and (got or stale):
                     intel = t["intel"]
-                    merged = {**(intel.get("collector_balances") or {}), **got}
+                    # STAMP THE READ. A balance with no read-time cannot answer "has a payment
+                    # posted since?" — the question this data exists to serve. Absent a stamp a rep
+                    # cannot tell today's figure from last month's, and would re-scrape to find out.
+                    stamped = {}
+                    for _k, _v in got.items():
+                        stamped[_k] = ({**_v, "fetched_at": _now} if isinstance(_v, dict) and
+                                       "amount" in _v else _v)
+                    merged = {**(intel.get("collector_balances") or {}), **stamped}
                     # CLEAR STALE DIAGNOSTICS. `{**stored, **got}` preserves a sentinel forever,
                     # because a SUCCESSFUL fetch simply has no sentinel key to overwrite it with.
                     # Measured: TX-26-01600 carried `_portal_unavailable` from the blocked run while
