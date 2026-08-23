@@ -2387,7 +2387,10 @@ function renderCityPills() {
   var host = document.getElementById("city-pills");
   if (!host) return;
   var counts = {};
-  (window.cases || []).forEach(function (c) {
+  // `cases` is a script-scoped binding, NOT a window property — reading window.cases silently
+  // yielded [] and rendered only the "All" pill. Same identifier renderList uses.
+  var book = (typeof cases !== "undefined" && cases) ? cases : [];
+  book.forEach(function (c) {
     var k = cityOf(c);
     if (k) counts[k] = (counts[k] || 0) + 1;
   });
